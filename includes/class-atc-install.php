@@ -16,6 +16,7 @@ final class ATC_Install {
 		}
 		self::seed();
 		update_option( 'atc_db_version', ATC_DB_VERSION, false );
+		update_option( 'atc_flush_rewrite', 1, false );
 		self::log( 'plugin', 0, 'activated', array( 'version' => ATC_VERSION ) );
 	}
 
@@ -29,6 +30,7 @@ final class ATC_Install {
 			self::create_tables();
 			ATC_Roles::add();
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
+			update_option( 'atc_flush_rewrite', 1, false );
 		}
 	}
 

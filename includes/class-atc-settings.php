@@ -95,6 +95,15 @@ final class ATC_Settings {
 		return '' !== self::stripe_secret( $mode );
 	}
 
+	/** Google Maps keys from wp-config.php. The browser key is public by design and limited to our domains. */
+	public static function maps_browser_key(): string {
+		return defined( 'ATC_MAPS_BROWSER_KEY' ) ? (string) ATC_MAPS_BROWSER_KEY : '';
+	}
+
+	public static function maps_server_key(): string {
+		return defined( 'ATC_MAPS_SERVER_KEY' ) ? (string) ATC_MAPS_SERVER_KEY : '';
+	}
+
 	public static function webhook_secret(): string {
 		$const = 'live' === self::get( 'stripe_mode' ) ? 'ATC_STRIPE_LIVE_WEBHOOK_SECRET' : 'ATC_STRIPE_TEST_WEBHOOK_SECRET';
 		return defined( $const ) ? (string) constant( $const ) : '';

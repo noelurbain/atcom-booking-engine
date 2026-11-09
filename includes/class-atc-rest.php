@@ -54,6 +54,10 @@ final class ATC_REST {
 				'publishable_set'     => '' !== (string) ATC_Settings::get( 'live' === $mode ? 'stripe_live_publishable' : 'stripe_test_publishable' ),
 				'webhook_secret_set'  => '' !== ATC_Settings::webhook_secret(),
 			),
+			'maps'           => array(
+				'browser_key_set' => '' !== ATC_Settings::maps_browser_key(),
+				'server_key_set'  => '' !== ATC_Settings::maps_server_key(),
+			),
 			'rules'          => array(
 				'provider_commission' => ATC_Settings::get( 'provider_commission_bp' ) / 100 . '%',
 				'affiliate'           => ATC_Settings::get( 'affiliate_bp' ) / 100 . '%',

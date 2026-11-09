@@ -42,10 +42,19 @@ final class ATC_Admin {
 		}
 		$s  = ATC_REST::status_data();
 		$ex = $s['rules']['example_100_usd'];
+
+		$maps_test = null;
+		if ( isset( $_GET['atc_test_maps'] ) && check_admin_referer( 'atc_test_maps' ) ) {
+			$maps_test = ATC_Geo::test_server_key();
+		}
+		$test_url = wp_nonce_url( admin_url( 'admin.php?page=atc&atc_test_maps=1' ), 'atc_test_maps' );
 		?>
 		<div class="wrap">
 			<h1>Booking Engine · Status</h1>
-			<p>Version <?php echo esc_html( $s['version'] ); ?> · database version <?php echo esc_html( (string) $s['db_version'] ); ?></p>
+			<p>Version <?php echo esc_html( $s['version'] ); ?> · database version <?php echo esc_html( (string) $s['db_version'] ); ?> · <a href="<?php echo esc_url( home_url( '/control/' ) ); ?>"><strong>Open the control panel →</strong></a></p>
+			<?php if ( $maps_test ) : ?>
+				<div class="notice <?php echo $maps_test[0] ? 'notice-success' : 'notice-error'; ?>"><p><strong>Server key test:</strong> <?php echo esc_html( $maps_test[1] ); ?></p></div>
+			<?php endif; ?>
 			<table class="widefat striped" style="max-width:760px">
 				<tbody>
 					<tr><td>Tables</td><td><?php echo $s['tables_missing'] ? self::yes_no( false, '', 'Missing: ' . implode( ', ', $s['tables_missing'] ) ) : self::yes_no( true, 'All ' . (int) $s['tables_total'] . ' tables present' ); // phpcs:ignore ?></td></tr>
@@ -55,6 +64,8 @@ final class ATC_Admin {
 					<tr><td>Stripe test secret key (wp-config.php)</td><td><?php echo self::yes_no( $s['stripe']['test_secret_set'] ); // phpcs:ignore ?></td></tr>
 					<tr><td>Stripe publishable key</td><td><?php echo self::yes_no( $s['stripe']['publishable_set'] ); // phpcs:ignore ?></td></tr>
 					<tr><td>Stripe webhook secret (wp-config.php)</td><td><?php echo self::yes_no( $s['stripe']['webhook_secret_set'] ); // phpcs:ignore ?></td></tr>
+					<tr><td>Google Maps Website key (wp-config.php)</td><td><?php echo self::yes_no( $s['maps']['browser_key_set'] ); // phpcs:ignore ?></td></tr>
+					<tr><td>Google Maps Server key (wp-config.php)</td><td><?php echo self::yes_no( $s['maps']['server_key_set'] ); // phpcs:ignore ?><?php if ( $s['maps']['server_key_set'] ) : ?> · <a href="<?php echo esc_url( $test_url ); ?>">Test it with Google</a><?php endif; ?></td></tr>
 					<tr><td>Commission on providers</td><td><?php echo esc_html( $s['rules']['provider_commission'] ); ?></td></tr>
 					<tr><td>Example: USD 100 sale</td><td>
 						Amount the provider gets paid <?php echo esc_html( ATC_Money::format( $ex['provider'] ) ); ?> ·
@@ -66,7 +77,9 @@ final class ATC_Admin {
 			<h2>Stripe keys</h2>
 			<p>Secret keys are never stored in the database. Add them to <code>wp-config.php</code> above “That’s all, stop editing”:</p>
 			<pre style="background:#fff;padding:12px;border:1px solid #ccd0d4;max-width:760px">define( 'ATC_STRIPE_TEST_SECRET', 'sk_test_…' );
-define( 'ATC_STRIPE_TEST_WEBHOOK_SECRET', 'whsec_…' );</pre>
+define( 'ATC_STRIPE_TEST_WEBHOOK_SECRET', 'whsec_…' );
+define( 'ATC_MAPS_BROWSER_KEY', 'AIza…' );
+define( 'ATC_MAPS_SERVER_KEY', 'AIza…' );</pre>
 		</div>
 		<?php
 	}
