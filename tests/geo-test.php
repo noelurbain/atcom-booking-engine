@@ -55,5 +55,29 @@ check( 'clean polygon refuses 2 points', ATC_Geo::clean_polygon( array( array( 1
 check( 'clean polygon refuses bad latitude', ATC_Geo::clean_polygon( array( array( 91, 1 ), array( 2, 2 ), array( 3, 3 ) ) ), null );
 check( 'clean polygon refuses text', ATC_Geo::clean_polygon( array( array( 'a', 1 ), array( 2, 2 ), array( 3, 3 ) ) ), null );
 
+
+// Shape suggestions helpers.
+$geo = array( 'type' => 'MultiPolygon', 'coordinates' => array(
+	array( array( array( -86.90, 20.80 ), array( -86.85, 20.80 ), array( -86.85, 20.85 ), array( -86.90, 20.80 ) ) ),
+	array( array( array( -87.0, 20.70 ), array( -86.8, 20.70 ), array( -86.8, 20.90 ), array( -87.0, 20.90 ), array( -87.0, 20.70 ) ) ),
+) );
+$ring = ATC_Geo::outer_ring( $geo );
+check( 'MultiPolygon: keeps the largest ring', count( $ring ), 4 );
+check( 'GeoJSON lng,lat becomes lat,lng', $ring[0], array( 20.7, -87.0 ) );
+check( 'Point has no ring', ATC_Geo::outer_ring( array( 'type' => 'Point', 'coordinates' => array( -86.9, 20.8 ) ) ), null );
+$km2 = ATC_Geo::area_km2( $ring );
+check( '0.2° x 0.2° box near Cancún is about 470 km²', $km2 > 440 && $km2 < 500, true );
+$tiny = ATC_Geo::box( 21.0, -86.9, 21.0001, -86.8999 );
+check( 'tiny Google box grows to about 0.5 km', abs( $tiny[0][0] - $tiny[2][0] - 0.0045 ) < 0.00001, true );
+$circle = array();
+for ( $i = 0; $i < 600; $i++ ) {
+	$a        = 2 * M_PI * $i / 600;
+	$circle[] = array( 20.8 + 0.05 * sin( $a ), -86.9 + 0.05 * cos( $a ) );
+}
+$simple = ATC_Geo::simplify( $circle, 150 );
+check( 'simplify 600 points to 150 or fewer', count( $simple ) <= 150 && count( $simple ) >= 8, true );
+check( 'simplified shape keeps its area (within 3%)', abs( ATC_Geo::area_km2( $simple ) / ATC_Geo::area_km2( $circle ) - 1 ) < 0.03, true );
+check( 'centre still inside after simplifying', ATC_Geo::point_in_polygon( 20.8, -86.9, $simple ), true );
+
 echo $fails ? "\n$fails failed\n" : "\nAll passed\n";
 exit( $fails ? 1 : 0 );

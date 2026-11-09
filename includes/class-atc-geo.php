@@ -132,6 +132,283 @@ final class ATC_Geo {
 		);
 	}
 
+	/* ---------- Shape suggestions for a zone name ---------- */
+
+	/**
+	 * Ready-made shapes for an area name, best first:
+	 * OpenStreetMap boundaries (real outlines, when the area has one) and Google's box for the place.
+	 *
+	 * @return array{0:array,1:array} [candidates, errors]
+	 */
+	public static function shape_suggestions( string $name, array $airport ): array {
+		$cache = 'atc_shape_' . md5( strtolower( $name ) . '|' . $airport['iata'] );
+		$hit   = get_transient( $cache );
+		if ( is_array( $hit ) ) {
+			return array( $hit, array() );
+		}
+
+		$out    = array();
+		$errors = array();
+
+		[ $osm, $err ] = self::osm_boundaries( $name, $airport );
+		if ( $err ) {
+			$errors[] = 'OpenStreetMap: ' . $err;
+		}
+		$out = array_merge( $out, $osm );
+
+		[ $google, $err ] = self::google_boxes( $name, $airport );
+		if ( $err ) {
+			$errors[] = 'Google: ' . $err;
+		}
+		$out = array_merge( $out, $google );
+
+		if ( $out ) {
+			set_transient( $cache, $out, DAY_IN_SECONDS );
+		}
+		return array( $out, $errors );
+	}
+
+	/** OpenStreetMap (Nominatim) boundaries near the airport. One request; their rules allow light use with a clear User-Agent. */
+	private static function osm_boundaries( string $name, array $airport ): array {
+		$lat = (float) $airport['lat'];
+		$lng = (float) $airport['lng'];
+		$url = add_query_arg(
+			array(
+				'q'                 => rawurlencode( $name ),
+				'format'            => 'jsonv2',
+				'polygon_geojson'   => 1,
+				'polygon_threshold' => '0.0003',
+				'countrycodes'      => strtolower( (string) $airport['country'] ),
+				'viewbox'           => implode( ',', array( $lng - 2.5, $lat + 2.5, $lng + 2.5, $lat - 2.5 ) ),
+				'bounded'           => 1,
+				'limit'             => 6,
+				'accept-language'   => 'en',
+			),
+			'https://nominatim.openstreetmap.org/search'
+		);
+		$res = wp_remote_get(
+			$url,
+			array(
+				'timeout' => 12,
+				'headers' => array( 'User-Agent' => 'AirportTransportation.com booking engine (' . ATC_Settings::get( 'from_email' ) . ')' ),
+			)
+		);
+		if ( is_wp_error( $res ) ) {
+			return array( array(), $res->get_error_message() );
+		}
+		if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) ) {
+			return array( array(), 'HTTP ' . wp_remote_retrieve_response_code( $res ) );
+		}
+		$rows = json_decode( wp_remote_retrieve_body( $res ), true );
+		$out  = array();
+		foreach ( (array) $rows as $r ) {
+			$ring = self::outer_ring( $r['geojson'] ?? null );
+			if ( ! $ring ) {
+				continue;
+			}
+			$ring = self::simplify( $ring, 150 );
+			$out[] = array(
+				'source'  => 'osm',
+				'label'   => (string) ( $r['display_name'] ?? $name ),
+				'kind'    => ucfirst( str_replace( '_', ' ', (string) ( $r['addresstype'] ?? $r['type'] ?? 'area' ) ) ),
+				'polygon' => $ring,
+				'km2'     => round( self::area_km2( $ring ), 1 ),
+			);
+			if ( count( $out ) >= 3 ) {
+				break;
+			}
+		}
+		return array( $out, null );
+	}
+
+	/** Google Places (New): the map box ("viewport") of the place, as a rectangle. */
+	private static function google_boxes( string $name, array $airport ): array {
+		$key = ATC_Settings::maps_server_key();
+		if ( '' === $key ) {
+			return array( array(), 'Server key not set' );
+		}
+		$res = wp_remote_post(
+			'https://places.googleapis.com/v1/places:searchText',
+			array(
+				'timeout' => 12,
+				'headers' => array(
+					'Content-Type'     => 'application/json',
+					'X-Goog-Api-Key'   => $key,
+					'X-Goog-FieldMask' => 'places.displayName,places.formattedAddress,places.viewport,places.types',
+				),
+				'body'    => wp_json_encode(
+					array(
+						'textQuery'    => $name,
+						'pageSize'     => 3,
+						'languageCode' => 'en',
+						'locationBias' => array(
+							'circle' => array(
+								'center' => array( 'latitude' => (float) $airport['lat'], 'longitude' => (float) $airport['lng'] ),
+								'radius' => 50000.0,
+							),
+						),
+					)
+				),
+			)
+		);
+		if ( is_wp_error( $res ) ) {
+			return array( array(), $res->get_error_message() );
+		}
+		$body = json_decode( wp_remote_retrieve_body( $res ), true );
+		if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) ) {
+			return array( array(), $body['error']['message'] ?? 'HTTP ' . wp_remote_retrieve_response_code( $res ) );
+		}
+		$out = array();
+		foreach ( (array) ( $body['places'] ?? array() ) as $p ) {
+			$v = $p['viewport'] ?? null;
+			if ( ! $v || empty( $v['low'] ) || empty( $v['high'] ) ) {
+				continue;
+			}
+			$ring = self::box( (float) $v['low']['latitude'], (float) $v['low']['longitude'], (float) $v['high']['latitude'], (float) $v['high']['longitude'] );
+			$out[] = array(
+				'source'  => 'google',
+				'label'   => trim( ( $p['displayName']['text'] ?? $name ) . ' · ' . ( $p['formattedAddress'] ?? '' ), ' ·' ),
+				'kind'    => 'Google map box',
+				'polygon' => $ring,
+				'km2'     => round( self::area_km2( $ring ), 1 ),
+			);
+		}
+		return array( $out, null );
+	}
+
+	/** Rectangle [lat,lng] ring, at least about 1 km a side so it can be grabbed and adjusted. */
+	public static function box( float $s, float $w, float $n, float $e ): array {
+		$min = 0.0045;
+		if ( $n - $s < $min ) {
+			$c = ( $n + $s ) / 2;
+			$s = $c - $min / 2;
+			$n = $c + $min / 2;
+		}
+		if ( $e - $w < $min ) {
+			$c = ( $e + $w ) / 2;
+			$w = $c - $min / 2;
+			$e = $c + $min / 2;
+		}
+		return array( array( round( $n, 6 ), round( $w, 6 ) ), array( round( $n, 6 ), round( $e, 6 ) ), array( round( $s, 6 ), round( $e, 6 ) ), array( round( $s, 6 ), round( $w, 6 ) ) );
+	}
+
+	/** Largest outer ring of a GeoJSON Polygon or MultiPolygon, as [lat,lng] without the closing point. */
+	public static function outer_ring( $geo ): ?array {
+		if ( ! is_array( $geo ) || empty( $geo['coordinates'] ) ) {
+			return null;
+		}
+		$rings = array();
+		if ( 'Polygon' === ( $geo['type'] ?? '' ) ) {
+			$rings[] = $geo['coordinates'][0] ?? array();
+		} elseif ( 'MultiPolygon' === ( $geo['type'] ?? '' ) ) {
+			foreach ( $geo['coordinates'] as $poly ) {
+				$rings[] = $poly[0] ?? array();
+			}
+		} else {
+			return null;
+		}
+		$best = null;
+		$area = -1;
+		foreach ( $rings as $ring ) {
+			$pts = array();
+			foreach ( $ring as $pt ) {
+				if ( is_array( $pt ) && count( $pt ) >= 2 ) {
+					$pts[] = array( round( (float) $pt[1], 6 ), round( (float) $pt[0], 6 ) );
+				}
+			}
+			if ( count( $pts ) > 1 && $pts[0] === $pts[ count( $pts ) - 1 ] ) {
+				array_pop( $pts );
+			}
+			if ( count( $pts ) < 3 ) {
+				continue;
+			}
+			$a = self::area_km2( $pts );
+			if ( $a > $area ) {
+				$area = $a;
+				$best = $pts;
+			}
+		}
+		return $best;
+	}
+
+	/** Approximate area in km² (fine at this scale). */
+	public static function area_km2( array $ring ): float {
+		$n = count( $ring );
+		if ( $n < 3 ) {
+			return 0.0;
+		}
+		$lat0 = deg2rad( array_sum( array_column( $ring, 0 ) ) / $n );
+		$kx   = 111.32 * cos( $lat0 );
+		$ky   = 110.57;
+		$sum  = 0.0;
+		for ( $i = 0, $j = $n - 1; $i < $n; $j = $i++ ) {
+			$sum += ( $ring[ $j ][1] * $kx ) * ( $ring[ $i ][0] * $ky ) - ( $ring[ $i ][1] * $kx ) * ( $ring[ $j ][0] * $ky );
+		}
+		return abs( $sum ) / 2;
+	}
+
+	/** Fewer points, same outline (Douglas-Peucker, tolerance raised until it fits $max points). */
+	public static function simplify( array $ring, int $max = 150 ): array {
+		if ( count( $ring ) <= $max ) {
+			return $ring;
+		}
+		$tol = 0.0002;
+		$out = $ring;
+		for ( $k = 0; $k < 20 && count( $out ) > $max; $k++ ) {
+			$closed = array_merge( $ring, array( $ring[0] ) );
+			$out    = self::dp( $closed, $tol );
+			array_pop( $out );
+			$tol *= 1.6;
+		}
+		return count( $out ) >= 3 ? $out : array_slice( $ring, 0, $max );
+	}
+
+	private static function dp( array $pts, float $tol ): array {
+		$n = count( $pts );
+		if ( $n < 3 ) {
+			return $pts;
+		}
+		$keep              = array_fill( 0, $n, false );
+		$keep[0]           = true;
+		$keep[ $n - 1 ]    = true;
+		$stack             = array( array( 0, $n - 1 ) );
+		while ( $stack ) {
+			[ $a, $b ] = array_pop( $stack );
+			$max  = 0.0;
+			$idx  = -1;
+			for ( $i = $a + 1; $i < $b; $i++ ) {
+				$d = self::seg_dist( $pts[ $i ], $pts[ $a ], $pts[ $b ] );
+				if ( $d > $max ) {
+					$max = $d;
+					$idx = $i;
+				}
+			}
+			if ( $idx > 0 && $max > $tol ) {
+				$keep[ $idx ] = true;
+				$stack[]      = array( $a, $idx );
+				$stack[]      = array( $idx, $b );
+			}
+		}
+		$out = array();
+		foreach ( $pts as $i => $p ) {
+			if ( $keep[ $i ] ) {
+				$out[] = $p;
+			}
+		}
+		return $out;
+	}
+
+	private static function seg_dist( array $p, array $a, array $b ): float {
+		$dx = $b[1] - $a[1];
+		$dy = $b[0] - $a[0];
+		$len = $dx * $dx + $dy * $dy;
+		if ( 0.0 === (float) $len ) {
+			return hypot( $p[1] - $a[1], $p[0] - $a[0] );
+		}
+		$t = max( 0, min( 1, ( ( $p[1] - $a[1] ) * $dx + ( $p[0] - $a[0] ) * $dy ) / $len ) );
+		return hypot( $p[1] - ( $a[1] + $t * $dx ), $p[0] - ( $a[0] + $t * $dy ) );
+	}
+
 	/** Checks the Server key with one Geocoding call. Returns [ok, message]. */
 	public static function test_server_key(): array {
 		$key = ATC_Settings::maps_server_key();

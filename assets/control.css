@@ -88,3 +88,6 @@ td select{width:auto;max-width:220px}
 #atc-toast.show{opacity:1;transform:translate(-50%,0)}#atc-toast.bad{background:var(--red)}
 @media (max-width:900px){.grid3,.grid5,.grid6,.atc-two{grid-template-columns:repeat(2,minmax(0,1fr))}.atc-mapcard{position:static;max-width:none}.atc-map{height:420px}}
 @media (max-width:560px){.atc-wrap{padding:0 16px}.grid3,.grid5,.grid6,.atc-two{grid-template-columns:minmax(0,1fr)}h1{font-size:24px}.atc-user{display:none}}
+
+.sug{display:flex;flex-direction:column;gap:2px;flex:1 1 320px;min-width:0}.sug small{font-weight:500;color:var(--muted)}
+.atc-mapbar input[type=text]{width:180px}

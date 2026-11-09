@@ -66,6 +66,21 @@ final class ATC_REST_Control {
 		);
 
 		self::route(
+			'/zones/(?P<id>\d+)/suggest',
+			array(
+				'GET' => static function ( WP_REST_Request $r ) {
+					$zone = ATC_Catalog::zone( (int) $r['id'] );
+					if ( ! $zone ) {
+						return new WP_Error( 'atc_not_found', 'Zone not found.', array( 'status' => 404 ) );
+					}
+					$name    = trim( (string) ( $r['q'] ?? '' ) ) ?: $zone['name'];
+					$airport = ATC_Catalog::airport( (int) $zone['airport_id'] );
+					[ $list, $errors ] = ATC_Geo::shape_suggestions( sanitize_text_field( $name ), $airport );
+					return rest_ensure_response( array( 'query' => $name, 'candidates' => $list, 'errors' => $errors ) );
+				},
+			)
+		);
+		self::route(
 			'/places',
 			array(
 				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response(

@@ -105,7 +105,7 @@
 
   /* ---------- Zones and hotels ---------- */
 
-  var Z = { polys: {}, markers: [], drawing: null, editing: null };
+  var Z = { polys: {}, markers: [], drawing: null, editing: null, suggest: null };
 
   function viewZones() {
     clear(app);
@@ -131,7 +131,7 @@
 
     add(app, [head, h('div', { class: 'atc-split' }, left, right)]);
 
-    Z.polys = {}; Z.markers = []; Z.drawing = null; Z.editing = null; state.map = null;
+    Z.polys = {}; Z.markers = []; Z.drawing = null; Z.editing = null; Z.suggest = null; state.map = null;
 
     loadMaps().then(function () {
       state.map = new google.maps.Map(mapBox, {
@@ -199,6 +199,7 @@
   function selectZone(id) {
     stopEditing(false);
     cancelDraw();
+    cancelSuggest();
     state.zoneId = id;
     drawZonesOnMap();
     renderPills();
@@ -223,9 +224,57 @@
     if (!name || !name.trim()) return;
     api('POST', '/zones', { airport_id: state.airportId, name: name.trim() }).then(function (r) {
       state.zoneId = r.id;
-      toast('Zone added. Now draw its shape on the map.');
       return refreshZones();
-    }).then(function () { if (state.map) startDraw(); }).catch(fail);
+    }).then(function () { if (state.map) suggestShape(); }).catch(fail);
+  }
+
+  /* ready-made shapes: OpenStreetMap boundaries and Google's map box for the zone's name */
+  function suggestShape(query) {
+    var id = state.zoneId, z = zoneById(id);
+    if (!state.map || !z) return;
+    stopEditing(false); cancelDraw(); cancelSuggest();
+    Z.suggest = { zoneId: id, list: [], idx: 0, poly: null, loading: true, query: query || z.name, errors: [] };
+    renderMapBar();
+    api('GET', '/zones/' + id + '/suggest' + (query ? '?q=' + encodeURIComponent(query) : '')).then(function (r) {
+      if (!Z.suggest || Z.suggest.zoneId !== id) return;
+      Z.suggest.loading = false;
+      Z.suggest.list = r.candidates || [];
+      Z.suggest.errors = r.errors || [];
+      if (!Z.suggest.list.length) { renderMapBar(); return; }
+      showSuggestion(0);
+    }).catch(function (e) { cancelSuggest(); fail(e); });
+  }
+  function showSuggestion(i) {
+    var sg = Z.suggest;
+    if (!sg || !sg.list.length) return;
+    sg.idx = (i + sg.list.length) % sg.list.length;
+    if (sg.poly) sg.poly.setMap(null);
+    var c = sg.list[sg.idx];
+    var path = c.polygon.map(function (p) { return { lat: p[0], lng: p[1] }; });
+    if (Z.polys[sg.zoneId]) Z.polys[sg.zoneId].setOptions({ fillOpacity: 0.08, strokeOpacity: 0.35 });
+    sg.poly = new google.maps.Polygon({ map: state.map, paths: path, editable: true, strokeColor: '#E07A1F', strokeWeight: 3, fillColor: '#FBA53E', fillOpacity: 0.35, zIndex: 5 });
+    var b = new google.maps.LatLngBounds();
+    path.forEach(function (p) { b.extend(p); });
+    state.map.fitBounds(b, 60);
+    renderMapBar();
+  }
+  function useSuggestion() {
+    var sg = Z.suggest;
+    if (!sg || !sg.poly) return;
+    var pts = sg.poly.getPath().getArray().map(function (p) { return [p.lat(), p.lng()]; });
+    var id = sg.zoneId;
+    api('PUT', '/zones/' + id, { polygon: pts }).then(function (r) {
+      cancelSuggest();
+      state.zoneId = id;
+      toast('Shape saved.' + (r.places_moved ? ' ' + r.places_moved + ' hotels matched to zones again.' : ''));
+      refreshZones();
+    }).catch(fail);
+  }
+  function cancelSuggest() {
+    if (!Z.suggest) return;
+    if (Z.suggest.poly) Z.suggest.poly.setMap(null);
+    Z.suggest = null;
+    drawZonesOnMap();
   }
 
   function renderPills() {
@@ -248,6 +297,7 @@
     if (!state.map || !state.zoneId) return;
     stopEditing(false);
     cancelDraw();
+    cancelSuggest();
     if (Z.polys[state.zoneId]) Z.polys[state.zoneId].setOptions({ fillOpacity: 0.08, strokeOpacity: 0.35 });
     Z.drawing = { zoneId: state.zoneId, points: [], line: new google.maps.Polyline({ map: state.map, strokeColor: '#E07A1F', strokeWeight: 3 }), dots: [] };
     state.map.setOptions({ draggableCursor: 'crosshair' });
@@ -290,6 +340,7 @@
 
   /* reshaping the selected zone */
   function startEditing() {
+    cancelSuggest();
     var poly = Z.polys[state.zoneId];
     if (!poly) return;
     Z.editing = state.zoneId;
@@ -320,7 +371,35 @@
     clear(bar);
     var sel = zoneById(state.zoneId);
     var needsShape = sel && !sel.polygon.length && state.map;
-    bar.style.display = (Z.drawing || Z.editing || needsShape) ? '' : 'none';
+    bar.style.display = (Z.drawing || Z.editing || Z.suggest || needsShape) ? '' : 'none';
+    if (Z.suggest) {
+      var sg = Z.suggest, sz = zoneById(sg.zoneId);
+      var again = h('input', { type: 'text', value: sg.query, 'aria-label': 'Search another name' });
+      var retry = h('button', { class: 'btn', type: 'button', onclick: function () { if (again.value.trim()) suggestShape(again.value.trim()); }, text: 'Search' });
+      if (sg.loading) { add(bar, h('span', { text: 'Looking for a ready-made shape for “' + sg.query + '”…' })); return; }
+      if (!sg.list.length) {
+        add(bar, [
+          h('span', { text: 'No ready-made shape for “' + sg.query + '”' + (sg.errors.length ? ' (' + sg.errors.join('; ') + ')' : '') + '. Try another name, or draw it.' }),
+          again, retry,
+          h('button', { class: 'btn dark', type: 'button', onclick: startDraw, text: 'Draw it myself' }),
+          h('button', { class: 'btn', type: 'button', onclick: cancelSuggest, text: 'Cancel' })
+        ]);
+        return;
+      }
+      var c = sg.list[sg.idx];
+      add(bar, [
+        h('div', { class: 'sug' },
+          h('strong', { text: (sz ? sz.name + ' · ' : '') + 'Option ' + (sg.idx + 1) + ' of ' + sg.list.length + ': ' + c.kind + ', about ' + c.km2 + ' km²' }),
+          h('small', { text: c.label + (c.source === 'osm' ? ' · © OpenStreetMap contributors' : ' · Google') }),
+          h('small', { text: 'Drag the white points to adjust it before saving.' })),
+        h('button', { class: 'btn dark', type: 'button', onclick: useSuggestion, text: 'Use this shape' }),
+        sg.list.length > 1 ? h('button', { class: 'btn', type: 'button', onclick: function () { showSuggestion(sg.idx + 1); }, text: 'Next option' }) : null,
+        again, retry,
+        h('button', { class: 'btn', type: 'button', onclick: startDraw, text: 'Draw it myself' }),
+        h('button', { class: 'btn', type: 'button', onclick: cancelSuggest, text: 'Cancel' })
+      ]);
+      return;
+    }
     if (Z.drawing) {
       var n = Z.drawing.points.length;
       var dz = zoneById(Z.drawing.zoneId);
@@ -343,7 +422,8 @@
     if (needsShape) {
       add(bar, [
         h('span', { text: sel.name + ' has no shape yet.' }),
-        h('button', { class: 'btn dark', type: 'button', onclick: startDraw, text: 'Draw its shape' })
+        h('button', { class: 'btn dark', type: 'button', onclick: function () { suggestShape(); }, text: 'Suggest a shape' }),
+        h('button', { class: 'btn', type: 'button', onclick: startDraw, text: 'Draw it myself' })
       ]);
     }
   }
@@ -362,7 +442,10 @@
       h('div', { class: 'atc-actions' }, search,
         z.polygon.length
           ? h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: startEditing, text: 'Adjust shape' })
-          : h('button', { class: 'btn dark', type: 'button', disabled: !state.map, onclick: startDraw, text: 'Draw shape' }),
+          : h('button', { class: 'btn dark', type: 'button', disabled: !state.map, onclick: function () { suggestShape(); }, text: 'Suggest a shape' }),
+        z.polygon.length
+          ? h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: function () { suggestShape(); }, text: 'Suggest a shape' })
+          : h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: startDraw, text: 'Draw it myself' }),
         z.polygon.length ? h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: function () {
           if (confirm('Draw ' + z.name + ' again from scratch? The current shape stays until you save the new one.')) startDraw();
         }, text: 'Redraw' }) : null,

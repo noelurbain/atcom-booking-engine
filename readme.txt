@@ -1,5 +1,10 @@
 === ATCOM Booking Engine ===
-Version: 0.2.1 (milestone 2: catalog)
+Version: 0.2.2 (milestone 2: catalog)
+
+New in 0.2.2:
+- "Suggest a shape": type or pick a zone name and the plugin proposes ready-made outlines from
+  OpenStreetMap (real boundaries, when the area has one) and Google (the place's map box).
+  Flip through the options, drag points to adjust, then "Use this shape".
 
 New in 0.2.1:
 - The 23 Cancún zones come preloaded by name (as on resortstours.com), with the Cancun Hotel Zone and
