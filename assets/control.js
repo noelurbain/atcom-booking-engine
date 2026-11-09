@@ -113,14 +113,14 @@
     var airportSel = h('select', { 'aria-label': 'Airport', onchange: function () { state.airportId = parseInt(this.value, 10); state.zoneId = null; Z.fitted = false; viewZones(); } },
       boot.airports.map(function (a) { return h('option', { value: a.id, selected: a.id == state.airportId, text: a.city + ' (' + a.iata + ')' }); }));
 
-    var drawBtn = h('button', { class: 'btn', type: 'button', onclick: startDraw, text: 'Draw a new zone' });
+    var drawBtn = h('button', { class: 'btn', type: 'button', onclick: addZone, text: 'Add a zone' });
     var head = h('div', { class: 'atc-head' },
       h('div', null, h('h1', { text: 'Zones and hotels' }), h('p', { class: 'atc-muted', text: 'Every price is per zone, so every hotel and address must sit in exactly one zone.' })),
       h('div', { class: 'atc-actions' }, h('label', { class: 'atc-inline' }, 'Airport', airportSel), drawBtn));
 
     var mapBox = h('div', { id: 'atc-map', class: 'atc-map' });
     var mapBar = h('div', { id: 'atc-mapbar', class: 'atc-mapbar' });
-    var mapNote = h('p', { class: 'atc-note', text: 'Click a zone to select it. Hotels show as dots.' });
+    var mapNote = h('p', { class: 'atc-note', text: 'Pick a zone from the list, then draw or adjust its shape. Click a shape to select its zone. Hotels show as dots.' });
     var left = h('section', { class: 'card atc-mapcard', 'aria-label': 'Map' }, mapBar, mapBox, mapNote);
 
     var pills = h('div', { id: 'atc-pills', class: 'card atc-pills' });
@@ -144,7 +144,6 @@
       add(mapBox, h('div', { class: 'atc-nomap' },
         h('strong', { text: e.message === 'nokey' ? 'The map needs the Website key.' : e.message }),
         h('p', { text: e.message === 'nokey' ? 'Add ATC_MAPS_BROWSER_KEY to wp-config.php. Lists below still work.' : 'Check the Website key restrictions in Google Cloud.' })));
-      drawBtn.disabled = true;
       refreshZones();
     });
 
@@ -199,10 +198,34 @@
 
   function selectZone(id) {
     stopEditing(false);
+    cancelDraw();
     state.zoneId = id;
     drawZonesOnMap();
     renderPills();
     renderZoneCard();
+    fitZone(id);
+  }
+
+  function zoneById(id) { return state.zones.find(function (x) { return x.id === id; }); }
+
+  function fitZone(id) {
+    if (!state.map) return;
+    var z = zoneById(id);
+    if (z && z.polygon.length) {
+      var b = new google.maps.LatLngBounds();
+      z.polygon.forEach(function (p) { b.extend({ lat: p[0], lng: p[1] }); });
+      state.map.fitBounds(b, 60);
+    }
+  }
+
+  function addZone() {
+    var name = prompt('Name of the new zone, e.g. Isla Blanca');
+    if (!name || !name.trim()) return;
+    api('POST', '/zones', { airport_id: state.airportId, name: name.trim() }).then(function (r) {
+      state.zoneId = r.id;
+      toast('Zone added. Now draw its shape on the map.');
+      return refreshZones();
+    }).then(function () { if (state.map) startDraw(); }).catch(fail);
   }
 
   function renderPills() {
@@ -210,20 +233,23 @@
     if (!el) return;
     clear(el);
     if (!state.zones.length) {
-      add(el, h('p', { class: 'atc-muted', text: 'No zones yet. Use “Draw a new zone” and click around the area on the map.' }));
+      add(el, h('p', { class: 'atc-muted', text: 'No zones yet. Use “Add a zone”.' }));
       return;
     }
     state.zones.forEach(function (z) {
-      add(el, h('button', { type: 'button', class: 'pill' + (z.id === state.zoneId ? ' on' : ''), 'aria-pressed': z.id === state.zoneId ? 'true' : 'false', onclick: function () { selectZone(z.id); } },
-        z.name + ' ', h('small', { text: String(z.places) })));
+      var shaped = z.polygon.length > 0;
+      add(el, h('button', { type: 'button', class: 'pill' + (z.id === state.zoneId ? ' on' : '') + (shaped ? '' : ' noshape'), 'aria-pressed': z.id === state.zoneId ? 'true' : 'false', title: shaped ? '' : 'No shape yet', onclick: function () { selectZone(z.id); } },
+        z.name + ' ', h('small', { text: shaped ? String(z.places) : 'no shape' })));
     });
   }
 
-  /* drawing a new zone */
+  /* drawing the selected zone's shape (new or replacing the old one) */
   function startDraw() {
-    if (!state.map) return;
+    if (!state.map || !state.zoneId) return;
     stopEditing(false);
-    Z.drawing = { points: [], line: new google.maps.Polyline({ map: state.map, strokeColor: '#E07A1F', strokeWeight: 3 }), dots: [] };
+    cancelDraw();
+    if (Z.polys[state.zoneId]) Z.polys[state.zoneId].setOptions({ fillOpacity: 0.08, strokeOpacity: 0.35 });
+    Z.drawing = { zoneId: state.zoneId, points: [], line: new google.maps.Polyline({ map: state.map, strokeColor: '#E07A1F', strokeWeight: 3 }), dots: [] };
     state.map.setOptions({ draggableCursor: 'crosshair' });
     renderMapBar();
   }
@@ -242,7 +268,7 @@
     Z.drawing.dots.forEach(function (d) { d.setMap(null); });
     Z.drawing = null;
     state.map.setOptions({ draggableCursor: null });
-    renderMapBar();
+    drawZonesOnMap();
   }
   function undoPoint() {
     if (!Z.drawing || !Z.drawing.points.length) return;
@@ -251,12 +277,13 @@
     Z.drawing.line.setPath(Z.drawing.points.concat(Z.drawing.points.length > 2 ? [Z.drawing.points[0]] : []));
     renderMapBar();
   }
-  function saveDraw(name) {
+  function saveDraw() {
+    var id = Z.drawing.zoneId;
     var pts = Z.drawing.points.map(function (p) { return [p.lat(), p.lng()]; });
-    api('POST', '/zones', { airport_id: state.airportId, name: name, polygon: pts }).then(function (r) {
+    api('PUT', '/zones/' + id, { polygon: pts }).then(function (r) {
       cancelDraw();
-      state.zoneId = r.id;
-      toast('Zone saved.' + (r.places_moved ? ' ' + r.places_moved + ' hotels matched to zones again.' : ''));
+      state.zoneId = id;
+      toast('Shape saved.' + (r.places_moved ? ' ' + r.places_moved + ' hotels matched to zones again.' : ''));
       refreshZones();
     }).catch(fail);
   }
@@ -291,14 +318,15 @@
     var bar = document.getElementById('atc-mapbar');
     if (!bar) return;
     clear(bar);
-    bar.style.display = (Z.drawing || Z.editing) ? '' : 'none';
+    var sel = zoneById(state.zoneId);
+    var needsShape = sel && !sel.polygon.length && state.map;
+    bar.style.display = (Z.drawing || Z.editing || needsShape) ? '' : 'none';
     if (Z.drawing) {
       var n = Z.drawing.points.length;
-      var name = h('input', { type: 'text', placeholder: 'Zone name, e.g. Hotel Zone', 'aria-label': 'Zone name' });
+      var dz = zoneById(Z.drawing.zoneId);
       add(bar, [
-        h('span', { text: n < 3 ? 'Click on the map to place points (' + n + ' so far, at least 3).' : n + ' points. Name it and save.' }),
-        n >= 3 ? name : null,
-        n >= 3 ? h('button', { class: 'btn dark', type: 'button', onclick: function () { if (!name.value.trim()) { name.focus(); return; } saveDraw(name.value.trim()); }, text: 'Save zone' }) : null,
+        h('span', { text: (dz ? dz.name + ': ' : '') + (n < 3 ? 'click around its edge on the map (' + n + ' points so far, at least 3).' : n + ' points. Keep clicking or save.') }),
+        n >= 3 ? h('button', { class: 'btn dark', type: 'button', onclick: saveDraw, text: 'Save shape' }) : null,
         n ? h('button', { class: 'btn', type: 'button', onclick: undoPoint, text: 'Undo point' }) : null,
         h('button', { class: 'btn', type: 'button', onclick: cancelDraw, text: 'Cancel' })
       ]);
@@ -311,6 +339,12 @@
         h('button', { class: 'btn', type: 'button', onclick: function () { stopEditing(false); }, text: 'Cancel' })
       ]);
       return;
+    }
+    if (needsShape) {
+      add(bar, [
+        h('span', { text: sel.name + ' has no shape yet.' }),
+        h('button', { class: 'btn dark', type: 'button', onclick: startDraw, text: 'Draw its shape' })
+      ]);
     }
   }
 
@@ -326,7 +360,12 @@
     var head = h('div', { class: 'card-head' },
       h('h2', { text: z.name + ' · ' + z.places + (z.places === 1 ? ' hotel' : ' hotels') }),
       h('div', { class: 'atc-actions' }, search,
-        h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: startEditing, text: 'Reshape' }),
+        z.polygon.length
+          ? h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: startEditing, text: 'Adjust shape' })
+          : h('button', { class: 'btn dark', type: 'button', disabled: !state.map, onclick: startDraw, text: 'Draw shape' }),
+        z.polygon.length ? h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: function () {
+          if (confirm('Draw ' + z.name + ' again from scratch? The current shape stays until you save the new one.')) startDraw();
+        }, text: 'Redraw' }) : null,
         h('button', { class: 'btn', type: 'button', onclick: function () { renameZone(z); }, text: 'Rename' }),
         h('button', { class: 'btn danger', type: 'button', onclick: function () { archiveZone(z); }, text: 'Archive' })));
     add(card, [head, h('div', { class: 'scroll' }, h('table', null,

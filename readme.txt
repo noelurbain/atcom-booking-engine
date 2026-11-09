@@ -1,5 +1,9 @@
 === ATCOM Booking Engine ===
-Version: 0.2.0 (milestone 2: catalog)
+Version: 0.2.1 (milestone 2: catalog)
+
+New in 0.2.1:
+- The 23 Cancún zones come preloaded by name (as on resortstours.com), with the Cancun Hotel Zone and
+  Playa Mujeres shapes copied over. Pick a zone, then draw or adjust its shape. "Add a zone" for new ones.
 
 New in 0.2.0:
 - Control panel at /control (our team only): Zones and hotels, Providers.

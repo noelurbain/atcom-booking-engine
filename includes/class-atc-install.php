@@ -15,6 +15,7 @@ final class ATC_Install {
 			add_option( ATC_Settings::OPTION, ATC_Settings::defaults(), '', false );
 		}
 		self::seed();
+		self::seed_cun_zones();
 		update_option( 'atc_db_version', ATC_DB_VERSION, false );
 		update_option( 'atc_flush_rewrite', 1, false );
 		self::log( 'plugin', 0, 'activated', array( 'version' => ATC_VERSION ) );
@@ -29,6 +30,9 @@ final class ATC_Install {
 		if ( get_option( 'atc_db_version' ) !== ATC_DB_VERSION ) {
 			self::create_tables();
 			ATC_Roles::add();
+			if ( version_compare( (string) get_option( 'atc_db_version', '0' ), '3', '<' ) ) {
+				self::seed_cun_zones();
+			}
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
 		}
@@ -74,6 +78,65 @@ final class ATC_Install {
 			if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$types} WHERE slug = %s", $slug ) ) ) {
 				$wpdb->insert( $types, array( 'slug' => $slug, 'name' => $name, 'max_passengers' => $pax, 'max_bags' => $bags, 'sort' => $sort ) );
 			}
+		}
+	}
+
+	/**
+	 * The 23 Cancún zones, by name, as on resortstours.com. Two already have shapes
+	 * (Cancun Hotel Zone and Playa Mujeres); the rest get drawn in /control.
+	 * Only adds names that are not there yet, so it never duplicates or overwrites.
+	 */
+	public static function seed_cun_zones(): void {
+		global $wpdb;
+		$airport = $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . ATC_Schema::table( 'airports' ) . ' WHERE iata = %s', 'CUN' ) );
+		if ( ! $airport ) {
+			return;
+		}
+		$zones = ATC_Schema::table( 'zones' );
+		$list  = array(
+			array( 'Cancun Downtown', null ),
+			array( 'Cancun Hotel Zone', '[[21.162055,-86.820107],[21.155651,-86.783715],[21.129394,-86.737023],[21.089678,-86.751443],[21.020472,-86.774789],[20.975598,-86.800881],[20.977522,-86.869546]]' ),
+			array( 'Puerto Morelos', null ),
+			array( 'Playa Mujeres', '[[21.26269,-86.818412],[21.264129,-86.810601],[21.272158,-86.726938],[21.204667,-86.679667],[21.16183,-86.799357],[21.162971,-86.823304],[21.16183,-86.799357],[21.16199,-86.822146],[21.171755,-86.822274],[21.162971,-86.823304]]' ),
+			array( 'Isla Mujeres', null ),
+			array( 'Playa Paraiso', null ),
+			array( 'Playa del Carmen', null ),
+			array( 'Costa Mujeres', null ),
+			array( 'Cozumel', null ),
+			array( 'Puerto Aventuras', null ),
+			array( 'Akumal', null ),
+			array( 'Tulum', null ),
+			array( 'Tulum Hotel Zone', null ),
+			array( 'Mahahual', null ),
+			array( 'Holbox', null ),
+			array( 'Valladolid', null ),
+			array( 'Merida', null ),
+			array( 'Bacalar', null ),
+			array( 'Coba', null ),
+			array( 'Sian Kaan', null ),
+			array( 'Tulum Arco', null ),
+			array( 'Ferry & Playacar', null ),
+			array( 'Isla Blanca', null ),
+		);
+		foreach ( $list as $i => [ $name, $poly ] ) {
+			$slug = sanitize_title( $name );
+			if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$zones} WHERE airport_id = %d AND (slug = %s OR name = %s)", $airport, $slug, $name ) ) ) {
+				continue;
+			}
+			$wpdb->insert(
+				$zones,
+				array(
+					'airport_id' => (int) $airport,
+					'name'       => $name,
+					'slug'       => $slug,
+					'polygon'    => $poly,
+					'sort'       => ( $i + 1 ) * 10,
+					'status'     => 'active',
+				)
+			);
+		}
+		if ( class_exists( 'ATC_Catalog' ) ) {
+			ATC_Catalog::rematch_places( (int) $airport );
 		}
 	}
 

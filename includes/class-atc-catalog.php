@@ -64,8 +64,9 @@ final class ATC_Catalog {
 			}
 			$data['name'] = $name;
 		}
-		if ( null === $id || array_key_exists( 'polygon', $in ) ) {
-			$poly = ATC_Geo::clean_polygon( $in['polygon'] ?? null );
+		// A zone can exist by name first and get its shape later.
+		if ( array_key_exists( 'polygon', $in ) && null !== $in['polygon'] ) {
+			$poly = ATC_Geo::clean_polygon( $in['polygon'] );
 			if ( ! $poly ) {
 				return new WP_Error( 'atc_zone_polygon', 'A zone needs at least 3 points on the map.', array( 'status' => 400 ) );
 			}

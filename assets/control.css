@@ -54,6 +54,7 @@ textarea{resize:vertical}
 .pill{padding:9px 14px;border-radius:999px;font-weight:700;border:1px solid var(--line2);background:#fff}
 .pill small{opacity:.75;font-size:12px}
 .pill.on{border-color:var(--ink);background:var(--ink);color:#fff}
+.pill.noshape{border-style:dashed;color:var(--muted)}.pill.noshape.on{color:#fff;border-style:solid}
 .scroll{overflow-x:auto}
 table{width:100%;min-width:640px;border-collapse:collapse;font-size:14px}
 th{background:#FAF8F4;text-align:left;color:var(--muted);font-size:13px;padding:12px;font-weight:700}
