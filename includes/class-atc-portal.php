@@ -294,7 +294,7 @@ final class ATC_Portal {
 
 	private static function login_page( string $next = '' ): void {
 		self::frame_open( 'Sign in', 'Sign in' );
-		echo '<main class="atc-wrap atc-narrow"><div class="atc-head"><div><h1>Sign in</h1><p class="atc-muted">Providers, affiliates and our team. Travelers don’t need an account: use <a href="' . esc_url( home_url( '/manage-booking/' ) ) . '">Manage booking</a>.</p></div></div><section class="card pad atc-login">';
+		echo '<main class="atc-wrap atc-narrow"><div class="atc-head"><div><h1>Sign in</h1><p class="atc-muted">Travelers, providers, affiliates and our team all sign in here. Booked without an account? Use <a href="' . esc_url( home_url( '/manage-booking/' ) ) . '">Manage booking</a> with your reservation number and email.</p></div></div><section class="card pad atc-login">';
 		if ( isset( $_GET['failed'] ) ) {
 			echo '<p class="chip red">Email or password is not right.</p>';
 		}
