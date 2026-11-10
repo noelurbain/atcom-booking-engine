@@ -57,7 +57,18 @@ final class ATC_Partner {
 		$email   = sanitize_email( $in['email'] ?? '' );
 		$phone   = preg_replace( '/[^0-9+ ()\-]/', '', (string) ( $in['phone'] ?? '' ) );
 		$pass    = (string) ( $in['password'] ?? '' );
+		$place   = sanitize_text_field( (string) ( $in['airport_place_id'] ?? '' ) );
 		$airport = ATC_Catalog::airport( (int) ( $in['airport_id'] ?? 0 ) );
+		if ( $airport && 'active' !== $airport['status'] ) {
+			$airport = null;
+		}
+		// Typed but not picked from the list (no JavaScript): accept it when it names exactly one of our airports.
+		if ( ! $airport && '' === $place && '' !== trim( (string) ( $in['airport_q'] ?? '' ) ) ) {
+			$match = ATC_Catalog::search_airports( sanitize_text_field( (string) $in['airport_q'] ), 2 );
+			if ( 1 === count( $match ) ) {
+				$airport = ATC_Catalog::airport( (int) $match[0]['id'] );
+			}
+		}
 		$about   = mb_substr( sanitize_textarea_field( (string) ( $in['about'] ?? '' ) ), 0, 2000 );
 		$fleet   = sanitize_text_field( (string) ( $in['fleet'] ?? '' ) );
 		if ( '' !== $fleet ) {
@@ -82,14 +93,25 @@ final class ATC_Partner {
 		if ( strlen( $pass ) < 10 ) {
 			$errors->add( 'password', 'Use a password of at least 10 characters.' );
 		}
-		if ( ! $airport ) {
-			$errors->add( 'airport_id', 'Pick the airport you serve.' );
+		if ( ! $airport && '' === $place ) {
+			$errors->add( 'airport_id', 'Search for your main airport and pick it from the list.' );
 		}
 		if ( empty( $in['accept'] ) ) {
 			$errors->add( 'accept', 'Please accept the provider terms and conditions.' );
 		}
 		if ( $errors->has_errors() ) {
 			return $errors;
+		}
+
+		// An airport we do not have yet is added from Google, once everything else on the form is right.
+		$new_airport = false;
+		if ( ! $airport ) {
+			$airport = ATC_Catalog::airport_from_google( $place );
+			if ( is_wp_error( $airport ) ) {
+				$errors->add( 'airport_id', $airport->get_error_message() );
+				return $errors;
+			}
+			$new_airport = ! empty( $airport['is_new'] );
 		}
 
 		$login = sanitize_user( strtolower( strstr( $email, '@', true ) ), true ) ?: 'provider';
@@ -137,7 +159,7 @@ final class ATC_Partner {
 		ATC_Install::log( 'party', $party_id, 'signed_up', array( 'user_id' => $user_id ) );
 
 		self::mail_welcome( $email, $contact, $company );
-		self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nAirport: {$airport['iata']}\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) );
+		self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nMain airport: " . ATC_Catalog::airport_label( $airport ) . ( $new_airport ? "\n\nNEW AIRPORT, added from Google: {$airport['name']} ({$airport['city']}, {$airport['country']}, time zone {$airport['timezone']}). It has no IATA code and no zones yet." : '' ) . "\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) );
 
 		return (int) $user_id;
 	}
@@ -152,12 +174,12 @@ final class ATC_Partner {
 		wp_mail( ATC_Settings::get( 'from_email' ), $subject, $body );
 	}
 
-	/** Max 10 sign-up attempts per IP per hour. */
-	public static function rate_ok( string $bucket ): bool {
+	/** Max attempts per IP per hour (10 for sign-ups). */
+	public static function rate_ok( string $bucket, int $max = 10 ): bool {
 		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'x';
 		$key = 'atc_rl_' . $bucket . '_' . md5( $ip );
 		$n   = (int) get_transient( $key );
-		if ( $n >= 10 ) {
+		if ( $n >= $max ) {
 			return false;
 		}
 		set_transient( $key, $n + 1, HOUR_IN_SECONDS );

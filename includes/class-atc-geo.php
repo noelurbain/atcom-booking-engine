@@ -246,6 +246,148 @@ final class ATC_Geo {
 		return array_slice( $out, 0, $max );
 	}
 
+	/* ---------- Airports from Google (provider sign-up) ---------- */
+
+	/**
+	 * Airports matching a text (city, airport name or code), from Google Places. Up to 5.
+	 *
+	 * @return array{0:array,1:?string} [airports, error or null]
+	 */
+	public static function search_airports( string $query ): array {
+		$key = ATC_Settings::maps_server_key();
+		if ( '' === $key ) {
+			return array( array(), 'Server key not set' );
+		}
+		$cache = 'atc_apq_' . md5( strtolower( $query ) );
+		$hit   = get_transient( $cache );
+		if ( is_array( $hit ) ) {
+			return array( $hit, null );
+		}
+		$text = preg_match( '/a[eé]ro|airport|flughafen/iu', $query ) ? $query : $query . ' airport';
+		$res  = wp_remote_post(
+			'https://places.googleapis.com/v1/places:searchText',
+			array(
+				'timeout' => 10,
+				'headers' => array(
+					'Content-Type'     => 'application/json',
+					'X-Goog-Api-Key'   => $key,
+					'X-Goog-FieldMask' => 'places.id,places.displayName,places.formattedAddress,places.location,places.addressComponents,places.types',
+				),
+				'body'    => wp_json_encode(
+					array(
+						'textQuery'           => $text,
+						'includedType'        => 'airport',
+						'strictTypeFiltering' => true,
+						'pageSize'            => 5,
+						'languageCode'        => 'en',
+					)
+				),
+			)
+		);
+		if ( is_wp_error( $res ) ) {
+			return array( array(), $res->get_error_message() );
+		}
+		$body = json_decode( wp_remote_retrieve_body( $res ), true );
+		if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) ) {
+			return array( array(), $body['error']['message'] ?? 'HTTP ' . wp_remote_retrieve_response_code( $res ) );
+		}
+		$out = array();
+		foreach ( (array) ( $body['places'] ?? array() ) as $p ) {
+			$a = self::airport_from_place( $p );
+			if ( $a ) {
+				$out[] = $a;
+			}
+		}
+		set_transient( $cache, $out, 12 * HOUR_IN_SECONDS );
+		return array( $out, null );
+	}
+
+	/**
+	 * One airport by its Google place id, checked with Google (never trusted from the browser).
+	 *
+	 * @return array{0:?array,1:?string} [airport or null, error or null]
+	 */
+	public static function airport_details( string $place_id ): array {
+		$key = ATC_Settings::maps_server_key();
+		if ( '' === $key ) {
+			return array( null, 'Server key not set' );
+		}
+		if ( ! preg_match( '/^[A-Za-z0-9_-]{10,190}$/', $place_id ) ) {
+			return array( null, 'Not found' );
+		}
+		$fields = 'id,displayName,formattedAddress,location,addressComponents,types';
+		$body   = null;
+		$code   = 0;
+		// The time zone field is asked for first; if Google refuses the field list, ask again without it.
+		foreach ( array( $fields . ',timeZone', $fields ) as $mask ) {
+			$res = wp_remote_get(
+				'https://places.googleapis.com/v1/places/' . rawurlencode( $place_id ) . '?languageCode=en',
+				array(
+					'timeout' => 10,
+					'headers' => array( 'X-Goog-Api-Key' => $key, 'X-Goog-FieldMask' => $mask ),
+				)
+			);
+			if ( is_wp_error( $res ) ) {
+				return array( null, $res->get_error_message() );
+			}
+			$code = (int) wp_remote_retrieve_response_code( $res );
+			$body = json_decode( wp_remote_retrieve_body( $res ), true );
+			if ( 400 !== $code ) {
+				break;
+			}
+		}
+		if ( 200 !== $code || ! is_array( $body ) ) {
+			return array( null, $body['error']['message'] ?? 'HTTP ' . $code );
+		}
+		$a = self::airport_from_place( $body );
+		return $a ? array( $a, null ) : array( null, 'Not an airport' );
+	}
+
+	/** Turns a Google place into our airport fields. Null when it is not an airport or has no position. */
+	public static function airport_from_place( array $p ): ?array {
+		if ( empty( $p['id'] ) || empty( $p['location'] ) || ! in_array( 'airport', (array) ( $p['types'] ?? array() ), true ) ) {
+			return null;
+		}
+		$name = trim( (string) ( $p['displayName']['text'] ?? '' ) );
+		if ( '' === $name ) {
+			return null;
+		}
+		$by = array();
+		foreach ( (array) ( $p['addressComponents'] ?? array() ) as $c ) {
+			foreach ( (array) ( $c['types'] ?? array() ) as $t ) {
+				$by[ $t ] = $by[ $t ] ?? $c;
+			}
+		}
+		$city = '';
+		foreach ( array( 'locality', 'postal_town', 'administrative_area_level_3', 'administrative_area_level_2', 'administrative_area_level_1' ) as $t ) {
+			if ( ! empty( $by[ $t ]['longText'] ) ) {
+				$city = (string) $by[ $t ]['longText'];
+				break;
+			}
+		}
+		if ( '' === $city ) {
+			$city = trim( preg_replace( '/\s+(International\s+)?Airport.*$/i', '', $name ) ) ?: $name;
+		}
+		$country = strtoupper( (string) ( $by['country']['shortText'] ?? '' ) );
+		return array(
+			'google_place_id' => (string) $p['id'],
+			'name'            => $name,
+			'city'            => $city,
+			'country'         => preg_match( '/^[A-Z]{2}$/', $country ) ? $country : '',
+			'country_name'    => (string) ( $by['country']['longText'] ?? '' ),
+			'address'         => (string) ( $p['formattedAddress'] ?? '' ),
+			'lat'             => (float) $p['location']['latitude'],
+			'lng'             => (float) $p['location']['longitude'],
+			'timezone'        => (string) ( $p['timeZone']['id'] ?? '' ),
+		);
+	}
+
+	/** Distance between two points in km. */
+	public static function km( float $lat1, float $lng1, float $lat2, float $lng2 ): float {
+		$a = sin( deg2rad( $lat2 - $lat1 ) / 2 ) ** 2 + cos( deg2rad( $lat1 ) ) * cos( deg2rad( $lat2 ) ) * sin( deg2rad( $lng2 - $lng1 ) / 2 ) ** 2;
+		return 6371.0 * 2 * atan2( sqrt( $a ), sqrt( 1 - $a ) );
+	}
+
 	/* ---------- Shape suggestions for a zone name ---------- */
 
 	/**
@@ -255,7 +397,7 @@ final class ATC_Geo {
 	 * @return array{0:array,1:array} [candidates, errors]
 	 */
 	public static function shape_suggestions( string $name, array $airport ): array {
-		$cache = 'atc_shape_' . md5( strtolower( $name ) . '|' . $airport['iata'] );
+		$cache = 'atc_shape_' . md5( strtolower( $name ) . '|' . ( $airport['iata'] ?: $airport['id'] ) );
 		$hit   = get_transient( $cache );
 		if ( is_array( $hit ) ) {
 			return array( $hit, array() );

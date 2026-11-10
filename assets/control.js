@@ -111,7 +111,7 @@
     clear(app);
     var boot = state.boot;
     var airportSel = h('select', { 'aria-label': 'Airport', onchange: function () { state.airportId = parseInt(this.value, 10); state.zoneId = null; Z.fitted = false; viewZones(); } },
-      boot.airports.map(function (a) { return h('option', { value: a.id, selected: a.id == state.airportId, text: a.city + ' (' + a.iata + ')' }); }));
+      boot.airports.map(function (a) { return h('option', { value: a.id, selected: a.id == state.airportId, text: a.iata ? a.city + ' (' + a.iata + ')' : a.name + ' (no code yet)' }); }));
 
     var drawBtn = h('button', { class: 'btn', type: 'button', onclick: addZone, text: 'Add a zone' });
     var head = h('div', { class: 'atc-head' },
@@ -793,7 +793,7 @@
   function servicesCard(partyId, services, zones) {
     var airport = state.boot.airports.find(function (a) { return a.id == state.airportId; });
     var card = h('section', { class: 'card pad' },
-      h('h2', { text: 'Vehicles and zones at ' + (airport ? airport.iata : 'the airport') }),
+      h('h2', { text: 'Vehicles and zones at ' + (airport ? (airport.iata || airport.name) : 'the airport') }),
       h('p', { class: 'atc-muted', text: 'Tick each vehicle category this provider sells, then the zones it covers. Prices come next (milestone 3).' }));
     if (!zones.length) add(card, h('p', { class: 'chip orange', text: 'Draw zones first in Zones and hotels.' }));
 

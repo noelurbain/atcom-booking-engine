@@ -20,7 +20,102 @@ final class ATC_Catalog {
 
 	public static function airports(): array {
 		global $wpdb;
-		return $wpdb->get_results( 'SELECT id, iata, name, city, country, timezone, lat, lng, status FROM ' . self::t( 'airports' ) . " WHERE status = 'active' ORDER BY iata", ARRAY_A );
+		return $wpdb->get_results( 'SELECT id, iata, name, city, country, timezone, lat, lng, status FROM ' . self::t( 'airports' ) . " WHERE status = 'active' ORDER BY city, name", ARRAY_A );
+	}
+
+	/** "Cancún (CUN)", or the airport's name while it has no code yet. */
+	public static function airport_label( array $a ): string {
+		return ! empty( $a['iata'] ) ? $a['city'] . ' (' . $a['iata'] . ')' : (string) $a['name'];
+	}
+
+	/** Our airports matching a city, airport name or code. */
+	public static function search_airports( string $q, int $limit = 6 ): array {
+		global $wpdb;
+		$q = trim( $q );
+		if ( '' === $q ) {
+			return array();
+		}
+		$like = '%' . $wpdb->esc_like( $q ) . '%';
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id, iata, name, city, country FROM ' . self::t( 'airports' ) . " WHERE status = 'active' AND (iata = %s OR city LIKE %s OR name LIKE %s) ORDER BY (iata = %s) DESC, city, name LIMIT %d",
+				$q,
+				$like,
+				$like,
+				$q,
+				$limit
+			),
+			ARRAY_A
+		);
+	}
+
+	/** The airport we already have for a Google place: same place id, or within 4 km of the point. */
+	public static function airport_matching( string $google_place_id, float $lat, float $lng ): ?array {
+		global $wpdb;
+		$t = self::t( 'airports' );
+		if ( '' !== $google_place_id ) {
+			$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE google_place_id = %s AND status = 'active' LIMIT 1", $google_place_id ), ARRAY_A );
+			if ( $row ) {
+				return $row;
+			}
+		}
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t} WHERE status = 'active' AND lat BETWEEN %f AND %f AND lng BETWEEN %f AND %f", $lat - 0.1, $lat + 0.1, $lng - 0.1, $lng + 0.1 ), ARRAY_A );
+		$best = null;
+		$min  = 4.0;
+		foreach ( $rows as $r ) {
+			$d = ATC_Geo::km( $lat, $lng, (float) $r['lat'], (float) $r['lng'] );
+			if ( $d <= $min ) {
+				$min  = $d;
+				$best = $r;
+			}
+		}
+		return $best;
+	}
+
+	/**
+	 * The airport for a Google place a provider picked at sign-up: the one we already have, or a new one.
+	 * New airports have no IATA code and no zones until our team sets them up.
+	 *
+	 * @return array|WP_Error airport row, with 'is_new' => bool
+	 */
+	public static function airport_from_google( string $place_id ) {
+		global $wpdb;
+		[ $g, $err ] = ATC_Geo::airport_details( $place_id );
+		if ( ! $g ) {
+			return new WP_Error( 'atc_airport', 'We could not check that airport with Google. Search for it again.', array( 'status' => 400, 'detail' => $err ) );
+		}
+		$t        = self::t( 'airports' );
+		$existing = self::airport_matching( $g['google_place_id'], $g['lat'], $g['lng'] );
+		if ( $existing ) {
+			if ( empty( $existing['google_place_id'] ) ) {
+				$wpdb->update( $t, array( 'google_place_id' => $g['google_place_id'] ), array( 'id' => (int) $existing['id'] ) );
+			}
+			return $existing + array( 'is_new' => false );
+		}
+		if ( '' === $g['country'] ) {
+			return new WP_Error( 'atc_airport', 'We could not read the country of that airport. Search for it again.', array( 'status' => 400 ) );
+		}
+		$zones = timezone_identifiers_list();
+		$wpdb->insert(
+			$t,
+			array(
+				'iata'            => null,
+				'name'            => mb_substr( $g['name'], 0, 190 ),
+				'city'            => mb_substr( $g['city'], 0, 100 ),
+				'country'         => $g['country'],
+				'timezone'        => in_array( $g['timezone'], $zones, true ) ? $g['timezone'] : 'UTC',
+				'lat'             => $g['lat'],
+				'lng'             => $g['lng'],
+				'status'          => 'active',
+				'google_place_id' => $g['google_place_id'],
+			)
+		);
+		$id = (int) $wpdb->insert_id;
+		if ( ! $id ) {
+			return new WP_Error( 'atc_airport', 'We could not add that airport. Please try again.', array( 'status' => 500 ) );
+		}
+		ATC_Install::log( 'airport', $id, 'created_from_google', array( 'name' => $g['name'], 'place_id' => $g['google_place_id'] ) );
+		return self::airport( $id ) + array( 'is_new' => true );
 	}
 
 	public static function airport( int $id ): ?array {

@@ -28,10 +28,16 @@ final class ATC_Install {
 
 	public static function maybe_upgrade(): void {
 		if ( get_option( 'atc_db_version' ) !== ATC_DB_VERSION ) {
+			$from = (string) get_option( 'atc_db_version', '0' );
 			self::create_tables();
 			ATC_Roles::add();
-			if ( version_compare( (string) get_option( 'atc_db_version', '0' ), '3', '<' ) ) {
+			if ( version_compare( $from, '3', '<' ) ) {
 				self::seed_cun_zones();
+			}
+			if ( version_compare( $from, '5', '<' ) ) {
+				// Airports a provider adds from Google have no IATA code until our team fills it in.
+				global $wpdb;
+				$wpdb->query( 'ALTER TABLE ' . ATC_Schema::table( 'airports' ) . ' MODIFY iata char(3) NULL' ); // phpcs:ignore
 			}
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );

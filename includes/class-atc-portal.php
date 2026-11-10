@@ -208,7 +208,7 @@ final class ATC_Portal {
 
 		$fail = static function ( array $errors, string $general = '' ) use ( $in, $back ) {
 			$token = wp_generate_password( 12, false, false );
-			$keep  = array_intersect_key( $in, array_flip( array( 'company', 'name', 'email', 'phone', 'airport_id', 'fleet', 'about', 'accept' ) ) );
+			$keep  = array_intersect_key( $in, array_flip( array( 'company', 'name', 'email', 'phone', 'airport_id', 'airport_place_id', 'airport_q', 'fleet', 'about', 'accept' ) ) );
 			set_transient( 'atc_su_' . $token, array( 'errors' => $errors, 'general' => $general, 'in' => $keep ), 15 * MINUTE_IN_SECONDS );
 			wp_safe_redirect( add_query_arg( 'atc_su', $token, $back ) . '#form' );
 			exit;
@@ -276,11 +276,7 @@ final class ATC_Portal {
 		$out .= '<label class="atc-field"><span>Contact name</span><input type="text" name="name" placeholder="Your name" required autocomplete="name" value="' . $v( 'name' ) . '">' . $err( 'name' ) . '</label>';
 		$out .= '<label class="atc-field"><span>Email (you sign in with it)</span><input type="email" name="email" placeholder="you@company.com" required autocomplete="email" value="' . $v( 'email' ) . '">' . $err( 'email' ) . '</label>';
 		$out .= '<label class="atc-field"><span>Mobile with WhatsApp, with country code</span><input type="tel" name="phone" placeholder="+52 998 …" required autocomplete="tel" value="' . $v( 'phone' ) . '">' . $err( 'phone' ) . '</label>';
-		$out .= '<label class="atc-field"><span>Airport you serve</span><select name="airport_id">';
-		foreach ( ATC_Catalog::airports() as $a ) {
-			$out .= '<option value="' . (int) $a['id'] . '"' . selected( (int) ( $in['airport_id'] ?? 0 ), (int) $a['id'], false ) . '>' . esc_html( $a['city'] . ' (' . $a['iata'] . ')' ) . '</option>';
-		}
-		$out .= '</select>' . $err( 'airport_id' ) . '<small>More airports open soon. Serve another one? Tell us below.</small></label>';
+		$out .= self::airport_field( $in, $err( 'airport_id' ) );
 		$out .= '<label class="atc-field"><span>Fleet size</span><select name="fleet">';
 		foreach ( array( '1–2 vehicles', '3–10 vehicles', '11+ vehicles' ) as $f ) {
 			$out .= '<option' . selected( (string) ( $in['fleet'] ?? '' ), $f, false ) . '>' . esc_html( $f ) . '</option>';
@@ -289,6 +285,35 @@ final class ATC_Portal {
 		$out .= '<label class="atc-field"><span>Tell us about your company: fleet, areas you cover, years in business (optional)</span><textarea name="about" rows="4" maxlength="2000">' . esc_textarea( (string) ( $in['about'] ?? '' ) ) . '</textarea>' . $err( 'about' ) . '</label>';
 		$out .= '<label class="atc-field"><span>Password (at least 10 characters)</span><input type="password" name="password" required minlength="10" autocomplete="new-password">' . $err( 'password' ) . '</label>';
 		$out .= '<label class="atc-check"><input type="checkbox" name="accept" value="1"' . checked( ! empty( $in['accept'] ), true, false ) . ' required> <span>I accept the <a href="' . esc_url( home_url( '/partners/provider/terms-conditions/' ) ) . '" target="_blank" rel="noopener">provider terms and conditions</a>.</span></label>' . $err( 'accept' );
+		return $out;
+	}
+
+	/**
+	 * Main airport: a search box over our airports, with Google for any airport we do not have yet.
+	 * The pick travels in airport_id (ours) or airport_place_id (new, from Google).
+	 */
+	private static function airport_field( array $in, string $err ): string {
+		wp_enqueue_style( 'atc-signup', ATC_URL . 'assets/signup.css', array(), ATC_VERSION );
+		wp_enqueue_script( 'atc-signup', ATC_URL . 'assets/signup.js', array(), ATC_VERSION, true );
+
+		$id    = (int) ( $in['airport_id'] ?? 0 );
+		$place = preg_match( '/^[A-Za-z0-9_-]{10,190}$/', (string) ( $in['airport_place_id'] ?? '' ) ) ? (string) $in['airport_place_id'] : '';
+		$text  = sanitize_text_field( (string) ( $in['airport_q'] ?? '' ) );
+		$mine  = $id ? ATC_Catalog::airport( $id ) : null;
+		if ( $mine ) {
+			$text  = ATC_Catalog::airport_label( $mine );
+			$place = '';
+		} else {
+			$id = 0;
+		}
+
+		$out  = '<div class="atc-airport" data-atc-airport data-search="' . esc_url( rest_url( 'atc/v1/airports/search' ) ) . '">';
+		$out .= '<label class="atc-field"><span>Main airport you serve</span><input type="text" name="airport_q" placeholder="Search by city, airport name or code" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="atc-airport-list" value="' . esc_attr( $text ) . '">' . $err . '</label>';
+		$out .= '<input type="hidden" name="airport_id" value="' . ( $id ? $id : '' ) . '"><input type="hidden" name="airport_place_id" value="' . esc_attr( $place ) . '">';
+		$out .= '<ul id="atc-airport-list" class="atc-airport-list" role="listbox" aria-label="Airports" hidden></ul>';
+		$out .= '<p class="atc-airport-new" role="status"' . ( $place ? '' : ' hidden' ) . '>This airport is new on Airport Transportation. We add it from Google when you create your account, and our team sets up its zones before travelers can book you.</p>';
+		$out .= '<small class="atc-airport-hint">Pick the airport where you do most of your transfers. You can add more airports later.</small>';
+		$out .= '</div>';
 		return $out;
 	}
 

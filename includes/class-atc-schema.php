@@ -85,7 +85,7 @@ final class ATC_Schema {
 
 		$sql[] = "CREATE TABLE {$p}airports (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  iata char(3) NOT NULL,
+  iata char(3) NULL,
   name varchar(190) NOT NULL,
   city varchar(100) NOT NULL,
   country char(2) NOT NULL,
@@ -93,8 +93,10 @@ final class ATC_Schema {
   lat decimal(10,7) NULL,
   lng decimal(10,7) NULL,
   status varchar(20) NOT NULL DEFAULT 'active',
+  google_place_id varchar(190) NULL,
   PRIMARY KEY  (id),
-  UNIQUE KEY iata (iata)
+  UNIQUE KEY iata (iata),
+  KEY google_place_id (google_place_id)
 ) $c;";
 
 		$sql[] = "CREATE TABLE {$p}zones (

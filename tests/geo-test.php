@@ -99,5 +99,34 @@ foreach ( ATC_Geo::tiles( $tri, 1.0 ) as $t ) {
 check( 'tile fully outside the shape is skipped', $found, false );
 check( 'triangle keeps tiles along the diagonal', count( ATC_Geo::tiles( $tri, 1.0 ) ) >= 10, true );
 
+// Airports from Google (provider sign-up).
+$lis = array(
+	'id'                => 'ChIJtestLisbonAirport01',
+	'displayName'       => array( 'text' => 'Humberto Delgado Airport' ),
+	'formattedAddress'  => 'Alameda das Comunidades Portuguesas, 1700-111 Lisboa, Portugal',
+	'location'          => array( 'latitude' => 38.7756, 'longitude' => -9.1354 ),
+	'types'             => array( 'international_airport', 'airport', 'point_of_interest' ),
+	'timeZone'          => array( 'id' => 'Europe/Lisbon' ),
+	'addressComponents' => array(
+		array( 'longText' => 'Lisboa', 'shortText' => 'Lisboa', 'types' => array( 'locality', 'political' ) ),
+		array( 'longText' => 'Portugal', 'shortText' => 'PT', 'types' => array( 'country', 'political' ) ),
+	),
+);
+$a = ATC_Geo::airport_from_place( $lis );
+check( 'Google airport: name', $a['name'], 'Humberto Delgado Airport' );
+check( 'Google airport: city from the locality', $a['city'], 'Lisboa' );
+check( 'Google airport: country code', $a['country'], 'PT' );
+check( 'Google airport: time zone', $a['timezone'], 'Europe/Lisbon' );
+check( 'a place that is not an airport is refused', ATC_Geo::airport_from_place( array( 'types' => array( 'lodging' ) ) + $lis ), null );
+$bare = $lis;
+unset( $bare['addressComponents'], $bare['timeZone'] );
+$bare['displayName']['text'] = 'Tulum International Airport';
+$b = ATC_Geo::airport_from_place( $bare );
+check( 'no address parts: city comes from the name', $b['city'], 'Tulum' );
+check( 'no address parts: country left empty', $b['country'], '' );
+check( 'no time zone from Google: left empty', $b['timezone'], '' );
+check( 'CUN seed point and Google point are the same airport (under 4 km)', ATC_Geo::km( 21.0365, -86.8771, 21.0417, -86.8740 ) < 4.0, true );
+check( 'Cancún to Tulum airport is far apart', ATC_Geo::km( 21.0365, -86.8771, 20.1697, -87.6611 ) > 100.0, true );
+
 echo $fails ? "\n$fails failed\n" : "\nAll passed\n";
 exit( $fails ? 1 : 0 );

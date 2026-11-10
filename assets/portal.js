@@ -185,7 +185,7 @@
 
   function viewVehicles() {
     var airport = me.airport;
-    add(app, head('Vehicles', 'Tick the categories you sell at ' + (airport ? airport.city + ' (' + airport.iata + ')' : 'your airport') + ', then add each vehicle.'));
+    add(app, head('Vehicles', 'Tick the categories you sell at ' + (airport ? (airport.iata ? airport.city + ' (' + airport.iata + ')' : airport.name) : 'your airport') + ', then add each vehicle.'));
 
     var cats = h('section', { class: 'card pad' }, h('h2', { text: 'Categories you sell' }));
     me.vehicle_types.forEach(function (t) {

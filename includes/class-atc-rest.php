@@ -21,6 +21,17 @@ final class ATC_REST {
 			)
 		);
 
+		// Airport search for the provider sign-up form: our airports first, Google for the rest.
+		register_rest_route(
+			self::NS,
+			'/airports/search',
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => '__return_true',
+				'callback'            => array( __CLASS__, 'airport_search' ),
+			)
+		);
+
 		register_rest_route(
 			self::NS,
 			'/status',
@@ -30,6 +41,57 @@ final class ATC_REST {
 				'callback'            => array( __CLASS__, 'status' ),
 			)
 		);
+	}
+
+	public static function airport_search( WP_REST_Request $r ): WP_REST_Response {
+		$q    = mb_substr( trim( sanitize_text_field( (string) $r['q'] ) ), 0, 80 );
+		$out  = array();
+		$seen = array();
+		$resp = array( 'results' => array(), 'google' => 'no' );
+		if ( mb_strlen( $q ) < 2 ) {
+			return rest_ensure_response( $resp );
+		}
+		$local = static function ( array $a ) use ( &$out, &$seen ): void {
+			if ( isset( $seen[ (int) $a['id'] ] ) ) {
+				return;
+			}
+			$seen[ (int) $a['id'] ] = true;
+			$out[]                  = array(
+				'id'    => (int) $a['id'],
+				'label' => ATC_Catalog::airport_label( $a ),
+				'sub'   => ! empty( $a['iata'] ) ? $a['name'] : trim( $a['city'] . ', ' . $a['country'], ', ' ),
+			);
+		};
+		foreach ( ATC_Catalog::search_airports( $q ) as $a ) {
+			$local( $a );
+		}
+		// Google only when we have nothing, or the visitor asks for more. Limited per visitor: each search costs money.
+		if ( ! $out || ! empty( $r['more'] ) ) {
+			$resp['google'] = 'failed';
+			if ( ATC_Partner::rate_ok( 'airports', 40 ) ) {
+				[ $list, $err ] = ATC_Geo::search_airports( $q );
+				if ( null === $err ) {
+					$resp['google'] = 'yes';
+					foreach ( $list as $g ) {
+						$mine = ATC_Catalog::airport_matching( $g['google_place_id'], $g['lat'], $g['lng'] );
+						if ( $mine ) {
+							$local( $mine );
+							continue;
+						}
+						$out[] = array(
+							'place_id' => $g['google_place_id'],
+							'label'    => $g['name'],
+							'sub'      => trim( $g['city'] . ', ' . ( $g['country_name'] ?: $g['country'] ), ', ' ),
+							'new'      => true,
+						);
+					}
+				}
+			}
+		}
+		$resp['results'] = $out;
+		$res             = rest_ensure_response( $resp );
+		$res->header( 'Cache-Control', 'no-store' );
+		return $res;
 	}
 
 	public static function status(): WP_REST_Response {

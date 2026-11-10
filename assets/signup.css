@@ -1,0 +1,14 @@
+/* Provider sign-up: main airport search. Sits inside the theme's form card. */
+.atc-airport{position:relative;display:flex;flex-direction:column;gap:6px}
+.atc-airport-list{position:absolute;z-index:20;left:0;right:0;top:100%;margin:4px 0 0;padding:6px;list-style:none;background:#fff;border:1px solid var(--line-2,#D9D5CD);border-radius:14px;box-shadow:0 12px 32px rgba(20,20,20,.14);max-height:320px;overflow:auto}
+.atc-airport-list[hidden],.atc-airport-new[hidden]{display:none}
+.atc-airport-list li{margin:0}
+.atc-airport-opt{display:flex;flex-direction:column;gap:2px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:transparent;font:inherit;text-align:left;color:var(--ink,#1F1F1F);cursor:pointer}
+.atc-airport-opt strong{font-size:15px;font-weight:700}
+.atc-airport-opt span{font-size:13px;color:var(--muted,#6B6B6B)}
+.atc-airport-opt em{font-style:normal;font-weight:700;color:var(--ink,#1F1F1F)}
+.atc-airport-opt:hover,.atc-airport-opt.is-active{background:var(--sand,#F4F1EA)}
+.atc-airport-opt.is-more{font-weight:700;font-size:14px}
+.atc-airport-msg{padding:10px 12px;font-size:14px;color:var(--muted,#6B6B6B)}
+.atc-airport-new{margin:0;padding:12px 16px;border-radius:12px;font-size:14px;line-height:1.5;background:var(--sand,#F4F1EA);color:var(--ink,#1F1F1F)}
+.atc-airport-hint{font-size:13px;color:var(--muted,#6B6B6B)}

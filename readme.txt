@@ -1,5 +1,10 @@
 === ATCOM Booking Engine ===
-Version: 0.3.3 (provider portal, part 1)
+Version: 0.3.4 (provider portal, part 1)
+
+New in 0.3.4: provider sign-up asks for the provider's main airport with a search box (city, airport name or
+code) instead of a list with only Cancún. Our airports come first; any other airport can be picked from Google
+and is added when the account is created, with a notice on the form and in our new sign-up email. Airports
+added this way have no IATA code and no zones until our team sets them up. Needs ATC_MAPS_SERVER_KEY.
 
 New in 0.3.3: one sign-in page at /login for providers, affiliates and our team (each goes to the right place);
 "WordPress" link in /control and "Control panel" in the WordPress toolbar and Booking Engine menu.
