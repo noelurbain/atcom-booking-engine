@@ -81,6 +81,30 @@ final class ATC_REST_Control {
 			)
 		);
 		self::route(
+			'/zones/(?P<id>\d+)/tiles',
+			array(
+				'GET' => static function ( WP_REST_Request $r ) {
+					$tiles = ATC_Catalog::zone_tiles( (int) $r['id'] );
+					return is_wp_error( $tiles ) ? $tiles : rest_ensure_response( array( 'count' => count( $tiles ) ) );
+				},
+			)
+		);
+		self::route(
+			'/zones/(?P<id>\d+)/import-tile',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return self::out( ATC_Catalog::import_zone_tile( (int) $r['id'], (int) ( $b['index'] ?? 0 ) ) );
+				},
+			)
+		);
+		self::route(
+			'/zone-at',
+			array(
+				'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Catalog::zone_at( (int) $r['airport_id'], (float) $r['lat'], (float) $r['lng'], sanitize_text_field( (string) $r['place_id'] ) ) ),
+			)
+		);
+		self::route(
 			'/places',
 			array(
 				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response(

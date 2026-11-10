@@ -1,5 +1,10 @@
 === ATCOM Booking Engine ===
-Version: 0.2.2 (milestone 2: catalog)
+Version: 0.2.3 (milestone 2: catalog)
+
+New in 0.2.3:
+- "Find all hotels inside": searches Google for every hotel inside a zone's shape, part by part, and lists them.
+- "Check any hotel or address": shows which zone (and so which price) a traveler would get. Any address
+  inside a zone is bookable; the hotel list is optional (hand-placed hotels near borders, suggestions).
 
 New in 0.2.2:
 - "Suggest a shape": type or pick a zone name and the plugin proposes ready-made outlines from

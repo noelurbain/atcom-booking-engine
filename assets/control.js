@@ -449,9 +449,10 @@
         z.polygon.length ? h('button', { class: 'btn', type: 'button', disabled: !state.map, onclick: function () {
           if (confirm('Draw ' + z.name + ' again from scratch? The current shape stays until you save the new one.')) startDraw();
         }, text: 'Redraw' }) : null,
+        z.polygon.length ? h('button', { class: 'btn dark', type: 'button', onclick: function () { findAllHotels(z); }, text: 'Find all hotels inside' }) : null,
         h('button', { class: 'btn', type: 'button', onclick: function () { renameZone(z); }, text: 'Rename' }),
         h('button', { class: 'btn danger', type: 'button', onclick: function () { archiveZone(z); }, text: 'Archive' })));
-    add(card, [head, h('div', { class: 'scroll' }, h('table', null,
+    add(card, [head, h('p', { id: 'atc-progress', class: 'atc-progress', 'aria-live': 'polite' }), h('div', { class: 'scroll' }, h('table', null,
       h('thead', null, h('tr', null, ['Hotel', 'Address', 'Matched', 'Zone', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
       tbody))]);
 
@@ -493,6 +494,38 @@
       return new google.maps.Marker({ map: state.map, position: { lat: p.lat, lng: p.lng }, title: p.name,
         icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: '#15171C', fillOpacity: 1, strokeColor: '#FFFFFF', strokeWeight: 1.5 } });
     });
+  }
+
+  function findAllHotels(z) {
+    if (Z.finding) { toast('Already searching. Wait for it to finish.', true); return; }
+    api('GET', '/zones/' + z.id + '/tiles').then(function (r) {
+      var n = r.count;
+      if (!n) { toast('Nothing to search in this shape.', true); return; }
+      if (!confirm('Search Google for every hotel inside ' + z.name + '? It checks ' + n + (n === 1 ? ' part' : ' parts') + ' of the zone, one after another (about ' + Math.max(1, Math.round(n * 3 / 60)) + ' min). Hotels already listed are skipped.')) return;
+      Z.finding = true;
+      var total = { added: 0, existing: 0, other_zone: 0 }, errors = 0, i = 0;
+      function bar() { return document.getElementById('atc-progress') || {}; }
+      function step() {
+        bar().textContent = 'Searching ' + z.name + ': part ' + (i + 1) + ' of ' + n + ' · ' + total.added + ' new hotels so far';
+        api('POST', '/zones/' + z.id + '/import-tile', { index: i }).then(function (res) {
+          total.added += res.added; total.existing += res.existing; total.other_zone += res.other_zone;
+        }).catch(function (e) {
+          errors++;
+          if (errors >= 3) throw e;
+        }).then(function () {
+          i++;
+          if (i < n) return step();
+          finish();
+        }).catch(function (e) { Z.finding = false; bar().textContent = ''; fail(e); refreshZones(); });
+      }
+      function finish() {
+        Z.finding = false;
+        bar().textContent = '';
+        toast(total.added + ' hotels added to ' + z.name + ', ' + total.existing + ' were already listed' + (total.other_zone ? ', ' + total.other_zone + ' belong to an overlapping zone' : '') + (errors ? ' (' + errors + ' parts failed)' : '') + '.');
+        refreshZones();
+      }
+      step();
+    }).catch(fail);
   }
 
   function renameZone(z) {
@@ -557,12 +590,14 @@
       }).catch(fail).then(function () { importBtn.disabled = false; importBtn.textContent = 'Find and add'; });
     });
 
+    var checkOut = h('div', { class: 'list' });
     add(el, [
-      h('h2', { text: 'Add hotels' }),
+      h('h2', { text: 'Hotels and addresses' }),
+      h('p', { class: 'atc-muted', text: 'Travelers can book any hotel or address inside a zone: they pick it live from Google and get that zone’s price. This list is optional. It pins hotels near a border to the right zone (by hand) and fills the suggestions travelers see first. Use “Find all hotels inside” on a zone to fill it in one go.' }),
       h('div', { class: 'atc-two' },
-        h('div', null, h('p', { class: 'label', text: 'Search one on Google' }), slot,
-          h('p', { class: 'atc-muted small', text: 'Pick it from the list; it goes into the zone that contains it.' })),
-        h('div', null, h('p', { class: 'label', text: 'Or paste a list (up to 25)' }), lines, importBtn)),
+        h('div', null, h('p', { class: 'label', text: 'Check any hotel or address' }), slot,
+          h('p', { class: 'atc-muted small', text: 'Shows the zone and price area a traveler would get. Nothing is saved unless you add it.' }), checkOut),
+        h('div', null, h('p', { class: 'label', text: 'Or add a list of hotels by name (up to 25)' }), lines, importBtn)),
       results
     ]);
 
@@ -574,7 +609,7 @@
         locationBias: { radius: 50000, center: c },
         includedRegionCodes: ['mx']
       });
-      ac.setAttribute('placeholder', 'Type a hotel name');
+      ac.setAttribute('placeholder', 'Type a hotel or address');
       slot.appendChild(ac);
       var handler = function (ev) {
         var pred = ev.placePrediction;
@@ -582,16 +617,32 @@
         placePromise.then(function (place) {
           return place.fetchFields({ fields: ['id', 'displayName', 'formattedAddress', 'location'] }).then(function () { return place; });
         }).then(function (place) {
-          return api('POST', '/places', {
-            airport_id: state.airportId, name: place.displayName, address: place.formattedAddress,
-            lat: place.location.lat(), lng: place.location.lng(), google_place_id: place.id
-          });
-        }).then(function (r) {
-          toast(r.existing ? 'Already in the list.' : (r.zone_id ? 'Added to ' + zoneName(r.zone_id) + '.' : 'Added. It sits outside every zone.'));
-          if (r.zone_id) state.zoneId = r.zone_id;
-          refreshZones();
+          var pl = { airport_id: state.airportId, name: place.displayName, address: place.formattedAddress,
+            lat: place.location.lat(), lng: place.location.lng(), google_place_id: place.id };
+          return api('GET', '/zone-at?airport_id=' + state.airportId + '&lat=' + pl.lat + '&lng=' + pl.lng + '&place_id=' + encodeURIComponent(pl.google_place_id))
+            .then(function (r) { showCheck(pl, r); });
         }).catch(fail);
       };
+      function showCheck(pl, r) {
+        clear(checkOut);
+        if (state.map) {
+          if (Z.check) Z.check.setMap(null);
+          Z.check = new google.maps.Marker({ map: state.map, position: { lat: pl.lat, lng: pl.lng }, title: pl.name });
+          state.map.panTo({ lat: pl.lat, lng: pl.lng });
+        }
+        var addBtn = r.listed ? h('span', { class: 'chip grey', text: 'Already in the list' }) : h('button', { class: 'btn', type: 'button', onclick: function () {
+          api('POST', '/places', pl).then(function (x) {
+            toast(x.zone_id ? 'Added to ' + zoneName(x.zone_id) + '.' : 'Added. It sits outside every zone.');
+            if (x.zone_id) state.zoneId = x.zone_id;
+            clear(checkOut);
+            refreshZones();
+          }).catch(fail);
+        }, text: 'Add to the list' });
+        add(checkOut, h('div', { class: 'row' + (r.zone_id ? '' : ' bad') },
+          h('div', null, h('div', { class: 'strong', text: pl.name }), h('div', { class: 'atc-muted', text: pl.address || '' }),
+            h('div', { class: 'small', text: r.zone_id ? 'Bookable at ' + r.zone + ' prices (' + r.how + ').' : 'Outside every zone: travelers would get a quote request, not a price.' })),
+          h('div', { class: 'atc-actions' }, h('span', { class: 'chip ' + (r.zone_id ? 'green' : 'orange'), text: r.zone_id ? r.zone : 'No zone' }), addBtn)));
+      }
       ac.addEventListener('gmp-select', handler);
       ac.addEventListener('gmp-placeselect', handler);
     }).catch(function () {

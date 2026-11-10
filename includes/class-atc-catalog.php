@@ -280,6 +280,82 @@ final class ATC_Catalog {
 		return $out;
 	}
 
+	/** Tiles of a zone for "Find all hotels inside". */
+	public static function zone_tiles( int $zone_id ) {
+		$zone = self::zone( $zone_id );
+		if ( ! $zone ) {
+			return new WP_Error( 'atc_not_found', 'Zone not found.', array( 'status' => 404 ) );
+		}
+		$ring = json_decode( (string) $zone['polygon'], true );
+		if ( ! is_array( $ring ) || count( $ring ) < 3 ) {
+			return new WP_Error( 'atc_zone_shape', 'Give this zone a shape first.', array( 'status' => 400 ) );
+		}
+		return ATC_Geo::tiles( $ring );
+	}
+
+	/** Finds lodging in one tile of a zone and adds what lies inside the zone. */
+	public static function import_zone_tile( int $zone_id, int $index ) {
+		$tiles = self::zone_tiles( $zone_id );
+		if ( is_wp_error( $tiles ) ) {
+			return $tiles;
+		}
+		if ( ! isset( $tiles[ $index ] ) ) {
+			return new WP_Error( 'atc_tile', 'No such part of the zone.', array( 'status' => 400 ) );
+		}
+		$zone = self::zone( $zone_id );
+		$ring = json_decode( (string) $zone['polygon'], true );
+		$res  = array( 'added' => 0, 'existing' => 0, 'outside' => 0, 'other_zone' => 0, 'names' => array() );
+		$token = '';
+		for ( $page = 0; $page < 3; $page++ ) {
+			[ $batch, $err ] = ATC_Geo::lodging_in_rect( $tiles[ $index ], $token );
+			if ( ! $batch ) {
+				return new WP_Error( 'atc_google', 'Google: ' . $err, array( 'status' => 502 ) );
+			}
+			foreach ( $batch['places'] as $p ) {
+				if ( ! ATC_Geo::point_in_polygon( $p['lat'], $p['lng'], $ring ) ) {
+					++$res['outside'];
+					continue;
+				}
+				$saved = self::save_place( $p + array( 'airport_id' => (int) $zone['airport_id'], 'type' => 'hotel' ) );
+				if ( is_wp_error( $saved ) ) {
+					continue;
+				}
+				if ( $saved['existing'] ) {
+					++$res['existing'];
+				} else {
+					++$res['added'];
+					$res['names'][] = $p['name'];
+				}
+				if ( $saved['zone_id'] && (int) $saved['zone_id'] !== $zone_id ) {
+					++$res['other_zone'];
+				}
+			}
+			$token = $batch['next'];
+			if ( '' === $token ) {
+				break;
+			}
+			usleep( 300000 );
+		}
+		return $res;
+	}
+
+	/** Which zone a point falls in (hand-placed hotels first, then shapes). Same rule the booking search will use. */
+	public static function zone_at( int $airport_id, float $lat, float $lng, string $google_place_id = '' ): array {
+		global $wpdb;
+		if ( '' !== $google_place_id ) {
+			$row = $wpdb->get_row( $wpdb->prepare( 'SELECT zone_id, matched_by, name FROM ' . self::t( 'places' ) . " WHERE airport_id = %d AND google_place_id = %s AND status = 'active'", $airport_id, $google_place_id ), ARRAY_A );
+			if ( $row && 'manual' === $row['matched_by'] && $row['zone_id'] ) {
+				$z = self::zone( (int) $row['zone_id'] );
+				return array( 'zone_id' => (int) $row['zone_id'], 'zone' => $z ? $z['name'] : '', 'how' => 'placed by hand', 'listed' => true );
+			}
+			$listed = (bool) $row;
+		}
+		$zones = $wpdb->get_results( $wpdb->prepare( 'SELECT id, polygon, sort FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active'", $airport_id ), ARRAY_A );
+		$id    = ATC_Geo::match_zone( $lat, $lng, $zones );
+		$z     = $id ? self::zone( $id ) : null;
+		return array( 'zone_id' => $id, 'zone' => $z ? $z['name'] : null, 'how' => $id ? 'inside the shape' : 'outside every zone', 'listed' => ! empty( $listed ) );
+	}
+
 	/* ---------- Providers ---------- */
 
 	const PARTY_FIELDS = array( 'name', 'legal_name', 'country', 'email', 'phone', 'languages', 'commission_bp', 'min_notice_minutes', 'payout_method', 'payout_currency', 'status' );

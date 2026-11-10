@@ -79,5 +79,25 @@ check( 'simplify 600 points to 150 or fewer', count( $simple ) <= 150 && count( 
 check( 'simplified shape keeps its area (within 3%)', abs( ATC_Geo::area_km2( $simple ) / ATC_Geo::area_km2( $circle ) - 1 ) < 0.03, true );
 check( 'centre still inside after simplifying', ATC_Geo::point_in_polygon( 20.8, -86.9, $simple ), true );
 
+// Tiles for "Find all hotels inside".
+$tiles = ATC_Geo::tiles( $hotel_zone );
+check( 'Hotel Zone splits into a handful of tiles', count( $tiles ) >= 4 && count( $tiles ) <= 30, true );
+$covered = false;
+foreach ( $tiles as $t ) {
+	if ( $inside[0] >= $t['low']['latitude'] && $inside[0] <= $t['high']['latitude'] && $inside[1] >= $t['low']['longitude'] && $inside[1] <= $t['high']['longitude'] ) {
+		$covered = true;
+	}
+}
+check( 'a point inside the zone is in some tile', $covered, true );
+$tri   = array( array( 0, 0 ), array( 0, 4 ), array( 4, 0 ) );
+$found = false;
+foreach ( ATC_Geo::tiles( $tri, 1.0 ) as $t ) {
+	if ( 3.0 === (float) $t['low']['latitude'] && 3.0 === (float) $t['low']['longitude'] ) {
+		$found = true;
+	}
+}
+check( 'tile fully outside the shape is skipped', $found, false );
+check( 'triangle keeps tiles along the diagonal', count( ATC_Geo::tiles( $tri, 1.0 ) ) >= 10, true );
+
 echo $fails ? "\n$fails failed\n" : "\nAll passed\n";
 exit( $fails ? 1 : 0 );

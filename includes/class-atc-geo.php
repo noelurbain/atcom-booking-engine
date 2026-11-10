@@ -132,6 +132,120 @@ final class ATC_Geo {
 		);
 	}
 
+	/**
+	 * One page of up to 20 hotels and other lodging strictly inside a rectangle (Places API New).
+	 * $rect: ['low'=>['latitude','longitude'],'high'=>[...]].
+	 */
+	public static function lodging_in_rect( array $rect, string $page_token = '' ): array {
+		$key = ATC_Settings::maps_server_key();
+		if ( '' === $key ) {
+			return array( null, 'The Server key (ATC_MAPS_SERVER_KEY) is not in wp-config.php.' );
+		}
+		$body = array(
+			'textQuery'           => 'hotel',
+			'includedType'        => 'lodging',
+			'strictTypeFiltering' => true,
+			'pageSize'            => 20,
+			'languageCode'        => 'en',
+			'locationRestriction' => array( 'rectangle' => $rect ),
+		);
+		if ( '' !== $page_token ) {
+			$body['pageToken'] = $page_token;
+		}
+		$res = null;
+		for ( $try = 0; $try < 3; $try++ ) {
+			if ( $try ) {
+				usleep( 700000 * $try );
+			}
+			$res = wp_remote_post(
+				'https://places.googleapis.com/v1/places:searchText',
+				array(
+					'timeout' => 15,
+					'headers' => array(
+						'Content-Type'     => 'application/json',
+						'X-Goog-Api-Key'   => $key,
+						'X-Goog-FieldMask' => 'places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,nextPageToken',
+					),
+					'body'    => wp_json_encode( $body ),
+				)
+			);
+			if ( ! is_wp_error( $res ) && (int) wp_remote_retrieve_response_code( $res ) < 500 ) {
+				break;
+			}
+		}
+		if ( is_wp_error( $res ) ) {
+			return array( null, $res->get_error_message() );
+		}
+		$data = json_decode( wp_remote_retrieve_body( $res ), true );
+		if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) ) {
+			return array( null, $data['error']['message'] ?? 'HTTP ' . wp_remote_retrieve_response_code( $res ) );
+		}
+		$out = array();
+		foreach ( (array) ( $data['places'] ?? array() ) as $p ) {
+			if ( 'CLOSED_PERMANENTLY' === ( $p['businessStatus'] ?? '' ) || empty( $p['location'] ) ) {
+				continue;
+			}
+			$out[] = array(
+				'google_place_id' => (string) ( $p['id'] ?? '' ),
+				'name'            => (string) ( $p['displayName']['text'] ?? '' ),
+				'address'         => (string) ( $p['formattedAddress'] ?? '' ),
+				'lat'             => (float) $p['location']['latitude'],
+				'lng'             => (float) $p['location']['longitude'],
+			);
+		}
+		return array( array( 'places' => $out, 'next' => (string) ( $data['nextPageToken'] ?? '' ) ), null );
+	}
+
+	/**
+	 * Splits a polygon's bounding box into tiles of about 3.5 km and keeps the ones the shape touches.
+	 * Google returns at most 60 results per search, so small tiles find every hotel in a dense area.
+	 */
+	public static function tiles( array $ring, float $deg = 0.035, int $max = 150 ): array {
+		if ( count( $ring ) < 3 ) {
+			return array();
+		}
+		$lats = array_column( $ring, 0 );
+		$lngs = array_column( $ring, 1 );
+		$s    = min( $lats );
+		$n    = max( $lats );
+		$w    = min( $lngs );
+		$e    = max( $lngs );
+		$rows = max( 1, (int) ceil( ( $n - $s ) / $deg ) );
+		$cols = max( 1, (int) ceil( ( $e - $w ) / $deg ) );
+		$dy   = ( $n - $s ) / $rows;
+		$dx   = ( $e - $w ) / $cols;
+		$out  = array();
+		for ( $r = 0; $r < $rows; $r++ ) {
+			for ( $c = 0; $c < $cols; $c++ ) {
+				$bs    = $s + $r * $dy;
+				$bw    = $w + $c * $dx;
+				$probe = array( array( $bs, $bw ), array( $bs + $dy, $bw ), array( $bs, $bw + $dx ), array( $bs + $dy, $bw + $dx ), array( $bs + $dy / 2, $bw + $dx / 2 ) );
+				$touch = false;
+				foreach ( $probe as $pt ) {
+					if ( self::point_in_polygon( $pt[0], $pt[1], $ring ) ) {
+						$touch = true;
+						break;
+					}
+				}
+				if ( ! $touch ) {
+					foreach ( $ring as $v ) {
+						if ( $v[0] >= $bs && $v[0] <= $bs + $dy && $v[1] >= $bw && $v[1] <= $bw + $dx ) {
+							$touch = true;
+							break;
+						}
+					}
+				}
+				if ( $touch ) {
+					$out[] = array(
+						'low'  => array( 'latitude' => round( $bs, 6 ), 'longitude' => round( $bw, 6 ) ),
+						'high' => array( 'latitude' => round( $bs + $dy, 6 ), 'longitude' => round( $bw + $dx, 6 ) ),
+					);
+				}
+			}
+		}
+		return array_slice( $out, 0, $max );
+	}
+
 	/* ---------- Shape suggestions for a zone name ---------- */
 
 	/**
