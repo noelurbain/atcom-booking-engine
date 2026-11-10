@@ -115,6 +115,10 @@ final class ATC_Portal {
 			self::login_page( $next );
 			exit;
 		}
+		if ( 'set-password' === $view ) {
+			self::set_password_page();
+			exit;
+		}
 		if ( 'logout' === $view ) {
 			if ( isset( $_GET['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'atc_logout' ) ) {
 				wp_logout();
@@ -315,6 +319,50 @@ final class ATC_Portal {
 		$out .= '<small class="atc-airport-hint">Pick the airport where you do most of your transfers. You can add more airports later.</small>';
 		$out .= '</div>';
 		return $out;
+	}
+
+	/** First password for invited providers (and a fresh one for anyone with a valid link). */
+	private static function set_password_page(): void {
+		$key   = isset( $_REQUEST['key'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['key'] ) ) : '';
+		$login = isset( $_REQUEST['login'] ) ? sanitize_user( wp_unslash( rawurldecode( (string) $_REQUEST['login'] ) ) ) : '';
+		$user  = check_password_reset_key( $key, $login );
+		$error = '';
+		if ( ! is_wp_error( $user ) && 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) {
+			$p1 = (string) wp_unslash( $_POST['pass1'] ?? '' ); // phpcs:ignore
+			$p2 = (string) wp_unslash( $_POST['pass2'] ?? '' ); // phpcs:ignore
+			if ( ! isset( $_POST['_atc'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_atc'] ) ), 'atc_setpass_' . $user->ID ) ) {
+				$error = 'The form expired. Please try again.';
+			} elseif ( strlen( $p1 ) < 10 ) {
+				$error = 'Use at least 10 characters.';
+			} elseif ( $p1 !== $p2 ) {
+				$error = 'The two passwords are not the same.';
+			} else {
+				remove_action( 'after_password_reset', 'wp_password_change_notification' );
+				reset_password( $user, $p1 );
+				update_user_meta( $user->ID, 'atc_password_set', time() );
+				ATC_Install::log( 'user', $user->ID, 'password_set_from_invite' );
+				wp_set_current_user( $user->ID );
+				wp_set_auth_cookie( $user->ID, true );
+				wp_safe_redirect( self::destination( $user ) . '?welcome=1' );
+				exit;
+			}
+		}
+		self::frame_open( 'Choose your password', 'Welcome' );
+		echo '<main class="atc-wrap atc-narrow">';
+		if ( is_wp_error( $user ) ) {
+			echo '<section class="card pad"><h1>This link has expired</h1><p>Links to choose a password work for 24 hours and only once. <a href="' . esc_url( wp_lostpassword_url( self::login_url() ) ) . '">Get a new link</a> with your email, or write to ' . esc_html( ATC_Settings::get( 'from_email' ) ) . '.</p></section>';
+		} else {
+			echo '<div class="atc-head"><div><h1>Choose your password</h1><p class="atc-muted">You sign in with ' . esc_html( $user->user_email ) . '.</p></div></div><form method="post" class="card pad">';
+			if ( $error ) {
+				echo '<p class="chip red">' . esc_html( $error ) . '</p>';
+			}
+			wp_nonce_field( 'atc_setpass_' . $user->ID, '_atc' );
+			echo '<input type="hidden" name="key" value="' . esc_attr( $key ) . '"><input type="hidden" name="login" value="' . esc_attr( $login ) . '">';
+			echo '<div class="grid2"><label class="field"><span>New password (at least 10 characters)</span><input type="password" name="pass1" minlength="10" required autocomplete="new-password"></label><label class="field"><span>Type it again</span><input type="password" name="pass2" minlength="10" required autocomplete="new-password"></label></div>';
+			echo '<div class="atc-actions"><button class="btn dark" type="submit">Save and open my portal</button></div></form>';
+		}
+		echo '</main>';
+		self::frame_close();
 	}
 
 	private static function login_page( string $next = '' ): void {

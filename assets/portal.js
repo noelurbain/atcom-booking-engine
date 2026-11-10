@@ -90,7 +90,7 @@
       add(side, h('a', { href: C.base + v[0] + (v[0] ? '/' : ''), 'data-go': v[0], class: cur === v[0] ? 'on' : '' },
         h('span', { text: v[1] }),
         st ? h('i', { class: 'dot ' + st.state, title: st.label, 'aria-label': st.label }) : null,
-        v[0] === 'prices' ? h('i', { class: 'soon', text: 'soon' }) : null));
+        null));
     });
   }
 
@@ -321,13 +321,34 @@
     });
   }
 
-  /* ---------- Prices (next version) ---------- */
+  /* ---------- Prices (read-only until the price editor ships) ---------- */
 
+  function money(c) { return (c / 100).toFixed(c % 100 ? 2 : 0); }
   function viewPrices() {
-    add(app, [head('Prices', 'Coming in the next version.'),
-      h('section', { class: 'card pad' },
-        h('p', { text: 'Here you will set, for every zone and vehicle, the Suggested retail price and the Amount you will get paid. Type either one and the other fills in.' }),
-        h('p', { class: 'atc-muted', text: 'Our commission is ' + (me.commission_bp / 100) + '% of the Suggested retail price. Example: on a USD 100 sale you get paid USD ' + (100 - me.commission_bp / 100).toFixed(2) + '.' }))]);
+    var pct = me.commission_bp / 100;
+    add(app, head('Prices', 'Suggested retail price is what travelers pay. You get paid ' + (100 - pct) + '% of it (our commission is ' + pct + '%).'));
+    var tables = me.prices || [];
+    if (!tables.length) {
+      add(app, h('section', { class: 'card pad' }, h('p', { text: 'No prices yet. Setting and uploading your price list (Excel or CSV) is coming in the next version.' })));
+      return;
+    }
+    add(app, h('p', { class: 'atc-muted', text: 'These prices came over from your account on the old site. Editing and uploading a price list is coming in the next version; until then, write to us to change one.' }));
+    tables.forEach(function (t) {
+      add(app, h('section', { class: 'card pad' },
+        h('h2', { text: t.airport + (t.iata ? ' (' + t.iata + ')' : '') }),
+        h('div', { class: 'scroll' }, h('table', { class: 'prices' },
+          h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), t.vehicles.map(function (v) { return h('th', { scope: 'col', text: v.name }); }))),
+          h('tbody', null, t.zones.map(function (z) {
+            return h('tr', null, h('td', { class: 'strong', text: z.name }), t.vehicles.map(function (v) {
+              var c = z.cells[v.id];
+              if (!c) return h('td', { class: 'atc-muted', text: '–' });
+              return h('td', null,
+                c.one_way ? h('div', null, h('strong', { text: 'USD ' + money(c.one_way.retail) }), h('span', { class: 'atc-muted small', text: ' · you get ' + money(c.one_way.provider) })) : null,
+                c.round_trip ? h('div', { class: 'small' }, 'Round trip ' + money(c.round_trip.retail), h('span', { class: 'atc-muted', text: ' · you get ' + money(c.round_trip.provider) })) : null);
+            }));
+          })))),
+        h('p', { class: 'small atc-muted', text: 'One way on the first line, round trip on the second.' })));
+    });
   }
 
   /* ---------- Documents ---------- */

@@ -156,6 +156,7 @@ final class ATC_Partner {
 		);
 		$party_id = (int) $wpdb->insert_id;
 		$wpdb->insert( self::t( 'party_users' ), array( 'party_id' => $party_id, 'user_id' => $user_id, 'role' => 'owner' ) );
+		update_user_meta( $user_id, 'atc_password_set', time() );
 		ATC_Install::log( 'party', $party_id, 'signed_up', array( 'user_id' => $user_id ) );
 
 		self::mail_welcome( $email, $contact, $company );
@@ -184,6 +185,88 @@ final class ATC_Partner {
 		}
 		set_transient( $key, $n + 1, HOUR_IN_SECONDS );
 		return true;
+	}
+
+	/* ---------- Invitations (providers brought over from the old site) ---------- */
+
+	/** not_invited | invited | active, plus dates, for the control panel. */
+	public static function portal_state( int $party_id ): array {
+		global $wpdb;
+		$p   = $wpdb->get_row( $wpdb->prepare( 'SELECT invited_at, invite_count FROM ' . self::t( 'parties' ) . ' WHERE id = %d', $party_id ), ARRAY_A );
+		$uid = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT user_id FROM ' . self::t( 'party_users' ) . ' WHERE party_id = %d ORDER BY user_id LIMIT 1', $party_id ) );
+		$set = $uid ? get_user_meta( $uid, 'atc_password_set', true ) : '';
+		return array(
+			'state'        => $set ? 'active' : ( ! empty( $p['invited_at'] ) ? 'invited' : 'not_invited' ),
+			'invited_at'   => $p['invited_at'] ?? null,
+			'invite_count' => (int) ( $p['invite_count'] ?? 0 ),
+			'active_since' => $set ? gmdate( 'Y-m-d', (int) $set ) : null,
+		);
+	}
+
+	/** Creates (or finds) the provider's sign-in and emails a link to choose a password. */
+	public static function invite( int $party_id ) {
+		global $wpdb;
+		$p = ATC_Catalog::party( $party_id );
+		if ( ! $p ) {
+			return new WP_Error( 'atc_not_found', 'Provider not found.', array( 'status' => 404 ) );
+		}
+		$email = sanitize_email( (string) $p['email'] );
+		if ( ! is_email( $email ) ) {
+			return new WP_Error( 'atc_invite', $p['name'] . ' has no valid email. Add one first.', array( 'status' => 400 ) );
+		}
+		$uid = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT user_id FROM ' . self::t( 'party_users' ) . ' WHERE party_id = %d ORDER BY user_id LIMIT 1', $party_id ) );
+		$user = $uid ? get_userdata( $uid ) : get_user_by( 'email', $email );
+		if ( $user && ( $user->has_cap( 'edit_posts' ) || $user->has_cap( 'atc_manage' ) ) ) {
+			return new WP_Error( 'atc_invite', 'This email belongs to a team account. Give the provider its own email.', array( 'status' => 400 ) );
+		}
+		if ( ! $user ) {
+			$login = sanitize_user( strtolower( strstr( $email, '@', true ) ), true ) ?: 'provider';
+			$base  = $login;
+			$i     = 2;
+			while ( username_exists( $login ) ) {
+				$login = $base . $i++;
+			}
+			$new = wp_insert_user(
+				array(
+					'user_login'   => $login,
+					'user_email'   => $email,
+					'user_pass'    => wp_generate_password( 32, true, true ),
+					'display_name' => $p['contact_name'] ?: $p['name'],
+					'role'         => 'atc_provider',
+				)
+			);
+			if ( is_wp_error( $new ) ) {
+				return $new;
+			}
+			$user = get_userdata( $new );
+		} elseif ( ! $user->has_cap( 'atc_provider_portal' ) ) {
+			$user->add_role( 'atc_provider' );
+		}
+		if ( ! $wpdb->get_var( $wpdb->prepare( 'SELECT party_id FROM ' . self::t( 'party_users' ) . ' WHERE party_id = %d AND user_id = %d', $party_id, $user->ID ) ) ) {
+			$wpdb->insert( self::t( 'party_users' ), array( 'party_id' => $party_id, 'user_id' => $user->ID, 'role' => 'owner' ) );
+		}
+
+		$key = get_password_reset_key( $user );
+		if ( is_wp_error( $key ) ) {
+			return $key;
+		}
+		$link    = add_query_arg( array( 'key' => $key, 'login' => rawurlencode( $user->user_login ) ), home_url( '/portal/set-password/' ) );
+		$name    = $p['contact_name'] ?: $p['name'];
+		$subject = 'Your new Airport Transportation provider portal';
+		$body    = "Hi {$name},\n\nAirport Transportation has a new provider portal, and {$p['name']} is already in it: your company details, the areas you cover and your prices have been brought over from the previous system.\n\nChoose your password here (the link works for 24 hours):\n{$link}\n\nThen check your details, upload your documents, add your payout details and accept the new provider agreement. Our commission is now 25% of the price travelers pay (it was 30%), and your prices stay the same for travelers.\n\nSign in any time at " . home_url( '/login/' ) . "\n\nAirport Transportation";
+		$to      = $email;
+		$test    = (string) ATC_Settings::get( 'invite_test_to' );
+		if ( '' !== $test ) {
+			$to      = $test;
+			$subject = '[TEST, would go to ' . $email . '] ' . $subject;
+		}
+		$sent = wp_mail( $to, $subject, $body, array( 'From: Airport Transportation <' . ATC_Settings::get( 'from_email' ) . '>' ) );
+		if ( ! $sent ) {
+			return new WP_Error( 'atc_invite_mail', 'The email could not be sent. Check the mail settings (FluentSMTP).', array( 'status' => 500 ) );
+		}
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'parties' ) . ' SET invited_at = %s, invite_count = invite_count + 1 WHERE id = %d', self::now(), $party_id ) );
+		ATC_Install::log( 'party', $party_id, 'invited', array( 'to' => $to, 'test' => '' !== $test ) );
+		return self::portal_state( $party_id ) + array( 'sent_to' => $to, 'test' => '' !== $test );
 	}
 
 	/* ---------- Account: sign-in email and password ---------- */

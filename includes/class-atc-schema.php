@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy',
 		);
 	}
 
@@ -66,6 +66,8 @@ final class ATC_Schema {
   website varchar(190) NULL,
   about text NULL,
   home_airport_id bigint(20) unsigned NULL,
+  invited_at datetime NULL,
+  invite_count int(11) NOT NULL DEFAULT 0,
   status varchar(20) NOT NULL DEFAULT 'pending',
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
@@ -90,6 +92,7 @@ final class ATC_Schema {
   city varchar(100) NOT NULL,
   country char(2) NOT NULL,
   timezone varchar(64) NOT NULL,
+  currency char(3) NOT NULL DEFAULT 'USD',
   lat decimal(10,7) NULL,
   lng decimal(10,7) NULL,
   status varchar(20) NOT NULL DEFAULT 'active',
@@ -105,6 +108,7 @@ final class ATC_Schema {
   name varchar(190) NOT NULL,
   slug varchar(190) NOT NULL,
   polygon longtext NULL,
+  source varchar(20) NULL,
   sort int(11) NOT NULL DEFAULT 0,
   status varchar(20) NOT NULL DEFAULT 'active',
   PRIMARY KEY  (id),
@@ -360,6 +364,32 @@ final class ATC_Schema {
   status varchar(20) NOT NULL DEFAULT 'active',
   PRIMARY KEY  (id),
   UNIQUE KEY code (code)
+) $c;";
+
+		// A provider's own names for our zones and vehicle types ("Zona 1", "Van 10"), so uploads match by themselves.
+		$sql[] = "CREATE TABLE {$p}aliases (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  party_id bigint(20) unsigned NOT NULL,
+  kind varchar(20) NOT NULL,
+  alias varchar(190) NOT NULL,
+  target_id bigint(20) unsigned NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY party_kind_alias (party_id,kind,alias),
+  KEY target (kind,target_id)
+) $c;";
+
+		// Ids from the old airporttransportation.com, so the migration can run again without duplicates.
+		$sql[] = "CREATE TABLE {$p}legacy (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  source varchar(20) NOT NULL,
+  object_type varchar(30) NOT NULL,
+  legacy_id varchar(64) NOT NULL,
+  new_id bigint(20) unsigned NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY source_object_legacy (source,object_type,legacy_id),
+  KEY new_id (object_type,new_id)
 ) $c;";
 
 		// Provider documents (permit, registration, insurance). Files live outside public URLs.

@@ -1,5 +1,20 @@
 === ATCOM Booking Engine ===
-Version: 0.3.4 (provider portal, part 1)
+Version: 0.4.0 (old providers come over)
+
+New in 0.4.0: import from the old airporttransportation.com
+- Control panel → Providers → "Import from the old site": upload atcom-migration.json, "Check first"
+  (nothing saved, shows what would happen), then "Import now". Safe to run again: nothing is doubled.
+- Brings providers (details, about, status), the airports they serve, their coverage areas (as zones:
+  fills empty shapes, never replaces a shape drawn here, adds new zones) and their prices.
+  Travelers pay what they paid before; providers get 75% (new 25% commission).
+  Prices that look like another currency or a typo (under USD 10 or over USD 5,000) are left out and listed.
+- Their area names are kept as aliases, so their price lists match our zones later.
+- 5 new vehicle categories: Standard SUV, Mini Coach, Midi Coach, Coach, Large Coach.
+- Providers list: portal status (Not invited, Invited, Active), "Send sign-up invitation" / "Resend
+  invitation", and "Invite everyone not invited yet" (40 per click). The email links to a page where they
+  choose a password. While Settings → "Send test invitations to" has an address, every invitation goes
+  there instead of to the providers.
+- Provider record and provider portal show the prices (read-only; the price editor comes next).
 
 New in 0.3.4: provider sign-up asks for the provider's main airport with a search box (city, airport name or
 code) instead of a list with only Cancún. Our airports come first; any other airport can be picked from Google

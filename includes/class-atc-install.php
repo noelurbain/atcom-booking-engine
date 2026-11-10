@@ -39,6 +39,7 @@ final class ATC_Install {
 				global $wpdb;
 				$wpdb->query( 'ALTER TABLE ' . ATC_Schema::table( 'airports' ) . ' MODIFY iata char(3) NULL' ); // phpcs:ignore
 			}
+			self::seed();
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
 		}
@@ -51,7 +52,24 @@ final class ATC_Install {
 		}
 	}
 
-	private static function seed(): void {
+	/** The vehicle categories we sell, smallest first (same 11 as the old airporttransportation.com). */
+	public static function vehicle_type_rows(): array {
+		return array(
+			array( 'executive-sedan', 'Executive Sedan', 2, 2, 10 ),
+			array( 'standard-sedan', 'Standard Sedan', 2, 2, 20 ),
+			array( 'standard-suv', 'Standard SUV', 4, 4, 25 ),
+			array( 'luxury-suv', 'Luxury SUV', 5, 5, 30 ),
+			array( 'premium-suv', 'Premium SUV', 5, 5, 40 ),
+			array( 'minivan', 'Minivan', 6, 6, 50 ),
+			array( 'minibus', 'Minibus', 12, 12, 60 ),
+			array( 'mini-coach', 'Mini Coach', 25, 25, 70 ),
+			array( 'midi-coach', 'Midi Coach', 35, 35, 80 ),
+			array( 'coach', 'Coach', 45, 45, 90 ),
+			array( 'large-coach', 'Large Coach', 55, 55, 100 ),
+		);
+	}
+
+	public static function seed(): void {
 		global $wpdb;
 
 		$airports = ATC_Schema::table( 'airports' );
@@ -72,14 +90,7 @@ final class ATC_Install {
 		}
 
 		$types = ATC_Schema::table( 'vehicle_types' );
-		$rows  = array(
-			array( 'executive-sedan', 'Executive Sedan', 2, 2, 10 ),
-			array( 'standard-sedan', 'Standard Sedan', 2, 2, 20 ),
-			array( 'luxury-suv', 'Luxury SUV', 5, 5, 30 ),
-			array( 'premium-suv', 'Premium SUV', 5, 5, 40 ),
-			array( 'minivan', 'Minivan', 6, 6, 50 ),
-			array( 'minibus', 'Minibus', 12, 12, 60 ),
-		);
+		$rows  = self::vehicle_type_rows();
 		foreach ( $rows as [ $slug, $name, $pax, $bags, $sort ] ) {
 			if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$types} WHERE slug = %s", $slug ) ) ) {
 				$wpdb->insert( $types, array( 'slug' => $slug, 'name' => $name, 'max_passengers' => $pax, 'max_bags' => $bags, 'sort' => $sort ) );

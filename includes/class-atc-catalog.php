@@ -638,6 +638,51 @@ final class ATC_Catalog {
 		return array( 'id' => $id );
 	}
 
+	/* ---------- Prices ---------- */
+
+	/**
+	 * A provider's prices, grouped per airport: zones as rows, vehicle categories as columns,
+	 * each cell with one-way and round-trip Suggested retail price and Amount you will get paid (cents).
+	 */
+	public static function price_table( int $party_id ): array {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT a.id AS airport_id, a.iata, a.name AS airport, z.id AS zone_id, z.name AS zone, z.sort AS zsort,
+					v.id AS vehicle_type_id, v.name AS vehicle, v.sort AS vsort, s.status AS service_status,
+					p.direction, p.retail_cents, p.provider_cents
+				FROM ' . self::t( 'prices' ) . ' p
+				JOIN ' . self::t( 'services' ) . ' s ON s.id = p.service_id
+				JOIN ' . self::t( 'zones' ) . ' z ON z.id = p.zone_id
+				JOIN ' . self::t( 'vehicle_types' ) . ' v ON v.id = s.vehicle_type_id
+				JOIN ' . self::t( 'airports' ) . ' a ON a.id = s.airport_id
+				WHERE s.party_id = %d AND p.valid_from IS NULL
+				ORDER BY a.iata, z.sort, z.name, v.sort',
+				$party_id
+			),
+			ARRAY_A
+		);
+		$out = array();
+		foreach ( $rows as $r ) {
+			$k = $r['iata'];
+			if ( ! isset( $out[ $k ] ) ) {
+				$out[ $k ] = array( 'airport_id' => (int) $r['airport_id'], 'iata' => $r['iata'], 'airport' => $r['airport'], 'vehicles' => array(), 'zones' => array() );
+			}
+			$out[ $k ]['vehicles'][ (int) $r['vehicle_type_id'] ] = array( 'id' => (int) $r['vehicle_type_id'], 'name' => $r['vehicle'], 'sort' => (int) $r['vsort'], 'status' => $r['service_status'] );
+			$zk = (int) $r['zone_id'];
+			if ( ! isset( $out[ $k ]['zones'][ $zk ] ) ) {
+				$out[ $k ]['zones'][ $zk ] = array( 'id' => $zk, 'name' => $r['zone'], 'cells' => array() );
+			}
+			$out[ $k ]['zones'][ $zk ]['cells'][ (int) $r['vehicle_type_id'] ][ $r['direction'] ] = array( 'retail' => (int) $r['retail_cents'], 'provider' => (int) $r['provider_cents'] );
+		}
+		foreach ( $out as &$a ) {
+			uasort( $a['vehicles'], static fn( $x, $y ) => $x['sort'] <=> $y['sort'] );
+			$a['vehicles'] = array_values( $a['vehicles'] );
+			$a['zones']    = array_values( $a['zones'] );
+		}
+		return array_values( $out );
+	}
+
 	/* ---------- Vehicles ---------- */
 
 	public static function vehicles( int $party_id ): array {

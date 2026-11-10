@@ -71,6 +71,7 @@ final class ATC_REST_Portal {
 			'commission_bp' => (int) ( $party['commission_bp'] ?? 0 ) ?: (int) ATC_Settings::get( 'provider_commission_bp' ),
 			'steps'         => ATC_Partner::steps( $pid ),
 			'account'       => ATC_Partner::account( get_current_user_id() ),
+			'prices'        => ATC_Catalog::price_table( $pid ),
 		);
 	}
 

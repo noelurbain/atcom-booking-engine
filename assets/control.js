@@ -32,10 +32,11 @@
   }
   function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
 
-  function api(method, path, body) {
+  function api(method, path, body, isForm) {
     var opts = { method: method === 'GET' ? 'GET' : 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': C.nonce } };
     if (method !== 'GET' && method !== 'POST') opts.headers['X-HTTP-Method-Override'] = method;
-    if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    if (isForm) opts.body = body;
+    else if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
     return fetch(C.rest + path, opts).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (!res.ok) throw new Error((data && data.message) || ('Error ' + res.status));
@@ -84,6 +85,7 @@
     });
     if (parts[0] === 'providers' && parts[1]) return viewProvider(parseInt(parts[1], 10));
     if (parts[0] === 'providers') return viewProviders();
+    if (parts[0] === 'import') return viewImport();
     return viewZones();
   }
 
@@ -652,28 +654,125 @@
 
   /* ---------- Providers ---------- */
 
+  function portalCell(p, onDone) {
+    var st = p.portal || { state: 'not_invited' };
+    var label = { active: 'Active' + (st.active_since ? ' since ' + st.active_since : ''), invited: 'Invited ' + (st.invited_at || '').slice(0, 10) + (st.invite_count > 1 ? ' (×' + st.invite_count + ')' : ''), not_invited: 'Not invited' }[st.state];
+    var chip = h('span', { class: 'chip ' + ({ active: 'green', invited: 'orange', not_invited: 'grey' }[st.state]), text: label });
+    if (st.state === 'active') return h('div', { class: 'atc-actions' }, chip);
+    var btn = h('button', { class: 'link', type: 'button', text: st.state === 'invited' ? 'Resend invitation' : 'Send sign-up invitation' });
+    btn.addEventListener('click', function () {
+      if (!p.email) { toast('Add an email for ' + p.name + ' first.', true); return; }
+      btn.disabled = true;
+      api('POST', '/providers/' + p.id + '/invite').then(function (r) {
+        toast(r.test ? 'Test mode: invitation sent to ' + r.sent_to + ' (would go to ' + p.email + ').' : 'Invitation sent to ' + r.sent_to + '.');
+        onDone();
+      }).catch(fail).then(function () { btn.disabled = false; });
+    });
+    return h('div', { class: 'atc-actions' }, chip, btn);
+  }
+
   function viewProviders() {
     clear(app);
     var tbody = h('tbody');
+    var banner = h('div');
+    var search = h('input', { type: 'search', placeholder: 'Find a provider', 'aria-label': 'Find a provider' });
+    var filter = h('select', { 'aria-label': 'Filter' },
+      [['all', 'All'], ['live', 'Live'], ['pending', 'Pending'], ['not_invited', 'Not invited yet'], ['invited', 'Invited, no password yet'], ['active', 'Using the portal']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+    var bulk = h('button', { class: 'btn', type: 'button', text: 'Invite everyone not invited yet' });
+    var count = h('span', { class: 'atc-muted' });
+    var all = [];
     add(app, [
       h('div', { class: 'atc-head' },
-        h('div', null, h('h1', { text: 'Providers' }), h('p', { class: 'atc-muted', text: 'Transport companies we sell. Add one, then pick the vehicles and zones they serve.' })),
-        h('button', { class: 'btn dark', type: 'button', onclick: newProvider, text: 'Add a provider' })),
+        h('div', null, h('h1', { text: 'Providers' }), h('p', { class: 'atc-muted', text: 'Transport companies we sell. Providers brought over from the old site get a sign-up invitation to choose their password.' })),
+        h('div', { class: 'atc-actions' },
+          h('a', { class: 'btn', href: C.base + 'import/', 'data-go': 'import', text: 'Import from the old site' }),
+          h('button', { class: 'btn dark', type: 'button', onclick: newProvider, text: 'Add a provider' }))),
+      banner,
+      h('div', { class: 'atc-actions' }, search, filter, count, bulk),
       h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
-        h('thead', null, h('tr', null, ['Provider', 'Contact', 'Commission', 'Live services', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+        h('thead', null, h('tr', null, ['Provider', 'Contact', 'Airports', 'Status', 'Portal'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
         tbody)))
     ]);
-    api('GET', '/providers').then(function (rows) {
-      if (!rows.length) add(tbody, h('tr', null, h('td', { colspan: 5, class: 'atc-muted', text: 'No providers yet.' })));
-      rows.forEach(function (p) {
+    function render() {
+      clear(tbody);
+      var q = search.value.trim().toLowerCase(), f = filter.value;
+      var rows = all.filter(function (p) {
+        if (q && (p.name + ' ' + (p.email || '')).toLowerCase().indexOf(q) === -1) return false;
+        if (f === 'live' || f === 'pending') return p.status === f;
+        if (f === 'not_invited' || f === 'invited' || f === 'active') return p.portal.state === f;
+        return true;
+      });
+      count.textContent = rows.length + ' of ' + all.length;
+      if (!rows.length) add(tbody, h('tr', null, h('td', { colspan: 5, class: 'atc-muted', text: all.length ? 'No provider matches.' : 'No providers yet.' })));
+      rows.slice(0, 300).forEach(function (p) {
         add(tbody, h('tr', null,
           h('td', null, h('a', { class: 'strong', href: C.base + 'providers/' + p.id + '/', 'data-go': 'providers/' + p.id, text: p.name })),
           h('td', { class: 'atc-muted', text: [p.email, p.phone].filter(Boolean).join(' · ') }),
-          h('td', { text: p.commission_bp === null || p.commission_bp === '' ? money(state.boot.commission_bp) + ' (default)' : money(parseInt(p.commission_bp, 10)) }),
-          h('td', { text: String(p.services_live) }),
-          h('td', null, statusChip(p.status))));
+          h('td', { text: p.airports || '' }),
+          h('td', null, statusChip(p.status)),
+          h('td', null, portalCell(p, load))));
       });
-    }).catch(fail);
+      var notInvited = all.filter(function (p) { return p.portal.state === 'not_invited' && p.email && p.status !== 'archived'; }).length;
+      bulk.textContent = 'Invite everyone not invited yet (' + notInvited + ')';
+      bulk.disabled = !notInvited;
+    }
+    function load() {
+      api('GET', '/providers').then(function (r) {
+        all = r.providers;
+        clear(banner);
+        if (r.invite_test_to) add(banner, h('p', { class: 'chip orange', text: 'Test mode: invitations go to ' + r.invite_test_to + ', not to the providers. Change it in Booking Engine → Settings on the live site.' }));
+        render();
+      }).catch(fail);
+    }
+    search.addEventListener('input', render);
+    filter.addEventListener('change', render);
+    bulk.addEventListener('click', function () {
+      var n = all.filter(function (p) { return p.portal.state === 'not_invited' && p.email && p.status !== 'archived'; }).length;
+      if (!confirm('Send the sign-up invitation to ' + n + ' providers? They go out 40 at a time; click again for the rest.')) return;
+      bulk.disabled = true; bulk.textContent = 'Sending…';
+      api('POST', '/providers/invite-all').then(function (r) {
+        toast(r.sent + ' invitations sent' + (r.test_to ? ' to ' + r.test_to + ' (test mode)' : '') + (r.remaining ? '. ' + r.remaining + ' left: click again.' : '.') + (r.failed.length ? ' ' + r.failed.length + ' failed.' : ''), !!r.failed.length);
+        load();
+      }).catch(fail).then(function () { bulk.disabled = false; });
+    });
+    load();
+  }
+
+  function viewImport() {
+    clear(app);
+    var file = h('input', { type: 'file', accept: 'application/json,.json' });
+    var out = h('div', { class: 'list' });
+    function run(dry) {
+      if (!file.files.length) { file.focus(); toast('Choose the import file first.', true); return; }
+      var fd = new FormData(); fd.append('file', file.files[0]); fd.append('dry_run', dry ? '1' : '0');
+      clear(out); add(out, h('p', { class: 'atc-muted', text: dry ? 'Checking…' : 'Importing… this can take a minute.' }));
+      api('POST', '/import', fd, true).then(function (r) {
+        clear(out);
+        if (!r.ok) { add(out, h('p', { class: 'chip red', text: r.error })); return; }
+        add(out, h('section', { class: 'card pad' + (dry ? '' : ' ok') },
+          h('h2', { text: dry ? 'Check only: nothing was saved' : 'Import done' }),
+          h('div', { class: 'ticks' },
+            h('span', { class: 'chip grey', text: 'Airports: ' + r.airports_new + ' new, ' + r.airports_existing + ' already here' }),
+            h('span', { class: 'chip grey', text: 'Providers: ' + r.providers_new + ' new, ' + r.providers_existing + ' already here' }),
+            h('span', { class: 'chip grey', text: 'Zones: ' + r.zones_new + ' new, ' + r.zones_shape_added + ' got a shape, ' + r.zones_existing + ' already shaped' }),
+            h('span', { class: 'chip grey', text: 'Vehicle categories: ' + r.services }),
+            h('span', { class: 'chip grey', text: 'Prices: ' + r.prices }),
+            r.prices_held ? h('span', { class: 'chip orange', text: r.prices_held + ' prices left out (wrong currency or typo)' }) : null),
+          r.issues.length ? h('details', null, h('summary', { class: 'strong', text: r.issues.length + ' things to look at' }), h('ul', null, r.issues.map(function (i) { return h('li', { class: 'small', text: i }); }))) : null,
+          dry ? h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'button', onclick: function () { run(false); }, text: 'Looks right: import now' })) : h('div', { class: 'atc-actions' }, h('a', { class: 'btn', href: C.base + 'providers/', 'data-go': 'providers', text: 'See the providers' }))));
+      }).catch(fail);
+    }
+    add(app, [
+      h('a', { class: 'back', href: C.base + 'providers/', 'data-go': 'providers', text: '← Providers' }),
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Import from the old site' }), h('p', { class: 'atc-muted', text: 'Providers, the airports they serve, their coverage areas (as zones) and their prices. Travelers keep paying the same; providers get 75% under the new 25% commission. Safe to run again: nothing is doubled, and shapes you drew here are never replaced.' }))),
+      h('section', { class: 'card pad' },
+        h('label', { class: 'field' }, h('span', { text: 'Import file (atcom-migration.json)' }), file),
+        h('div', { class: 'atc-actions' },
+          h('button', { class: 'btn dark', type: 'button', onclick: function () { run(true); }, text: 'Check first' }),
+          h('button', { class: 'btn', type: 'button', onclick: function () { if (confirm('Import now without checking first?')) run(false); }, text: 'Import' })),
+        h('p', { class: 'small atc-muted', text: 'Nobody is emailed by the import. Invitations are sent from the Providers list when you decide.' })),
+      out
+    ]);
   }
 
   function statusChip(s) {
@@ -742,14 +841,40 @@
               if (!confirm('Set ' + p.name + ' live? Their offered vehicle categories become bookable and they get an email.')) return;
               api('PUT', '/providers/' + id, { status: 'live' }).then(function () { toast('Live.'); viewProvider(id); }).catch(fail);
             }, text: 'Approve and set live' }) : null)),
+        h('div', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('strong', { text: 'Portal' }), portalCell({ id: id, name: p.name, email: p.email, portal: d.portal }, function () { viewProvider(id); }))),
         setupCard(d),
         p.about ? h('section', { class: 'card pad' }, h('h2', { text: 'About the company (from sign-up)' }), h('p', { class: 'prewrap', text: p.about })) : null,
         documentsCard(id, d),
         form,
+        pricesCard(d.prices),
         servicesCard(id, d.services, zones),
         vehiclesCard(id, d.vehicles)
       ]);
     }).catch(fail);
+  }
+
+  function pricesCard(tables) {
+    var card = h('section', { class: 'card pad' }, h('h2', { text: 'Prices' }),
+      h('p', { class: 'atc-muted small', text: 'Suggested retail price (what travelers pay) · Amount the provider gets paid. One way, then round trip. Editing comes in the next version.' }));
+    if (!tables.length) { add(card, h('p', { class: 'atc-muted', text: 'No prices yet.' })); return card; }
+    tables.forEach(function (t) { add(card, priceTable(t)); });
+    return card;
+  }
+  function usd(c) { return (c / 100).toFixed(c % 100 ? 2 : 0); }
+  function priceTable(t) {
+    return h('div', null, h('p', { class: 'label', text: t.airport + (t.iata ? ' (' + t.iata + ')' : '') + ' · ' + t.zones.length + ' zones' }),
+      h('div', { class: 'scroll' }, h('table', { class: 'prices' },
+        h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), t.vehicles.map(function (v) { return h('th', { scope: 'col', text: v.name + (v.status !== 'live' ? ' (' + v.status + ')' : '') }); }))),
+        h('tbody', null, t.zones.map(function (z) {
+          return h('tr', null, h('td', { class: 'strong', text: z.name }), t.vehicles.map(function (v) {
+            var c = z.cells[v.id];
+            if (!c) return h('td', { class: 'atc-muted', text: '–' });
+            var ow = c.one_way, rt = c.round_trip;
+            return h('td', null,
+              ow ? h('div', null, h('strong', { text: 'USD ' + usd(ow.retail) }), h('span', { class: 'atc-muted small', text: ' · ' + usd(ow.provider) })) : null,
+              rt ? h('div', { class: 'small' }, 'RT ' + usd(rt.retail), h('span', { class: 'atc-muted', text: ' · ' + usd(rt.provider) })) : null);
+          }));
+        })))));
   }
 
   function setupCard(d) {

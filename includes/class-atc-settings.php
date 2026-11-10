@@ -27,6 +27,8 @@ final class ATC_Settings {
 			'service_code_length'    => 4,
 			'service_code_attempts'  => 5,
 			'from_email'             => 'hello@airporttransportation.com',
+			// While this is set, provider invitations go to this address instead of the providers (test site).
+			'invite_test_to'         => 'hello@airporttransportation.com',
 		);
 	}
 
@@ -74,6 +76,9 @@ final class ATC_Settings {
 
 		$email             = isset( $in['from_email'] ) ? sanitize_email( $in['from_email'] ) : '';
 		$out['from_email'] = is_email( $email ) ? $email : $d['from_email'];
+
+		$test                  = isset( $in['invite_test_to'] ) ? sanitize_email( $in['invite_test_to'] ) : '';
+		$out['invite_test_to'] = is_email( $test ) ? $test : '';
 
 		// Live mode is refused until a live secret key exists in wp-config.php.
 		if ( 'live' === $out['stripe_mode'] && ! self::has_secret( 'live' ) ) {

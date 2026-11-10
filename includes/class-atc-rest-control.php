@@ -143,7 +143,13 @@ final class ATC_REST_Control {
 		self::route(
 			'/providers',
 			array(
-				'GET'  => static fn() => rest_ensure_response( ATC_Catalog::parties( 'provider' ) ),
+				'GET'  => static function () {
+					$rows = ATC_Catalog::parties( 'provider' );
+					foreach ( $rows as &$row ) {
+						$row['portal'] = ATC_Partner::portal_state( (int) $row['id'] );
+					}
+					return rest_ensure_response( array( 'providers' => $rows, 'invite_test_to' => (string) ATC_Settings::get( 'invite_test_to' ) ) );
+				},
 				'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Catalog::save_party( self::body( $r ) ) ),
 			)
 		);
@@ -165,10 +171,58 @@ final class ATC_REST_Control {
 							'doc_types' => ATC_Partner::doc_types(),
 							'steps'     => ATC_Partner::steps( $id ),
 							'payout'    => ATC_Partner::payout_summary( $id ),
+							'portal'    => ATC_Partner::portal_state( $id ),
+							'prices'    => ATC_Catalog::price_table( $id ),
 						)
 					);
 				},
 				'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Catalog::save_party( self::body( $r ), (int) $r['id'] ) ),
+			)
+		);
+		self::route(
+			'/providers/(?P<id>\d+)/invite',
+			array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::invite( (int) $r['id'] ) ) ),
+		);
+		self::route(
+			'/providers/invite-all',
+			array(
+				'POST' => static function () {
+					global $wpdb;
+					$ids  = array_map( 'intval', $wpdb->get_col( 'SELECT id FROM ' . ATC_Schema::table( 'parties' ) . " WHERE type = 'provider' AND invited_at IS NULL AND status <> 'archived' AND email IS NOT NULL AND email <> '' ORDER BY id" ) );
+					$sent = 0;
+					$fail = array();
+					foreach ( array_slice( $ids, 0, 40 ) as $id ) {
+						if ( 'active' === ATC_Partner::portal_state( $id )['state'] ) {
+							continue;
+						}
+						$res = ATC_Partner::invite( $id );
+						if ( is_wp_error( $res ) ) {
+							$fail[] = ATC_Catalog::party( $id )['name'] . ': ' . $res->get_error_message();
+						} else {
+							++$sent;
+						}
+					}
+					return rest_ensure_response( array( 'sent' => $sent, 'failed' => $fail, 'remaining' => max( 0, count( $ids ) - 40 ), 'test_to' => (string) ATC_Settings::get( 'invite_test_to' ) ) );
+				},
+			)
+		);
+		self::route(
+			'/import',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$files = $r->get_file_params();
+					if ( empty( $files['file']['tmp_name'] ) || ! is_uploaded_file( $files['file']['tmp_name'] ) ) {
+						return new WP_Error( 'atc_import', 'Choose the import file first.', array( 'status' => 400 ) );
+					}
+					if ( $files['file']['size'] > 20 * MB_IN_BYTES ) {
+						return new WP_Error( 'atc_import', 'The file is too large.', array( 'status' => 400 ) );
+					}
+					$data = json_decode( (string) file_get_contents( $files['file']['tmp_name'] ), true ); // phpcs:ignore
+					if ( ! is_array( $data ) ) {
+						return new WP_Error( 'atc_import', 'The file could not be read.', array( 'status' => 400 ) );
+					}
+					return rest_ensure_response( ATC_Migration::import( $data, '1' === (string) $r['dry_run'] ) );
+				},
 			)
 		);
 		self::route(

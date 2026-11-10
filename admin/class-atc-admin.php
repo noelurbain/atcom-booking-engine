@@ -151,6 +151,7 @@ define( 'ATC_MAPS_SERVER_KEY', 'AIza…' );</pre>
 					$num( 'service_code_length', 'Service code length', 'characters (4–6)' );
 					$num( 'service_code_attempts', 'Service code tries before locking', '' );
 					?>
+					<tr><th scope="row"><label for="invite_test_to">Test mode: send provider invitations to</label></th><td><input type="email" id="invite_test_to" class="regular-text" name="<?php echo esc_attr( $n ); ?>[invite_test_to]" value="<?php echo esc_attr( $o['invite_test_to'] ); ?>"><p class="description">While this has an address, invitations go there instead of to the providers. Empty it on the live site to invite providers for real.</p></td></tr>
 					<tr><th scope="row"><label for="from_email">Send emails from</label></th><td><input type="email" id="from_email" class="regular-text" name="<?php echo esc_attr( $n ); ?>[from_email]" value="<?php echo esc_attr( $o['from_email'] ); ?>"></td></tr>
 				</table>
 				<?php submit_button(); ?>

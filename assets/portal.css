@@ -33,3 +33,9 @@ a.on .soon{background:rgba(255,255,255,.15);color:#fff}
 a.atc-user{color:#fff;font-weight:700}
 @media (max-width:1100px){.steps{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:760px){.atc-side{position:static;max-width:none;flex-direction:row;flex-wrap:wrap}.atc-side a{padding:8px 12px}.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}}
+
+table.prices td{white-space:nowrap;vertical-align:top}
+.scroll{overflow-x:auto}
+table.prices{width:100%;min-width:560px;border-collapse:collapse;font-size:14px}
+table.prices th{background:#FAF8F4;text-align:left;color:#55575D;font-size:13px;padding:10px 12px;font-weight:700}
+table.prices td{padding:10px 12px;border-top:1px solid #F0ECE5}
