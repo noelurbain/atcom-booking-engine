@@ -229,7 +229,7 @@
         var s = h('select', { 'aria-label': 'Our zone for ' + p.name }, zoneOpts(cur));
         placeSel[p.name] = s;
         var how = p.zone_id ? p.how : (p.place ? 'Found on the map ' + (p.km ? p.km + ' km from the airport' : '') + ', outside our zones' : p.how || 'Not found');
-        return h('tr', null, h('td', { class: 'strong', text: p.name }), h('td', null, s), h('td', { class: 'small atc-muted', text: how + ' · ' + p.prices + ' prices' }));
+        return h('tr', null, h('td', { class: 'strong', text: p.name }), h('td', null, s), h('td', { class: 'small atc-muted', text: how + ' · ' + p.prices + (p.prices === 1 ? ' price' : ' prices') }));
       });
       var vehicles = pv.vehicles.map(function (v) {
         var s = h('select', { 'aria-label': 'Our category for ' + (v.name || 'unnamed') },

@@ -119,3 +119,4 @@ table.pe td{vertical-align:top;min-width:150px}
 .pe-title{margin-top:6px}
 h3.label{margin-top:8px}
 @media (max-width:700px){.pe-up{grid-template-columns:minmax(0,1fr)}}
+.pe-root .atc-inline select{width:auto;max-width:100%}
