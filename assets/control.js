@@ -163,6 +163,31 @@
                 return h('tr', null, h('td', null, h('div', { class: 'strong', text: r.airport || '–' }), h('div', { class: 'small atc-muted', text: r.name || '' })), h('td', { text: String(r.bookings) }), h('td', { text: cash(r.sales) }));
               }) : h('tr', null, h('td', { colspan: 3, class: 'atc-muted', text: 'No sales yet.' }))))))),
 
+        td.proposed.length ? h('section', { class: 'card warn' },
+          h('div', { class: 'card-head' }, h('h2', { text: 'Zones proposed by providers' }), h('span', { class: 'small atc-muted', text: 'From their price lists: places outside our zones. Their prices wait until you approve.' })),
+          h('div', { class: 'scroll' }, h('table', { class: 'narrow' },
+            h('thead', null, h('tr', null, ['Zone', 'Airport', 'Provider', 'Prices', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+            h('tbody', null, td.proposed.map(function (z) {
+              var ok = h('button', { class: 'btn dark', type: 'button', text: 'Approve' });
+              var no = h('button', { class: 'link danger', type: 'button', text: 'Reject' });
+              function decide(approve) {
+                if (!approve && !confirm('Reject "' + z.name + '"? Its ' + z.prices + ' prices are deleted.')) return;
+                ok.disabled = no.disabled = true;
+                api('POST', '/zones/' + z.id + '/decide', { approve: approve }).then(function () {
+                  toast(approve ? z.name + ' approved. Give it a shape in Zones and hotels.' : z.name + ' rejected.');
+                  viewDashboard();
+                }).catch(fail);
+              }
+              ok.addEventListener('click', function () { decide(true); });
+              no.addEventListener('click', function () { decide(false); });
+              return h('tr', null,
+                h('td', null, h('div', { class: 'strong', text: z.name }), z.at ? h('a', { class: 'small', href: 'https://www.google.com/maps?q=' + encodeURIComponent(z.at), target: '_blank', rel: 'noopener', text: 'See on the map ↗' }) : null),
+                h('td', { text: z.iata || z.airport }),
+                h('td', null, z.party_id ? h('a', { href: C.base + 'providers/' + z.party_id + '/', 'data-go': 'providers/' + z.party_id, text: z.provider }) : '–'),
+                h('td', { text: String(z.prices) }),
+                h('td', null, h('div', { class: 'atc-actions' }, ok, no)));
+            }))))) : null,
+
         h('section', { class: 'stats' },
           stat('Providers live', pr.live, pr.pending + ' pending · ' + pr.suspended + ' suspended'),
           stat('Using the portal', pr.portal.active, pr.portal.invited + ' invited, no password yet'),
@@ -952,35 +977,13 @@
         p.about ? h('section', { class: 'card pad' }, h('h2', { text: 'About the company (from sign-up)' }), h('p', { class: 'prewrap', text: p.about })) : null,
         documentsCard(id, d),
         form,
-        pricesCard(d.prices),
+        h('h2', { class: 'pe-title', text: 'Prices' }),
+        h('div', { class: 'pe-root', id: 'atc-prices' }),
         servicesCard(id, d.services, zones),
         vehiclesCard(id, d.vehicles)
       ]);
+      window.ATCPrices.mount(document.getElementById('atc-prices'), { api: api, base: '/providers/' + id + '/prices', who: 'staff', toast: toast, fail: fail });
     }).catch(fail);
-  }
-
-  function pricesCard(tables) {
-    var card = h('section', { class: 'card pad' }, h('h2', { text: 'Prices' }),
-      h('p', { class: 'atc-muted small', text: 'Suggested retail price (what travelers pay) · Amount the provider gets paid. One way, then round trip. Editing comes in the next version.' }));
-    if (!tables.length) { add(card, h('p', { class: 'atc-muted', text: 'No prices yet.' })); return card; }
-    tables.forEach(function (t) { add(card, priceTable(t)); });
-    return card;
-  }
-  function usd(c) { return (c / 100).toFixed(c % 100 ? 2 : 0); }
-  function priceTable(t) {
-    return h('div', null, h('p', { class: 'label', text: t.airport + (t.iata ? ' (' + t.iata + ')' : '') + ' · ' + t.zones.length + ' zones' }),
-      h('div', { class: 'scroll' }, h('table', { class: 'prices' },
-        h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), t.vehicles.map(function (v) { return h('th', { scope: 'col', text: v.name + (v.status !== 'live' ? ' (' + v.status + ')' : '') }); }))),
-        h('tbody', null, t.zones.map(function (z) {
-          return h('tr', null, h('td', { class: 'strong', text: z.name }), t.vehicles.map(function (v) {
-            var c = z.cells[v.id];
-            if (!c) return h('td', { class: 'atc-muted', text: '–' });
-            var ow = c.one_way, rt = c.round_trip;
-            return h('td', null,
-              ow ? h('div', null, h('strong', { text: 'USD ' + usd(ow.retail) }), h('span', { class: 'atc-muted small', text: ' · ' + usd(ow.provider) })) : null,
-              rt ? h('div', { class: 'small' }, 'RT ' + usd(rt.retail), h('span', { class: 'atc-muted', text: ' · ' + usd(rt.provider) })) : null);
-          }));
-        })))));
   }
 
   function setupCard(d) {

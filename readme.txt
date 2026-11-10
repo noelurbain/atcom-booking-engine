@@ -1,5 +1,17 @@
 === ATCOM Booking Engine ===
-Version: 0.4.1 (dashboard)
+Version: 0.5.0 (price editor)
+
+New in 0.5.0: price editor and price-list upload
+- Provider portal → Prices, and Control panel → provider record → Prices: a grid per airport, zones as rows
+  and vehicle categories as columns, one way and round trip. Type what the provider gets paid or what
+  travelers pay; the other fills in (25% commission, retail rounded up to whole dollars). "Add a zone",
+  "Add a vehicle category". Unusual amounts (under USD 10 or over USD 5,000) are flagged.
+- Upload a price list (Excel, CSV, or pasted from Google Sheets), in the provider's own words: one column per
+  vehicle, or columns for place, vehicle, one way, round trip. Their vehicles are matched to our categories
+  and their places to our zones (their earlier names, our zone names, then Google: inside a zone shape takes
+  that zone). They check the matches before saving. Their names are remembered for the next upload.
+- A place outside every zone becomes a proposed zone: its prices are saved and wait ("Zone pending"). Our
+  team gets an email and approves or rejects it from the Dashboard; approved zones then need a shape.
 
 New in 0.4.1:
 - /control opens on a Dashboard: paid bookings, sales and our share (last 30 days and all time), paid trips

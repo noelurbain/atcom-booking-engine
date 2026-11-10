@@ -397,6 +397,6 @@ final class ATC_Portal {
 		$js = ATC_URL . 'assets/portal.js?v=' . rawurlencode( ATC_VERSION );
 		self::frame_open( 'Provider portal', 'Provider portal' );
 		echo '<div class="atc-wrap atc-shell"><nav id="atc-side" class="atc-side" aria-label="Provider menu"></nav><main id="atc-app" class="atc-main" aria-live="polite"><p class="atc-muted">Loading…</p></main></div><div id="atc-toast" role="status" aria-live="polite"></div>';
-		self::frame_close( '<script>window.ATC = ' . wp_json_encode( $config ) . ';</script><script src="' . esc_url( $js ) . '"></script>' );
+		self::frame_close( '<script>window.ATC = ' . wp_json_encode( $config ) . ';</script><script src="' . esc_url( ATC_URL . 'assets/prices.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script><script src="' . esc_url( $js ) . '"></script>' );
 	}
 }

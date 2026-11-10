@@ -321,33 +321,15 @@
     });
   }
 
-  /* ---------- Prices (read-only until the price editor ships) ---------- */
+  /* ---------- Prices ---------- */
 
-  function money(c) { return (c / 100).toFixed(c % 100 ? 2 : 0); }
   function viewPrices() {
-    var pct = me.commission_bp / 100;
-    add(app, head('Prices', 'Suggested retail price is what travelers pay. You get paid ' + (100 - pct) + '% of it (our commission is ' + pct + '%).'));
-    var tables = me.prices || [];
-    if (!tables.length) {
-      add(app, h('section', { class: 'card pad' }, h('p', { text: 'No prices yet. Setting and uploading your price list (Excel or CSV) is coming in the next version.' })));
-      return;
-    }
-    add(app, h('p', { class: 'atc-muted', text: 'These prices came over from your account on the old site. Editing and uploading a price list is coming in the next version; until then, write to us to change one.' }));
-    tables.forEach(function (t) {
-      add(app, h('section', { class: 'card pad' },
-        h('h2', { text: t.airport + (t.iata ? ' (' + t.iata + ')' : '') }),
-        h('div', { class: 'scroll' }, h('table', { class: 'prices' },
-          h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), t.vehicles.map(function (v) { return h('th', { scope: 'col', text: v.name }); }))),
-          h('tbody', null, t.zones.map(function (z) {
-            return h('tr', null, h('td', { class: 'strong', text: z.name }), t.vehicles.map(function (v) {
-              var c = z.cells[v.id];
-              if (!c) return h('td', { class: 'atc-muted', text: '–' });
-              return h('td', null,
-                c.one_way ? h('div', null, h('strong', { text: 'USD ' + money(c.one_way.retail) }), h('span', { class: 'atc-muted small', text: ' · you get ' + money(c.one_way.provider) })) : null,
-                c.round_trip ? h('div', { class: 'small' }, 'Round trip ' + money(c.round_trip.retail), h('span', { class: 'atc-muted', text: ' · you get ' + money(c.round_trip.provider) })) : null);
-            }));
-          })))),
-        h('p', { class: 'small atc-muted', text: 'One way on the first line, round trip on the second.' })));
+    add(app, head('Prices', 'Your price for each zone and vehicle, one way and round trip. Type them here or upload your own price list.'));
+    var box = h('div', { class: 'pe-root' });
+    add(app, box);
+    window.ATCPrices.mount(box, {
+      api: api, base: '/prices', who: 'provider', toast: toast, fail: fail,
+      onSaved: function () { api('GET', '/me').then(function (d) { me = d; nav(); }); }
     });
   }
 

@@ -182,6 +182,38 @@ final class ATC_REST_Portal {
 			)
 		);
 
+		$airport = static function ( WP_REST_Request $r ) {
+			$want = (int) ( self::body( $r )['airport_id'] ?? $r['airport_id'] ?? 0 );
+			$ids  = wp_list_pluck( ATC_Prices::airports_for( self::pid() ), 'id' );
+			return in_array( $want, $ids, true ) ? $want : (int) ( $ids[0] ?? 0 );
+		};
+		self::route(
+			'/prices',
+			array(
+				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Prices::grid( self::pid(), $airport( $r ) ) ),
+				'POST' => static function ( WP_REST_Request $r ) use ( $airport ) {
+					$aid = $airport( $r );
+					$res = ATC_Prices::save( self::pid(), $aid, (array) ( self::body( $r )['cells'] ?? array() ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( $res + array( 'grid' => ATC_Prices::grid( self::pid(), $aid ) ) );
+				},
+			)
+		);
+		self::route(
+			'/prices/preview',
+			array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Prices::preview( self::pid(), $airport( $r ), (array) ( self::body( $r )['rows'] ?? array() ) ) ) )
+		);
+		self::route(
+			'/prices/apply',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) use ( $airport ) {
+					$b   = self::body( $r );
+					$aid = $airport( $r );
+					$res = ATC_Prices::apply( self::pid(), $aid, (array) ( $b['lines'] ?? array() ), (array) ( $b['places'] ?? array() ), (array) ( $b['vehicles'] ?? array() ), (string) ( $b['basis'] ?? 'provider' ), (array) ( $b['found'] ?? array() ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( $res + array( 'grid' => ATC_Prices::grid( self::pid(), $aid ) ) );
+				},
+			)
+		);
+
 		self::route(
 			'/agreement',
 			array(

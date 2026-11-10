@@ -111,6 +111,7 @@ final class ATC_Control {
 <main id="atc-app" class="atc-wrap" aria-live="polite"><p class="atc-muted">Loading…</p></main>
 <div id="atc-toast" role="status" aria-live="polite"></div>
 <script>window.ATC = <?php echo wp_json_encode( $config ); ?>;</script>
+<script src="<?php echo esc_url( ATC_URL . 'assets/prices.js?v=' . rawurlencode( ATC_VERSION ) ); ?>"></script>
 <script src="<?php echo esc_url( $js ); ?>"></script>
 </body>
 </html>

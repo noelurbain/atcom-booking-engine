@@ -157,6 +157,7 @@ final class ATC_Dashboard {
 			),
 			'todo'      => array(
 				'new_signups' => $new_signups,
+				'proposed'    => ATC_Prices::proposed_zones(),
 				'documents'   => $docs,
 				'no_shape'    => $no_shape,
 				'held_prices' => array_slice( $held, 0, 60 ),

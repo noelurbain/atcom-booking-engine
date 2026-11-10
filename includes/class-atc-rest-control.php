@@ -228,6 +228,48 @@ final class ATC_REST_Control {
 			)
 		);
 		self::route(
+			'/providers/(?P<id>\d+)/prices',
+			array(
+				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Prices::grid( (int) $r['id'], (int) $r['airport_id'] ?: (int) ( ATC_Prices::airports_for( (int) $r['id'] )[0]['id'] ?? 0 ) ) ),
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b   = self::body( $r );
+					$aid = (int) ( $b['airport_id'] ?? 0 );
+					$res = ATC_Prices::save( (int) $r['id'], $aid, (array) ( $b['cells'] ?? array() ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( $res + array( 'grid' => ATC_Prices::grid( (int) $r['id'], $aid ) ) );
+				},
+			)
+		);
+		self::route(
+			'/providers/(?P<id>\d+)/prices/preview',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return self::out( ATC_Prices::preview( (int) $r['id'], (int) ( $b['airport_id'] ?? 0 ), (array) ( $b['rows'] ?? array() ) ) );
+				},
+			)
+		);
+		self::route(
+			'/providers/(?P<id>\d+)/prices/apply',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b   = self::body( $r );
+					$aid = (int) ( $b['airport_id'] ?? 0 );
+					$res = ATC_Prices::apply( (int) $r['id'], $aid, (array) ( $b['lines'] ?? array() ), (array) ( $b['places'] ?? array() ), (array) ( $b['vehicles'] ?? array() ), (string) ( $b['basis'] ?? 'retail' ), (array) ( $b['found'] ?? array() ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( $res + array( 'grid' => ATC_Prices::grid( (int) $r['id'], $aid ) ) );
+				},
+			)
+		);
+		self::route( '/zones/proposed', array( 'GET' => static fn() => rest_ensure_response( ATC_Prices::proposed_zones() ) ) );
+		self::route(
+			'/zones/(?P<id>\d+)/decide',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return self::out( ATC_Prices::decide_zone( (int) $r['id'], ! empty( $b['approve'] ) ) );
+				},
+			)
+		);
+		self::route(
 			'/documents/(?P<id>\d+)/review',
 			array(
 				'POST' => static function ( WP_REST_Request $r ) {
