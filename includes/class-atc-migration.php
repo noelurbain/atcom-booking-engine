@@ -207,6 +207,13 @@ final class ATC_Migration {
 			// Someone who already signed up on the new site with the same email: link instead of doubling.
 			$id = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'parties' ) . " WHERE type = 'provider' AND email = %s ORDER BY id LIMIT 1", sanitize_email( $p['email'] ) ) ) ?: null;
 		}
+		if ( ! $id ) {
+			// Same company name as someone who signed up here with another email (Cancun Airport Transportation).
+			$id = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'parties' ) . " WHERE type = 'provider' AND LOWER(name) = LOWER(%s) ORDER BY id LIMIT 1", $name ) ) ?: null;
+			if ( $id ) {
+				$r['issues'][] = $name . ': linked to the account already here with the same name; its details were kept, prices and areas added.';
+			}
+		}
 		if ( $id ) {
 			self::legacy_set( 'party', $p['legacy_id'], $id );
 			++$r['providers_existing'];
