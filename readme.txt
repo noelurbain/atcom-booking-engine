@@ -1,5 +1,13 @@
 === ATCOM Booking Engine ===
-Version: 0.2.3 (milestone 2: catalog)
+Version: 0.3.0 (provider portal, part 1)
+
+New in 0.3.0: provider portal at /portal
+- /portal/signup: transport companies create an account (company, contact, email, WhatsApp, airport,
+  a few words about the company). /portal/login to sign in. Providers never see wp-admin.
+- Setup checklist: company details, vehicle categories and vehicles, zones served (map), documents
+  (private uploads), payout details (encrypted, only last 4 digits shown), provider agreement.
+- Control panel: setup status, documents to approve or reject, payout summary, "Approve and set live".
+- Emails: welcome, new sign-up and new document alerts to our team, document rejected, you are live.
 
 New in 0.2.3:
 - "Find all hotels inside": searches Google for every hotel inside a zone's shape, part by part, and lists them.

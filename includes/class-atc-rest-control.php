@@ -161,10 +161,23 @@ final class ATC_REST_Control {
 							'provider' => $party,
 							'services' => ATC_Catalog::services( $id ),
 							'vehicles' => ATC_Catalog::vehicles( $id ),
+							'documents' => ATC_Partner::documents( $id ),
+							'doc_types' => ATC_Partner::doc_types(),
+							'steps'     => ATC_Partner::steps( $id ),
+							'payout'    => ATC_Partner::payout_summary( $id ),
 						)
 					);
 				},
 				'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Catalog::save_party( self::body( $r ), (int) $r['id'] ) ),
+			)
+		);
+		self::route(
+			'/documents/(?P<id>\d+)/review',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return self::out( ATC_Partner::review_document( (int) $r['id'], (string) ( $b['status'] ?? '' ), (string) ( $b['note'] ?? '' ) ) );
+				},
 			)
 		);
 		self::route(

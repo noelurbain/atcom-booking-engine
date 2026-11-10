@@ -736,12 +736,58 @@
 
       add(app, [
         h('a', { class: 'back', href: C.base + 'providers/', 'data-go': 'providers', text: '← Providers' }),
-        h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: p.name }), h('p', { class: 'atc-muted', text: 'Provider since ' + (p.created_at || '').slice(0, 10) })), statusChip(p.status)),
+        h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: p.name }), h('p', { class: 'atc-muted', text: 'Provider since ' + (p.created_at || '').slice(0, 10) + (p.contact_name ? ' · ' + p.contact_name : '') })),
+          h('div', { class: 'atc-actions' }, statusChip(p.status),
+            p.status !== 'live' ? h('button', { class: 'btn dark', type: 'button', onclick: function () {
+              if (!confirm('Set ' + p.name + ' live? Their offered vehicle categories become bookable and they get an email.')) return;
+              api('PUT', '/providers/' + id, { status: 'live' }).then(function () { toast('Live.'); viewProvider(id); }).catch(fail);
+            }, text: 'Approve and set live' }) : null)),
+        setupCard(d),
+        p.about ? h('section', { class: 'card pad' }, h('h2', { text: 'About the company (from sign-up)' }), h('p', { class: 'prewrap', text: p.about })) : null,
+        documentsCard(id, d),
         form,
         servicesCard(id, d.services, zones),
         vehiclesCard(id, d.vehicles)
       ]);
     }).catch(fail);
+  }
+
+  function setupCard(d) {
+    var keys = ['company', 'vehicles', 'coverage', 'documents', 'payout', 'agreement', 'approval'];
+    var pay = d.payout;
+    return h('section', { class: 'card pad' },
+      h('h2', { text: 'Setup in the provider portal' }),
+      h('div', { class: 'ticks' }, keys.map(function (k) {
+        var st = d.steps[k];
+        return h('span', { class: 'chip ' + ({ done: 'green', waiting: 'orange', todo: 'grey' }[st.state]), text: st.name + ': ' + st.label });
+      })),
+      h('p', { class: 'small atc-muted', text: 'Payout: ' + (pay.set ? (pay.method === 'wise' ? 'Wise · ' + pay.email : (pay.bank ? pay.bank + ' · ' : '') + 'ending ' + pay.last4) + ' · ' + pay.currency + ' · holder ' + pay.holder : 'not given yet') +
+        (d.provider.agreement_accepted_at ? ' · Agreement ' + d.provider.agreement_version + ' accepted ' + d.provider.agreement_accepted_at.slice(0, 16) + ' UTC' : '') }));
+  }
+
+  function documentsCard(partyId, d) {
+    var card = h('section', { class: 'card pad' + (d.documents.some(function (x) { return x.status === 'pending'; }) ? ' warn' : '') }, h('h2', { text: 'Documents' }));
+    if (!d.documents.length) { add(card, h('p', { class: 'atc-muted', text: 'Nothing uploaded yet.' })); return card; }
+    d.documents.forEach(function (doc) {
+      var name = (d.doc_types[doc.type] || [doc.type])[0];
+      var note = h('input', { type: 'text', placeholder: 'Reason, if not accepted' });
+      function review(status) {
+        if (status === 'rejected' && !note.value.trim()) { note.focus(); toast('Say why, so the provider knows what to send.', true); return; }
+        api('POST', '/documents/' + doc.id + '/review', { status: status, note: note.value }).then(function () { toast('Saved.'); viewProvider(partyId); }).catch(fail);
+      }
+      add(card, h('div', { class: 'row' },
+        h('div', null, h('div', { class: 'strong', text: name }),
+          h('div', { class: 'atc-muted small' }, h('a', { href: doc.url, target: '_blank', rel: 'noopener', text: doc.original_name }),
+            ' · sent ' + doc.created_at.slice(0, 10) + (doc.expires_on ? ' · expires ' + doc.expires_on : '') + (doc.note ? ' · ' + doc.note : ''))),
+        h('div', { class: 'atc-actions' },
+          h('span', { class: 'chip ' + ({ approved: 'green', rejected: 'red', pending: 'orange' }[doc.status] || 'grey'), text: doc.status }),
+          doc.status === 'pending' ? [
+            h('button', { class: 'btn dark', type: 'button', onclick: function () { review('approved'); }, text: 'Approve' }),
+            note,
+            h('button', { class: 'btn danger', type: 'button', onclick: function () { review('rejected'); }, text: 'Ask for a new one' })
+          ] : null)));
+    });
+    return card;
   }
 
   function servicesCard(partyId, services, zones) {

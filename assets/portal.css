@@ -1,0 +1,35 @@
+/* Provider portal: builds on control.css */
+.atc-narrow{max-width:860px;padding-top:28px;padding-bottom:64px;display:flex;flex-direction:column;gap:18px}
+.atc-shell{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;padding-top:24px;padding-bottom:64px}
+.atc-side{flex:1 1 220px;max-width:260px;display:flex;flex-direction:column;gap:4px;position:sticky;top:16px}
+.atc-side a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;border-radius:10px;font-weight:600}
+.atc-side a:hover{background:#fff}
+.atc-side a.on{background:var(--ink);color:#fff}
+.dot{width:10px;height:10px;border-radius:999px;flex-shrink:0;background:#D9D5CD}
+.dot.done{background:#2E9B57}.dot.waiting{background:var(--amber)}
+.soon{font-style:normal;font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:#F0EEEA;color:var(--muted)}
+a.on .soon{background:rgba(255,255,255,.15);color:#fff}
+.atc-main{flex:999 1 640px;min-width:0;display:flex;flex-direction:column;gap:18px}
+.steps{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.step a,.step>div{display:flex;flex-direction:column;gap:4px;padding:12px;border-radius:12px;height:100%;background:#fff;border:1px solid var(--line);color:var(--muted)}
+.step .st{font-size:11px;font-weight:800;letter-spacing:.04em}.step .nm{font-size:14px;font-weight:700;color:var(--ink)}
+.step.done a,.step.done>div{background:var(--greenbg);border-color:var(--greenbg);color:var(--green)}
+.step.waiting a,.step.waiting>div{background:var(--warnbg);border:2px solid var(--amber);color:var(--warnfg)}
+.step.todo a:hover{border-color:var(--ink)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.align-end{align-items:end}
+.ticks.col{flex-direction:column;align-items:flex-start;gap:10px}
+.svc.on{border-color:var(--ink)}
+.row-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-start}
+.row-head p{margin:4px 0 0}
+.agreement ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;line-height:1.55}
+.field .err,small.err{color:var(--red);font-weight:700}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.atc-login form p{display:flex;flex-direction:column;gap:6px;margin:0 0 12px}
+.atc-login label{font-size:13px;font-weight:700}
+.atc-login input[type=text],.atc-login input[type=password]{padding:10px 12px;border-radius:10px;border:1px solid var(--line2);font-size:15px}
+.atc-login .login-remember label{font-weight:500;display:flex;gap:8px;align-items:center}
+.atc-login input[type=submit]{padding:12px 20px;border-radius:999px;border:0;background:var(--ink);color:#fff;font-weight:700;font-size:15px;cursor:pointer;align-self:flex-start}
+a.atc-user{color:#fff;font-weight:700}
+@media (max-width:1100px){.steps{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:760px){.atc-side{position:static;max-width:none;flex-direction:row;flex-wrap:wrap}.atc-side a{padding:8px 12px}.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}}

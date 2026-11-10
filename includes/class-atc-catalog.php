@@ -415,6 +415,14 @@ final class ATC_Catalog {
 		if ( isset( $in['phone'] ) ) {
 			$data['phone'] = mb_substr( preg_replace( '/[^0-9+ ()\-]/', '', (string) $in['phone'] ), 0, 40 );
 		}
+		if ( isset( $in['about'] ) ) {
+			$data['about'] = mb_substr( sanitize_textarea_field( (string) $in['about'] ), 0, 2000 );
+		}
+		foreach ( array( 'contact_name', 'website' ) as $k ) {
+			if ( isset( $in[ $k ] ) ) {
+				$data[ $k ] = mb_substr( 'website' === $k ? esc_url_raw( $in[ $k ] ) : sanitize_text_field( $in[ $k ] ), 0, 190 );
+			}
+		}
 		if ( isset( $in['languages'] ) ) {
 			$data['languages'] = mb_substr( sanitize_text_field( $in['languages'] ), 0, 100 );
 		}
@@ -447,8 +455,16 @@ final class ATC_Catalog {
 			if ( ! self::party( $id ) ) {
 				return new WP_Error( 'atc_not_found', 'Provider not found.', array( 'status' => 404 ) );
 			}
+			$before = self::party( $id );
 			$wpdb->update( self::t( 'parties' ), $data, array( 'id' => $id ) );
 			ATC_Install::log( 'party', $id, 'updated', array_diff_key( $data, array( 'updated_at' => 1 ) ) );
+			// Going live switches on the vehicle categories the provider offered.
+			if ( isset( $data['status'] ) && 'live' === $data['status'] && 'live' !== $before['status'] ) {
+				$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'services' ) . " SET status = 'live' WHERE party_id = %d AND status = 'draft'", $id ) );
+				if ( $before['email'] ) {
+					wp_mail( $before['email'], 'You are live on Airport Transportation', 'Good news: ' . $before['name'] . " is approved. Travelers can now book you in the zones and vehicles you set up.\n\n" . home_url( '/portal/' ), array( 'From: Airport Transportation <' . ATC_Settings::get( 'from_email' ) . '>' ) );
+				}
+			}
 		}
 		return self::party( $id );
 	}
@@ -505,6 +521,13 @@ final class ATC_Catalog {
 		} else {
 			$wpdb->insert( $s, $data + array( 'party_id' => $party_id, 'airport_id' => $airport_id, 'vehicle_type_id' => $type_id, 'created_at' => self::now() ) );
 			$id = (int) $wpdb->insert_id;
+			// A new category serves the same zones as the provider's other categories at this airport.
+			if ( ! isset( $in['zone_ids'] ) ) {
+				$sibling = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$s} WHERE party_id = %d AND airport_id = %d AND id <> %d ORDER BY id LIMIT 1", $party_id, $airport_id, $id ) );
+				if ( $sibling ) {
+					$in['zone_ids'] = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT zone_id FROM ' . self::t( 'service_zones' ) . ' WHERE service_id = %d', $sibling ) ) );
+				}
+			}
 			ATC_Install::log( 'service', $id, 'created', array( 'party_id' => $party_id, 'vehicle_type' => $type['name'] ) );
 		}
 

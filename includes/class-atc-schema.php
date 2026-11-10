@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents',
 		);
 	}
 
@@ -60,6 +60,12 @@ final class ATC_Schema {
   payout_currency char(3) NOT NULL DEFAULT 'USD',
   payout_details longtext NULL,
   agreement_accepted_at datetime NULL,
+  agreement_version varchar(20) NULL,
+  agreement_ip varchar(45) NULL,
+  contact_name varchar(190) NULL,
+  website varchar(190) NULL,
+  about text NULL,
+  home_airport_id bigint(20) unsigned NULL,
   status varchar(20) NOT NULL DEFAULT 'pending',
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
@@ -352,6 +358,26 @@ final class ATC_Schema {
   status varchar(20) NOT NULL DEFAULT 'active',
   PRIMARY KEY  (id),
   UNIQUE KEY code (code)
+) $c;";
+
+		// Provider documents (permit, registration, insurance). Files live outside public URLs.
+		$sql[] = "CREATE TABLE {$p}documents (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  party_id bigint(20) unsigned NOT NULL,
+  type varchar(40) NOT NULL,
+  file varchar(255) NOT NULL,
+  original_name varchar(190) NOT NULL,
+  mime varchar(100) NOT NULL,
+  size int(11) NOT NULL DEFAULT 0,
+  expires_on date NULL,
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  note varchar(255) NULL,
+  reviewed_by bigint(20) unsigned NULL,
+  reviewed_at datetime NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY party_type (party_id,type),
+  KEY status (status)
 ) $c;";
 
 		$sql[] = "CREATE TABLE {$p}tickets (
