@@ -97,6 +97,7 @@ final class ATC_Control {
 			<span><strong>Control panel</strong><small>Airport Transportation · all sites</small></span>
 		</a>
 		<nav class="atc-nav" aria-label="Control panel">
+			<a href="<?php echo esc_url( home_url( '/control/' ) ); ?>" data-view="">Dashboard</a>
 			<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
 			<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=atc' ) ); ?>">Status</a>

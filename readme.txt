@@ -1,5 +1,13 @@
 === ATCOM Booking Engine ===
-Version: 0.4.0 (old providers come over)
+Version: 0.4.1 (dashboard)
+
+New in 0.4.1:
+- /control opens on a Dashboard: paid bookings, sales and our share (last 30 days and all time), paid trips
+  nobody is driving yet, trips coming up (airport local time), latest bookings, top airports, providers and
+  portal status, new sign-ups and documents to review, zones without a shape, prices left out of the import.
+- The import also brings the old site's bookings (29), without traveler names, emails or phones, and without
+  street addresses. Their money is what happened on the old site (30% commission); no payouts are created.
+  Run the import again with the new file: what is already here is skipped.
 
 New in 0.4.0: import from the old airporttransportation.com
 - Control panel → Providers → "Import from the old site": upload atcom-migration.json, "Check first"

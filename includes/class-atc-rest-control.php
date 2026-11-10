@@ -50,6 +50,8 @@ final class ATC_REST_Control {
 			)
 		);
 
+		self::route( '/dashboard', array( 'GET' => static fn() => rest_ensure_response( ATC_Dashboard::data() ) ) );
+
 		self::route(
 			'/zones',
 			array(

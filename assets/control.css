@@ -97,3 +97,9 @@ td select{width:auto;max-width:220px}
 .row-flat{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
 table.prices td{white-space:nowrap;vertical-align:top}
 details summary{cursor:pointer;margin:6px 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.stat .big{font-size:26px;font-weight:800;letter-spacing:-.01em}
+table.narrow{min-width:420px}
+.pad-x{padding:0 18px 16px;margin:0}
+a.row{color:var(--ink)}a.row:hover{border-color:var(--ink)}

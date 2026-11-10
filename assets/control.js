@@ -81,12 +81,117 @@
   function route() {
     var parts = path().split('/');
     document.querySelectorAll('.atc-nav a[data-view]').forEach(function (a) {
-      a.classList.toggle('on', a.getAttribute('data-view') === (parts[0] || 'zones'));
+      a.classList.toggle('on', a.getAttribute('data-view') === (parts[0] === 'import' ? 'providers' : parts[0]));
     });
     if (parts[0] === 'providers' && parts[1]) return viewProvider(parseInt(parts[1], 10));
     if (parts[0] === 'providers') return viewProviders();
     if (parts[0] === 'import') return viewImport();
-    return viewZones();
+    if (parts[0] === 'zones') return viewZones();
+    return viewDashboard();
+  }
+
+  /* ---------- Dashboard ---------- */
+
+  function cash(c) { return 'USD ' + (c / 100).toLocaleString('en-US', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }); }
+  function stat(label, value, sub) {
+    return h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: label }), h('strong', { class: 'big', text: String(value) }), sub ? h('span', { class: 'small atc-muted', text: sub }) : null);
+  }
+  function tripsTable(rows, empty) {
+    if (!rows.length) return h('p', { class: 'atc-muted pad-x', text: empty });
+    return h('div', { class: 'scroll' }, h('table', null,
+      h('thead', null, h('tr', null, ['Pick-up (local time)', 'Booking', 'Airport', 'Trip', 'Vehicle', 'Pax', 'Provider'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+      h('tbody', null, rows.map(function (r) {
+        return h('tr', null,
+          h('td', { class: 'strong', text: r.when || '–' }),
+          h('td', { text: r.number }),
+          h('td', { text: r.airport || '–' }),
+          h('td', null, h('div', { text: (r.direction === 'arrival' ? 'Airport → ' : '→ Airport · ') + (r.zone || '') }), h('div', { class: 'small atc-muted', text: r.place || '' })),
+          h('td', { text: r.vehicle || '–' }),
+          h('td', { text: String(r.pax) }),
+          h('td', null, r.party_id ? h('a', { href: C.base + 'providers/' + r.party_id + '/', 'data-go': 'providers/' + r.party_id, text: r.provider }) : h('span', { class: 'chip red', text: 'Nobody yet' })));
+      }))));
+  }
+  function bookingChip(r) {
+    if (r.status === 'cancelled') return h('span', { class: 'chip grey', text: r.payment === 'refunded' ? 'Cancelled, refunded' : 'Cancelled' });
+    if (r.status === 'held') return h('span', { class: 'chip orange', text: 'Not paid' });
+    return h('span', { class: 'chip green', text: 'Paid' });
+  }
+
+  function viewDashboard() {
+    clear(app);
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/dashboard').then(function (d) {
+      clear(app);
+      var m = d.month, all = d.all, pr = d.providers, td = d.todo;
+      add(app, [
+        h('div', { class: 'atc-head' },
+          h('div', null, h('h1', { text: 'Dashboard' }), h('p', { class: 'atc-muted', text: 'Every site, every airport. ' + (d.legacy ? d.legacy + ' bookings came over from the old site (no traveler names or contacts; those stay there).' : '') })),
+          h('span', { class: 'small atc-muted', text: 'Updated ' + d.now })),
+
+        h('section', { class: 'stats' },
+          stat('Paid bookings, last 30 days', m.paid, all.paid + ' all time'),
+          stat('Sales, last 30 days', cash(m.sales), cash(all.sales) + ' all time'),
+          stat('Ours, last 30 days', cash(m.ours), 'Providers get ' + cash(m.providers)),
+          stat('Not paid, last 30 days', m.unpaid, 'Started and never paid'),
+          stat('Cancelled, last 30 days', m.cancelled, all.cancelled + ' all time')),
+
+        d.no_provider.length ? h('section', { class: 'card warn' },
+          h('div', { class: 'card-head' }, h('h2', { text: 'Paid trips nobody is driving yet' }), h('span', { class: 'chip red', text: String(d.no_provider.length) })),
+          tripsTable(d.no_provider, '')) : null,
+
+        h('section', { class: 'card' },
+          h('div', { class: 'card-head' }, h('h2', { text: 'Coming up' }), h('span', { class: 'small atc-muted', text: 'Paid trips, next first' })),
+          tripsTable(d.upcoming, 'No paid trips coming up.')),
+
+        h('div', { class: 'atc-two' },
+          h('section', { class: 'card' },
+            h('div', { class: 'card-head' }, h('h2', { text: 'Latest bookings' })),
+            h('div', { class: 'scroll' }, h('table', { class: 'narrow' },
+              h('thead', null, h('tr', null, ['Booking', 'Airport', 'Total', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+              h('tbody', null, d.recent.length ? d.recent.map(function (r) {
+                return h('tr', null,
+                  h('td', null, h('div', { class: 'strong', text: r.number }), h('div', { class: 'small atc-muted', text: r.booked + (r.legacy ? ' · old site' : '') })),
+                  h('td', { text: r.airport || '–' }),
+                  h('td', { text: cash(+r.total_cents) + (r.trip_type === 'round_trip' ? ' RT' : '') }),
+                  h('td', null, bookingChip(r)));
+              }) : h('tr', null, h('td', { colspan: 4, class: 'atc-muted', text: 'No bookings yet.' })))))),
+          h('section', { class: 'card' },
+            h('div', { class: 'card-head' }, h('h2', { text: 'Top airports' }), h('span', { class: 'small atc-muted', text: 'Paid sales, all time' })),
+            h('div', { class: 'scroll' }, h('table', { class: 'narrow' },
+              h('thead', null, h('tr', null, ['Airport', 'Bookings', 'Sales'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+              h('tbody', null, d.by_airport.length ? d.by_airport.map(function (r) {
+                return h('tr', null, h('td', null, h('div', { class: 'strong', text: r.airport || '–' }), h('div', { class: 'small atc-muted', text: r.name || '' })), h('td', { text: String(r.bookings) }), h('td', { text: cash(r.sales) }));
+              }) : h('tr', null, h('td', { colspan: 3, class: 'atc-muted', text: 'No sales yet.' }))))))),
+
+        h('section', { class: 'stats' },
+          stat('Providers live', pr.live, pr.pending + ' pending · ' + pr.suspended + ' suspended'),
+          stat('Using the portal', pr.portal.active, pr.portal.invited + ' invited, no password yet'),
+          stat('Not invited yet', pr.portal.not_invited, 'Send from the Providers list'),
+          stat('Documents to review', td.documents, '')),
+
+        h('div', { class: 'atc-two' },
+          h('section', { class: 'card pad' },
+            h('h2', { text: 'To do' }),
+            h('div', { class: 'list' },
+              td.new_signups.length ? td.new_signups.map(function (p) {
+                return h('a', { class: 'row', href: C.base + 'providers/' + p.id + '/', 'data-go': 'providers/' + p.id }, h('span', null, h('strong', { text: p.name }), h('span', { class: 'small atc-muted', text: ' · new sign-up, ' + String(p.created_at).slice(0, 10) })), h('span', { class: 'chip orange', text: 'Review' }));
+              }) : h('p', { class: 'atc-muted', text: 'No new provider sign-ups waiting.' }),
+              pr.portal.not_invited ? h('a', { class: 'row', href: C.base + 'providers/', 'data-go': 'providers' }, h('span', { text: pr.portal.not_invited + ' providers from the old site have not been invited to the new portal' }), h('span', { class: 'chip orange', text: 'Invite' })) : null)),
+          h('section', { class: 'card pad' },
+            h('h2', { text: 'Zones without a shape' }),
+            h('p', { class: 'small atc-muted', text: 'Travelers can only book addresses inside a zone shape. Draw or suggest a shape for these.' }),
+            td.no_shape.length ? h('div', { class: 'ticks' }, td.no_shape.map(function (r) {
+              return h('a', { class: 'chip grey', href: C.base + 'zones/', 'data-go': 'zones', text: r.airport + ': ' + r.n });
+            })) : h('p', { class: 'atc-muted', text: 'Every zone has a shape.' }))),
+
+        td.held_prices.length ? h('section', { class: 'card pad' },
+          h('details', null,
+            h('summary', { class: 'strong', text: td.held_prices.length + ' prices left out of the import (another currency or a typo): the provider re-enters them' }),
+            h('ul', null, td.held_prices.map(function (t) { return h('li', { class: 'small', text: t }); })))) : null,
+
+        h('p', { class: 'small atc-muted', text: 'Coming with checkout: payouts owed, refunds and disputes, affiliate sales.' })
+      ]);
+    }).catch(fail);
   }
 
   /* ---------- Google Maps ---------- */
@@ -757,6 +862,7 @@
             h('span', { class: 'chip grey', text: 'Zones: ' + r.zones_new + ' new, ' + r.zones_shape_added + ' got a shape, ' + r.zones_existing + ' already shaped' }),
             h('span', { class: 'chip grey', text: 'Vehicle categories: ' + r.services }),
             h('span', { class: 'chip grey', text: 'Prices: ' + r.prices }),
+            h('span', { class: 'chip grey', text: 'Bookings: ' + r.bookings_new + ' new, ' + r.bookings_existing + ' already here' }),
             r.prices_held ? h('span', { class: 'chip orange', text: r.prices_held + ' prices left out (wrong currency or typo)' }) : null),
           r.issues.length ? h('details', null, h('summary', { class: 'strong', text: r.issues.length + ' things to look at' }), h('ul', null, r.issues.map(function (i) { return h('li', { class: 'small', text: i }); }))) : null,
           dry ? h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'button', onclick: function () { run(false); }, text: 'Looks right: import now' })) : h('div', { class: 'atc-actions' }, h('a', { class: 'btn', href: C.base + 'providers/', 'data-go': 'providers', text: 'See the providers' }))));
@@ -764,7 +870,7 @@
     }
     add(app, [
       h('a', { class: 'back', href: C.base + 'providers/', 'data-go': 'providers', text: '← Providers' }),
-      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Import from the old site' }), h('p', { class: 'atc-muted', text: 'Providers, the airports they serve, their coverage areas (as zones) and their prices. Travelers keep paying the same; providers get 75% under the new 25% commission. Safe to run again: nothing is doubled, and shapes you drew here are never replaced.' }))),
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Import from the old site' }), h('p', { class: 'atc-muted', text: 'Providers, the airports they serve, their coverage areas (as zones), their prices and the old bookings (without traveler names or contacts). Travelers keep paying the same; providers get 75% under the new 25% commission. Safe to run again: nothing is doubled, and shapes you drew here are never replaced.' }))),
       h('section', { class: 'card pad' },
         h('label', { class: 'field' }, h('span', { text: 'Import file (atcom-migration.json)' }), file),
         h('div', { class: 'atc-actions' },

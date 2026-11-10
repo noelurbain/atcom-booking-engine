@@ -62,6 +62,7 @@ final class ATC_Migration {
 			'providers_new' => 0, 'providers_existing' => 0,
 			'zones_new' => 0, 'zones_shape_added' => 0, 'zones_existing' => 0,
 			'services' => 0, 'prices' => 0, 'prices_held' => 0,
+			'bookings_new' => 0, 'bookings_existing' => 0,
 			'issues' => array(),
 		);
 
@@ -147,6 +148,9 @@ final class ATC_Migration {
 			foreach ( $airports as $airport_id ) {
 				ATC_Catalog::rematch_places( (int) $airport_id );
 			}
+			foreach ( (array) ( $data['bookings'] ?? array() ) as $b ) {
+				self::import_booking( (array) $b, $airports, $r );
+			}
 		} catch ( Throwable $e ) {
 			$wpdb->query( 'ROLLBACK' );
 			return array( 'ok' => false, 'error' => $e->getMessage() );
@@ -157,9 +161,135 @@ final class ATC_Migration {
 		} else {
 			$wpdb->query( 'COMMIT' );
 			ATC_Install::log( 'migration', 0, 'imported', array_diff_key( $r, array( 'issues' => 1 ) ) );
+			update_option( 'atc_last_import', array( 'at' => self::now(), 'by' => get_current_user_id() ) + $r, false );
 		}
 		$r['issues'] = array_slice( $r['issues'], 0, 200 );
 		return $r;
+	}
+
+	/**
+	 * One reservation from the old site. Traveler names, emails and phones are not in the file: they stay
+	 * on the old site. Money is what happened there (old 30% commission); no ledger lines are written,
+	 * because those trips were paid and settled on the old site.
+	 */
+	private static function import_booking( array $b, array $airports, array &$r ): void {
+		global $wpdb;
+		$ref = strtoupper( preg_replace( '/[^A-Za-z0-9]/', '', (string) ( $b['ref'] ?? '' ) ) );
+		if ( '' === $ref ) {
+			return;
+		}
+		if ( self::legacy_get( 'booking', $ref ) || $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'bookings' ) . ' WHERE number = %s', $ref ) ) ) {
+			++$r['bookings_existing'];
+			return;
+		}
+		$airport_id = $airports[ $b['iata'] ?? '' ] ?? null;
+		if ( ! $airport_id ) {
+			$r['issues'][] = 'Booking ' . $ref . ': airport ' . ( $b['iata'] ?? '?' ) . ' not found, left out.';
+			return;
+		}
+		$party_id = $b['provider_legacy'] ? (int) self::legacy_get( 'party', $b['provider_legacy'] ) : 0;
+		$type_id  = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'vehicle_types' ) . ' WHERE slug = %s', (string) $b['vehicle'] ) );
+		$svc_id   = $party_id && $type_id ? (int) $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'services' ) . ' WHERE party_id = %d AND airport_id = %d AND vehicle_type_id = %d', $party_id, $airport_id, $type_id ) ) : 0;
+
+		// Their area name → our zone: the provider's alias first, then any zone of that airport with that name.
+		$area    = trim( (string) ( $b['area'] ?? '' ) );
+		$zone_id = 0;
+		if ( '' !== $area ) {
+			$zt      = self::t( 'zones' );
+			$zone_id = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT a.target_id FROM ' . self::t( 'aliases' ) . " a JOIN {$zt} z ON z.id = a.target_id WHERE a.kind = 'zone' AND a.alias = %s AND z.airport_id = %d ORDER BY a.party_id = %d DESC LIMIT 1", $area, $airport_id, $party_id ) );
+			if ( ! $zone_id ) {
+				$zone_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$zt} WHERE airport_id = %d AND (name = %s OR slug = %s) LIMIT 1", $airport_id, $area, sanitize_title( $area ) ) );
+			}
+		}
+
+		$paid     = 'paid' === $b['payment'];
+		$old      = (string) $b['old_status'];
+		$status   = 'cancelled' === $old ? 'cancelled' : ( $paid ? 'confirmed' : 'held' );
+		$booked   = self::utc( $b['booked_utc'] ?? '' ) ?: self::now();
+		$total    = max( 0, (int) $b['total'] );
+		$owed     = max( 0, (int) $b['provider_owed'] );
+		$round    = 'round_trip' === $b['trip'] && ! empty( $b['return_utc'] );
+		$lang     = preg_match( '/^[a-z]{2}$/', (string) $b['lang'] ) ? $b['lang'] : 'en';
+		$channel  = in_array( $b['channel'], array( 'web', 'affiliate', 'admin', 'api' ), true ) ? $b['channel'] : 'web';
+		$snapshot = array(
+			'legacy'        => true,
+			'source'        => 'old airporttransportation.com',
+			'payment'       => (string) $b['payment'],
+			'method'        => (string) $b['method'],
+			'old_status'    => $old,
+			'refunded'      => (int) $b['refunded'],
+			'provider_owed' => $owed,
+			'platform'      => $paid && $owed ? $total - $owed : 0,
+			'area'          => $area,
+			'iata'          => (string) $b['iata'],
+			'timezone'      => (string) $b['timezone'],
+			'bags'          => (int) $b['bags'],
+		);
+		$wpdb->insert(
+			self::t( 'bookings' ),
+			array(
+				'number'          => $ref,
+				'status'          => $status,
+				'channel'         => $channel,
+				'trip_type'       => $round ? 'round_trip' : 'one_way',
+				'adults'          => max( 1, (int) $b['pax'] ),
+				'children'        => 0,
+				'lang'            => $lang,
+				'currency'        => 'USD',
+				'retail_cents'    => $total,
+				'total_cents'     => $total,
+				'snapshot'        => wp_json_encode( $snapshot ),
+				'service_code'    => (string) wp_rand( 1000, 9999 ),
+				'hold_expires_at' => 'held' === $status ? $booked : null,
+				'created_at'      => $booked,
+				'updated_at'      => self::now(),
+			)
+		);
+		$booking_id = (int) $wpdb->insert_id;
+		if ( ! $booking_id ) {
+			$r['issues'][] = 'Booking ' . $ref . ': could not be saved.';
+			return;
+		}
+		self::legacy_set( 'booking', $ref, $booking_id );
+
+		$leg_status = 'cancelled' === $status ? 'cancelled' : ( 'held' === $status ? 'held' : ( $party_id ? 'accepted' : 'unassigned' ) );
+		$legs       = array( array( $b['direction'], self::utc( $b['pickup_utc'] ?? '' ), (string) $b['from'], (string) $b['to'] ) );
+		if ( $round ) {
+			$back   = 'arrival' === $b['direction'] ? 'departure' : 'arrival';
+			$legs[] = array( $back, self::utc( $b['return_utc'] ), (string) $b['to'], (string) $b['from'] );
+		}
+		$n = count( $legs );
+		foreach ( $legs as $i => [ $dir, $at, $from, $to ] ) {
+			$last = $i === $n - 1;
+			$wpdb->insert(
+				self::t( 'booking_legs' ),
+				array(
+					'booking_id'     => $booking_id,
+					'direction'      => $dir,
+					'service_id'     => $svc_id,
+					'party_id'       => $party_id,
+					'zone_id'        => $zone_id ?: null,
+					'pickup_at'      => $at,
+					'from_place'     => mb_substr( $from, 0, 255 ),
+					'to_place'       => mb_substr( $to, 0, 255 ),
+					'suitcases'      => $i ? 0 : (int) $b['bags'],
+					'retail_cents'   => $last ? $total - intdiv( $total, $n ) * ( $n - 1 ) : intdiv( $total, $n ),
+					'provider_cents' => $last ? $owed - intdiv( $owed, $n ) * ( $n - 1 ) : intdiv( $owed, $n ),
+					'status'         => $leg_status,
+				)
+			);
+		}
+		++$r['bookings_new'];
+		if ( $b['provider_legacy'] && ! $party_id ) {
+			$r['issues'][] = 'Booking ' . $ref . ': its provider was not found here, saved without one.';
+		}
+		if ( '' !== $area && ! $zone_id ) {
+			$r['issues'][] = 'Booking ' . $ref . ': area "' . $area . '" has no zone here.';
+		}
+	}
+
+	private static function utc( ?string $s ): ?string {
+		return $s && preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $s ) ? $s : null;
 	}
 
 	private static function import_airports( array $list, array &$r ): array {
