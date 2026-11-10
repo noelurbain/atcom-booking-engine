@@ -1,5 +1,8 @@
 === ATCOM Booking Engine ===
-Version: 0.3.2 (provider portal, part 1)
+Version: 0.3.3 (provider portal, part 1)
+
+New in 0.3.3: one sign-in page at /login for providers, affiliates and our team (each goes to the right place);
+"WordPress" link in /control and "Control panel" in the WordPress toolbar and Booking Engine menu.
 
 New in 0.3.0: provider portal at /portal
 - Sign-up runs from the theme form on /partners/provider/ (via admin-post, with its spam checks); /portal/signup redirects there. Companies create an account (company, contact, email, WhatsApp, airport,

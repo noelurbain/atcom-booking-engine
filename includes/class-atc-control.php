@@ -9,10 +9,25 @@ defined( 'ABSPATH' ) || exit;
 final class ATC_Control {
 
 	public static function init(): void {
+		add_action( 'admin_bar_menu', array( __CLASS__, 'admin_bar' ), 35 );
 		add_action( 'init', array( __CLASS__, 'rewrite' ) );
 		add_action( 'wp_loaded', array( __CLASS__, 'maybe_flush' ) );
 		add_filter( 'query_vars', static fn( $v ) => array_merge( $v, array( 'atc_control' ) ) );
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_render' ), 1 );
+	}
+
+	/** "Control panel" in the WordPress toolbar, for our team, on every wp-admin and site page. */
+	public static function admin_bar( WP_Admin_Bar $bar ): void {
+		if ( ! current_user_can( 'atc_manage' ) ) {
+			return;
+		}
+		$bar->add_node(
+			array(
+				'id'    => 'atc-control',
+				'title' => '<span class="ab-icon dashicons dashicons-car" style="top:2px"></span>Control panel',
+				'href'  => home_url( '/control/' ),
+			)
+		);
 	}
 
 	public static function rewrite(): void {
@@ -22,8 +37,10 @@ final class ATC_Control {
 
 	/** Flush once after install or upgrade, after every plugin has added its rules. */
 	public static function maybe_flush(): void {
-		if ( get_option( 'atc_flush_rewrite' ) ) {
+		// Also after every plugin update, since new versions can add addresses (/login, /portal…).
+		if ( get_option( 'atc_flush_rewrite' ) || get_option( 'atc_rewrite_version' ) !== ATC_VERSION ) {
 			delete_option( 'atc_flush_rewrite' );
+			update_option( 'atc_rewrite_version', ATC_VERSION, false );
 			flush_rewrite_rules( false );
 		}
 	}
@@ -35,7 +52,9 @@ final class ATC_Control {
 		}
 		nocache_headers();
 		if ( ! is_user_logged_in() ) {
-			auth_redirect();
+			$here = home_url( isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '/control/' );
+			wp_safe_redirect( ATC_Portal::login_url( $here ) );
+			exit;
 		}
 		if ( ! current_user_can( 'atc_manage' ) ) {
 			status_header( 403 );
@@ -81,6 +100,9 @@ final class ATC_Control {
 			<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
 			<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=atc' ) ); ?>">Status</a>
+			<?php if ( current_user_can( 'edit_posts' ) ) : ?>
+				<a class="atc-wp" href="<?php echo esc_url( admin_url() ); ?>">WordPress ↗</a>
+			<?php endif; ?>
 		</nav>
 		<span class="atc-user"><span class="atc-avatar"><?php echo esc_html( $initials ?: '•' ); ?></span><?php echo esc_html( $user->display_name ); ?></span>
 	</div>

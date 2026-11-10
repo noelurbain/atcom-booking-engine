@@ -21,23 +21,60 @@ final class ATC_Portal {
 	}
 
 	public static function rewrite(): void {
+		add_rewrite_rule( '^login/?$', 'index.php?atc_portal=signin', 'top' );
 		add_rewrite_rule( '^portal/?$', 'index.php?atc_portal=home', 'top' );
 		add_rewrite_rule( '^portal/(.+?)/?$', 'index.php?atc_portal=$matches[1]', 'top' );
 	}
 
-	/** Providers land in the portal after signing in, never in wp-admin. */
+	/** One sign-in page for everyone: /login. */
+	public static function login_url( string $next = '' ): string {
+		$url = home_url( '/login/' );
+		return '' !== $next ? add_query_arg( 'next', rawurlencode( $next ), $url ) : $url;
+	}
+
+	/**
+	 * Where someone goes after signing in: the page they were going to (if it is on this site
+	 * and they may open it), otherwise our team to /control, partners to /portal.
+	 */
+	public static function destination( WP_User $user, string $next = '' ): string {
+		$partner = $user->has_cap( 'atc_provider_portal' ) || $user->has_cap( 'atc_affiliate_portal' );
+		$staff   = $user->has_cap( 'atc_manage' );
+		if ( '' !== $next ) {
+			$next = wp_validate_redirect( $next, '' );
+			$path = (string) wp_parse_url( $next, PHP_URL_PATH );
+			$ok   = $next && ( $staff || ( $partner && 0 === strpos( $path, '/portal' ) ) || ( ! $partner && false === strpos( $path, '/control' ) ) );
+			if ( $ok ) {
+				return $next;
+			}
+		}
+		if ( $staff ) {
+			return home_url( '/control/' );
+		}
+		if ( $partner ) {
+			return home_url( '/portal/' );
+		}
+		return home_url( '/' );
+	}
+
+	/** Partners never land in wp-admin, even when they sign in at wp-login.php. */
 	public static function login_redirect( $to, $requested, $user ) {
-		if ( $user instanceof WP_User && $user->has_cap( 'atc_provider_portal' ) && ! $user->has_cap( 'edit_posts' ) ) {
-			return ( $requested && 0 === strpos( $requested, home_url( '/portal/' ) ) ) ? $requested : home_url( '/portal/' );
+		if ( $user instanceof WP_User && ( $user->has_cap( 'atc_provider_portal' ) || $user->has_cap( 'atc_affiliate_portal' ) ) && ! $user->has_cap( 'edit_posts' ) ) {
+			return self::destination( $user, (string) $requested );
 		}
 		return $to;
 	}
 
-	/** A wrong password on the portal sign-in page stays in the portal. */
+	/** A wrong password on /login stays on /login. */
 	public static function login_failed(): void {
 		$ref = wp_get_referer();
-		if ( $ref && false !== strpos( $ref, '/portal/login' ) ) {
-			wp_safe_redirect( home_url( '/portal/login/?failed=1' ) );
+		if ( $ref && ( false !== strpos( $ref, '/login' ) ) && false === strpos( $ref, 'wp-login.php' ) ) {
+			$next = '';
+			$q    = (string) wp_parse_url( $ref, PHP_URL_QUERY );
+			parse_str( $q, $args );
+			if ( ! empty( $args['next'] ) ) {
+				$next = (string) $args['next'];
+			}
+			wp_safe_redirect( add_query_arg( 'failed', 1, self::login_url( $next ) ) );
 			exit;
 		}
 	}
@@ -65,24 +102,29 @@ final class ATC_Portal {
 			wp_safe_redirect( self::signup_url() );
 			exit;
 		}
-		if ( 'login' === $view ) {
+		if ( 'signin' === $view || 'login' === $view ) {
+			$next = isset( $_GET['next'] ) ? esc_url_raw( wp_unslash( $_GET['next'] ) ) : ( isset( $_GET['redirect_to'] ) ? esc_url_raw( wp_unslash( $_GET['redirect_to'] ) ) : '' );
 			if ( is_user_logged_in() ) {
-				wp_safe_redirect( home_url( '/portal/' ) );
+				wp_safe_redirect( self::destination( wp_get_current_user(), $next ) );
 				exit;
 			}
-			self::login_page();
+			if ( 'login' === $view ) {
+				wp_safe_redirect( self::login_url( $next ) );
+				exit;
+			}
+			self::login_page( $next );
 			exit;
 		}
 		if ( 'logout' === $view ) {
 			if ( isset( $_GET['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'atc_logout' ) ) {
 				wp_logout();
 			}
-			wp_safe_redirect( home_url( '/portal/login/' ) );
+			wp_safe_redirect( self::login_url() );
 			exit;
 		}
 		if ( ! is_user_logged_in() ) {
 			$here = home_url( isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '/portal/' );
-			wp_safe_redirect( add_query_arg( 'redirect_to', rawurlencode( $here ), home_url( '/portal/login/' ) ) );
+			wp_safe_redirect( self::login_url( $here ) );
 			exit;
 		}
 		if ( 'confirm-email' === $view ) {
@@ -250,21 +292,21 @@ final class ATC_Portal {
 		return $out;
 	}
 
-	private static function login_page(): void {
-		self::frame_open( 'Sign in' );
-		echo '<main class="atc-wrap atc-narrow"><div class="atc-head"><div><h1>Sign in</h1><p class="atc-muted">Provider portal</p></div></div><section class="card pad atc-login">';
+	private static function login_page( string $next = '' ): void {
+		self::frame_open( 'Sign in', 'Sign in' );
+		echo '<main class="atc-wrap atc-narrow"><div class="atc-head"><div><h1>Sign in</h1><p class="atc-muted">Providers, affiliates and our team. Travelers don’t need an account: use <a href="' . esc_url( home_url( '/manage-booking/' ) ) . '">Manage booking</a>.</p></div></div><section class="card pad atc-login">';
 		if ( isset( $_GET['failed'] ) ) {
 			echo '<p class="chip red">Email or password is not right.</p>';
 		}
 		wp_login_form(
 			array(
-				'redirect'       => isset( $_GET['redirect_to'] ) ? wp_validate_redirect( esc_url_raw( wp_unslash( $_GET['redirect_to'] ) ), home_url( '/portal/' ) ) : home_url( '/portal/' ),
+				'redirect'       => self::login_url( $next ),
 				'label_username' => 'Email',
 				'label_log_in'   => 'Sign in',
 				'remember'       => true,
 			)
 		);
-		echo '<p><a href="' . esc_url( wp_lostpassword_url( home_url( '/portal/' ) ) ) . '">Forgot your password?</a> · <a href="' . esc_url( self::signup_url() ) . '">Create a provider account</a></p></section></main>';
+		echo '<p><a href="' . esc_url( wp_lostpassword_url( self::login_url() ) ) . '">Forgot your password?</a></p><p class="atc-muted">New here? <a href="' . esc_url( self::signup_url() ) . '">Become a provider</a> · <a href="' . esc_url( home_url( '/partners/affiliate/' ) ) . '">Become an affiliate</a></p></section></main>';
 		self::frame_close();
 	}
 

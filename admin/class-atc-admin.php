@@ -17,6 +17,10 @@ final class ATC_Admin {
 		add_menu_page( 'Booking Engine', 'Booking Engine', 'atc_manage', 'atc', array( __CLASS__, 'status_page' ), 'dashicons-car', 56 );
 		add_submenu_page( 'atc', 'Status', 'Status', 'atc_manage', 'atc', array( __CLASS__, 'status_page' ) );
 		add_submenu_page( 'atc', 'Settings', 'Settings', 'atc_settings', 'atc-settings', array( __CLASS__, 'settings_page' ) );
+		global $submenu;
+		if ( current_user_can( 'atc_manage' ) ) {
+			$submenu['atc'][] = array( 'Control panel ↗', 'atc_manage', home_url( '/control/' ) ); // phpcs:ignore -- link out to /control.
+		}
 	}
 
 	public static function register_settings(): void {
