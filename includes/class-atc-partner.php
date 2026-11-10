@@ -59,6 +59,10 @@ final class ATC_Partner {
 		$pass    = (string) ( $in['password'] ?? '' );
 		$airport = ATC_Catalog::airport( (int) ( $in['airport_id'] ?? 0 ) );
 		$about   = mb_substr( sanitize_textarea_field( (string) ( $in['about'] ?? '' ) ), 0, 2000 );
+		$fleet   = sanitize_text_field( (string) ( $in['fleet'] ?? '' ) );
+		if ( '' !== $fleet ) {
+			$about = trim( 'Fleet size: ' . $fleet . "\n" . $about );
+		}
 
 		$errors = new WP_Error();
 		if ( '' === $company ) {
@@ -82,7 +86,7 @@ final class ATC_Partner {
 			$errors->add( 'airport_id', 'Pick the airport you serve.' );
 		}
 		if ( empty( $in['accept'] ) ) {
-			$errors->add( 'accept', 'Please accept the terms to continue.' );
+			$errors->add( 'accept', 'Please accept the provider terms and conditions.' );
 		}
 		if ( $errors->has_errors() ) {
 			return $errors;

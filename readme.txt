@@ -1,8 +1,8 @@
 === ATCOM Booking Engine ===
-Version: 0.3.0 (provider portal, part 1)
+Version: 0.3.1 (provider portal, part 1)
 
 New in 0.3.0: provider portal at /portal
-- /portal/signup: transport companies create an account (company, contact, email, WhatsApp, airport,
+- Sign-up runs from the theme form on /partners/provider/ (via admin-post, with its spam checks); /portal/signup redirects there. Companies create an account (company, contact, email, WhatsApp, airport,
   a few words about the company). /portal/login to sign in. Providers never see wp-admin.
 - Setup checklist: company details, vehicle categories and vehicles, zones served (map), documents
   (private uploads), payout details (encrypted, only last 4 digits shown), provider agreement.

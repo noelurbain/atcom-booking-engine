@@ -15,6 +15,8 @@ final class ATC_Portal {
 		add_filter( 'login_redirect', array( __CLASS__, 'login_redirect' ), 10, 3 );
 		add_action( 'admin_init', array( __CLASS__, 'keep_out_of_wp_admin' ) );
 		add_action( 'wp_login_failed', array( __CLASS__, 'login_failed' ) );
+		add_action( 'admin_post_nopriv_atc_form', array( __CLASS__, 'theme_signup' ), 1 );
+		add_action( 'admin_post_atc_form', array( __CLASS__, 'theme_signup' ), 1 );
 		add_filter( 'show_admin_bar', static fn( $show ) => current_user_can( 'atc_provider_portal' ) && ! current_user_can( 'edit_posts' ) ? false : $show );
 	}
 
@@ -60,7 +62,7 @@ final class ATC_Portal {
 			ATC_Partner::serve_file( (int) $m[1] );
 		}
 		if ( 'signup' === $view ) {
-			self::signup_page();
+			wp_safe_redirect( self::signup_url() );
 			exit;
 		}
 		if ( 'login' === $view ) {
@@ -136,76 +138,108 @@ final class ATC_Portal {
 		echo "\n</body>\n</html>";
 	}
 
-	/* ---------- Sign-up ---------- */
+	/* ---------- Sign-up (form lives on the theme's /partners/provider/ page) ---------- */
 
-	private static function signup_page(): void {
-		if ( is_user_logged_in() && ATC_Partner::current_party_id() ) {
-			wp_safe_redirect( home_url( '/portal/' ) );
+	public static function signup_url(): string {
+		return (string) apply_filters( 'atc_provider_signup_url', home_url( '/partners/provider/' ) ) . '#form';
+	}
+
+	/**
+	 * Handles the provider form on /partners/provider/. The theme posts every form to admin-post.php
+	 * (action atc_form); this runs first and takes over when the provider form carries our fields.
+	 */
+	public static function theme_signup(): void {
+		if ( 'provider' !== ( isset( $_POST['atc_form'] ) ? sanitize_key( wp_unslash( $_POST['atc_form'] ) ) : '' ) || empty( $_POST['atc_signup'] ) ) {
+			return;
+		}
+		$back = remove_query_arg( array( 'sent', 'err', 'atc_su' ), wp_get_referer() ? wp_get_referer() : home_url( '/partners/provider/' ) );
+		$back = strtok( $back, '#' );
+		$in   = wp_unslash( $_POST ); // phpcs:ignore -- checked and sanitized below.
+
+		$fail = static function ( array $errors, string $general = '' ) use ( $in, $back ) {
+			$token = wp_generate_password( 12, false, false );
+			$keep  = array_intersect_key( $in, array_flip( array( 'company', 'name', 'email', 'phone', 'airport_id', 'fleet', 'about', 'accept' ) ) );
+			set_transient( 'atc_su_' . $token, array( 'errors' => $errors, 'general' => $general, 'in' => $keep ), 15 * MINUTE_IN_SECONDS );
+			wp_safe_redirect( add_query_arg( 'atc_su', $token, $back ) . '#form' );
 			exit;
-		}
-		$errors = null;
-		$in     = array();
-		if ( 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) {
-			$in = wp_unslash( $_POST ); // phpcs:ignore -- verified below.
-			if ( ! isset( $in['_atc'] ) || ! wp_verify_nonce( (string) $in['_atc'], 'atc_signup' ) ) {
-				$errors = new WP_Error( 'nonce', 'The form expired. Please try again.' );
-			} elseif ( ! empty( $in['website_url'] ) ) {
-				$errors = new WP_Error( 'bot', 'Something went wrong. Please try again.' );
-			} elseif ( ! ATC_Partner::rate_ok( 'signup' ) ) {
-				$errors = new WP_Error( 'rate', 'Too many attempts. Try again in an hour.' );
-			} elseif ( is_user_logged_in() ) {
-				$errors = new WP_Error( 'logged', 'You are signed in with another account. Sign out first.' );
-			} else {
-				$result = ATC_Partner::signup( $in );
-				if ( is_wp_error( $result ) ) {
-					$errors = $result;
-				} else {
-					wp_set_current_user( $result );
-					wp_set_auth_cookie( $result, true );
-					wp_safe_redirect( home_url( '/portal/?welcome=1' ) );
-					exit;
-				}
-			}
-		}
-
-		$airports = ATC_Catalog::airports();
-		$val      = static fn( $k ) => esc_attr( isset( $in[ $k ] ) ? sanitize_text_field( (string) $in[ $k ] ) : '' );
-		$err      = static function ( $k ) use ( $errors ) {
-			if ( $errors && $errors->get_error_message( $k ) ) {
-				echo '<small class="err">' . esc_html( $errors->get_error_message( $k ) ) . '</small>';
-			}
 		};
 
-		self::frame_open( 'Become a provider' );
-		?>
-<main class="atc-wrap atc-narrow">
-	<div class="atc-head"><div><h1>Sell your transfers with us</h1><p class="atc-muted">Create your provider account. It takes two minutes; you finish the setup inside the portal.</p></div></div>
-	<?php if ( $errors && ( $errors->get_error_message( 'nonce' ) || $errors->get_error_message( 'bot' ) || $errors->get_error_message( 'rate' ) || $errors->get_error_message( 'logged' ) || $errors->get_error_message( 'existing_user_login' ) ) ) : ?>
-		<p class="chip red"><?php echo esc_html( $errors->get_error_message() ); ?></p>
-	<?php endif; ?>
-	<form method="post" class="card pad" novalidate>
-		<?php wp_nonce_field( 'atc_signup', '_atc' ); ?>
-		<div class="grid2">
-			<label class="field"><span>Company name travelers will see</span><input type="text" name="company" required value="<?php echo $val( 'company' ); // phpcs:ignore ?>" autocomplete="organization"><?php $err( 'company' ); ?></label>
-			<label class="field"><span>Your name</span><input type="text" name="contact" required value="<?php echo $val( 'contact' ); // phpcs:ignore ?>" autocomplete="name"><?php $err( 'contact' ); ?></label>
-			<label class="field"><span>Email (you sign in with it)</span><input type="email" name="email" required value="<?php echo $val( 'email' ); // phpcs:ignore ?>" autocomplete="email"><?php $err( 'email' ); ?></label>
-			<label class="field"><span>Mobile with WhatsApp, with country code</span><input type="tel" name="phone" required placeholder="+52 998 …" value="<?php echo $val( 'phone' ); // phpcs:ignore ?>" autocomplete="tel"><?php $err( 'phone' ); ?></label>
-			<label class="field"><span>Airport you serve</span><select name="airport_id">
-				<?php foreach ( $airports as $a ) : ?>
-					<option value="<?php echo (int) $a['id']; ?>" <?php selected( (int) ( $in['airport_id'] ?? 0 ), (int) $a['id'] ); ?>><?php echo esc_html( $a['city'] . ' (' . $a['iata'] . ')' ); ?></option>
-				<?php endforeach; ?>
-			</select><?php $err( 'airport_id' ); ?></label>
-			<label class="field"><span>Password (at least 10 characters)</span><input type="password" name="password" required minlength="10" autocomplete="new-password"><?php $err( 'password' ); ?></label>
-		</div>
-		<label class="field"><span>Tell us about your company: fleet, areas you cover, years in business (optional)</span><textarea name="about" rows="4" maxlength="2000"><?php echo esc_textarea( isset( $in['about'] ) ? sanitize_textarea_field( (string) $in['about'] ) : '' ); ?></textarea></label>
-		<div class="hp" aria-hidden="true"><label>Website <input type="text" name="website_url" tabindex="-1" autocomplete="off"></label></div>
-		<label class="tick"><input type="checkbox" name="accept" value="1" <?php checked( ! empty( $in['accept'] ) ); ?>> I accept the <a href="<?php echo esc_url( home_url( '/terms/' ) ); ?>" target="_blank" rel="noopener">terms of use</a> and the <a href="<?php echo esc_url( home_url( '/privacy/' ) ); ?>" target="_blank" rel="noopener">privacy policy</a>. The provider agreement comes later, in the portal.</label>
-		<?php $err( 'accept' ); ?>
-		<div class="atc-actions"><button class="btn dark" type="submit">Create my provider account</button><a href="<?php echo esc_url( home_url( '/portal/login/' ) ); ?>">I already have an account</a></div>
-	</form>
-</main>
-		<?php
-		self::frame_close();
+		if ( ! isset( $in['_atcn'] ) || ! wp_verify_nonce( (string) $in['_atcn'], 'atc_form_provider' ) ) {
+			$fail( array(), 'The form expired. Please send it again.' );
+		}
+		if ( ! empty( $in['website_url'] ) ) {
+			wp_safe_redirect( add_query_arg( 'sent', '1', $back ) . '#form' );
+			exit;
+		}
+		if ( function_exists( 'atc_is_spam' ) ) {
+			$spam = atc_is_spam( 'provider' );
+			if ( 'captcha' === $spam ) {
+				$fail( array(), 'Please complete the security check and send again.' );
+			} elseif ( $spam ) {
+				$fail( array(), 'Something went wrong. Please wait a few seconds and send again.' );
+			}
+		}
+		if ( preg_match_all( '#(https?://|www\.|<a\s)#i', (string) ( $in['about'] ?? '' ) ) > 2 ) {
+			$fail( array( 'about' => 'Please remove the links.' ) );
+		}
+		if ( is_user_logged_in() ) {
+			$fail( array(), 'You are signed in with another account. Sign out first, then create the provider account.' );
+		}
+		if ( ! ATC_Partner::rate_ok( 'signup' ) ) {
+			$fail( array(), 'Too many attempts. Try again in an hour.' );
+		}
+
+		$in['contact'] = $in['name'] ?? '';
+		$result        = ATC_Partner::signup( $in );
+		if ( is_wp_error( $result ) ) {
+			$errors = array();
+			foreach ( $result->get_error_codes() as $code ) {
+				$errors[ 'contact' === $code ? 'name' : $code ] = $result->get_error_message( $code );
+			}
+			$fail( $errors );
+		}
+		wp_set_current_user( $result );
+		wp_set_auth_cookie( $result, true );
+		wp_safe_redirect( home_url( '/portal/?welcome=1' ) );
+		exit;
+	}
+
+	/** The provider form's fields, for the theme's /partners/provider/ page. */
+	public static function signup_fields(): string {
+		$state = array( 'errors' => array(), 'general' => '', 'in' => array() );
+		if ( isset( $_GET['atc_su'] ) ) {
+			$saved = get_transient( 'atc_su_' . sanitize_key( wp_unslash( $_GET['atc_su'] ) ) );
+			if ( is_array( $saved ) ) {
+				$state = array_merge( $state, $saved );
+			}
+		}
+		$in  = $state['in'];
+		$v   = static fn( $k ) => esc_attr( isset( $in[ $k ] ) ? sanitize_text_field( (string) $in[ $k ] ) : '' );
+		$err = static fn( $k ) => isset( $state['errors'][ $k ] ) ? '<small class="atc-field-err" role="alert">' . esc_html( $state['errors'][ $k ] ) . '</small>' : '';
+
+		$out = '<input type="hidden" name="atc_signup" value="1">';
+		if ( $state['general'] || ( $state['errors'] && empty( array_intersect_key( $state['errors'], array_flip( array( 'company', 'name', 'email', 'phone', 'airport_id', 'password', 'accept', 'about' ) ) ) ) ) ) {
+			$msg  = $state['general'] ?: implode( ' ', $state['errors'] );
+			$out .= '<p class="atc-formnote is-err" role="alert">' . esc_html( $msg ) . '</p>';
+		}
+		$out .= '<label class="atc-field"><span>Company name travelers will see</span><input type="text" name="company" placeholder="Your company" required autocomplete="organization" value="' . $v( 'company' ) . '">' . $err( 'company' ) . '</label>';
+		$out .= '<label class="atc-field"><span>Contact name</span><input type="text" name="name" placeholder="Your name" required autocomplete="name" value="' . $v( 'name' ) . '">' . $err( 'name' ) . '</label>';
+		$out .= '<label class="atc-field"><span>Email (you sign in with it)</span><input type="email" name="email" placeholder="you@company.com" required autocomplete="email" value="' . $v( 'email' ) . '">' . $err( 'email' ) . '</label>';
+		$out .= '<label class="atc-field"><span>Mobile with WhatsApp, with country code</span><input type="tel" name="phone" placeholder="+52 998 …" required autocomplete="tel" value="' . $v( 'phone' ) . '">' . $err( 'phone' ) . '</label>';
+		$out .= '<label class="atc-field"><span>Airport you serve</span><select name="airport_id">';
+		foreach ( ATC_Catalog::airports() as $a ) {
+			$out .= '<option value="' . (int) $a['id'] . '"' . selected( (int) ( $in['airport_id'] ?? 0 ), (int) $a['id'], false ) . '>' . esc_html( $a['city'] . ' (' . $a['iata'] . ')' ) . '</option>';
+		}
+		$out .= '</select>' . $err( 'airport_id' ) . '<small>More airports open soon. Serve another one? Tell us below.</small></label>';
+		$out .= '<label class="atc-field"><span>Fleet size</span><select name="fleet">';
+		foreach ( array( '1–2 vehicles', '3–10 vehicles', '11+ vehicles' ) as $f ) {
+			$out .= '<option' . selected( (string) ( $in['fleet'] ?? '' ), $f, false ) . '>' . esc_html( $f ) . '</option>';
+		}
+		$out .= '</select></label>';
+		$out .= '<label class="atc-field"><span>Tell us about your company: fleet, areas you cover, years in business (optional)</span><textarea name="about" rows="4" maxlength="2000">' . esc_textarea( (string) ( $in['about'] ?? '' ) ) . '</textarea>' . $err( 'about' ) . '</label>';
+		$out .= '<label class="atc-field"><span>Password (at least 10 characters)</span><input type="password" name="password" required minlength="10" autocomplete="new-password">' . $err( 'password' ) . '</label>';
+		$out .= '<label class="atc-check"><input type="checkbox" name="accept" value="1"' . checked( ! empty( $in['accept'] ), true, false ) . ' required> <span>I accept the <a href="' . esc_url( home_url( '/partners/provider/terms-conditions/' ) ) . '" target="_blank" rel="noopener">provider terms and conditions</a>.</span></label>' . $err( 'accept' );
+		return $out;
 	}
 
 	private static function login_page(): void {
@@ -222,7 +256,7 @@ final class ATC_Portal {
 				'remember'       => true,
 			)
 		);
-		echo '<p><a href="' . esc_url( wp_lostpassword_url( home_url( '/portal/' ) ) ) . '">Forgot your password?</a> · <a href="' . esc_url( home_url( '/portal/signup/' ) ) . '">Create a provider account</a></p></section></main>';
+		echo '<p><a href="' . esc_url( wp_lostpassword_url( home_url( '/portal/' ) ) ) . '">Forgot your password?</a> · <a href="' . esc_url( self::signup_url() ) . '">Create a provider account</a></p></section></main>';
 		self::frame_close();
 	}
 
