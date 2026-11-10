@@ -70,6 +70,7 @@ final class ATC_REST_Portal {
 			'agreement'     => array( 'version' => ATC_Partner::AGREEMENT_VERSION, 'terms' => ATC_Partner::agreement_text() ),
 			'commission_bp' => (int) ( $party['commission_bp'] ?? 0 ) ?: (int) ATC_Settings::get( 'provider_commission_bp' ),
 			'steps'         => ATC_Partner::steps( $pid ),
+			'account'       => ATC_Partner::account( get_current_user_id() ),
 		);
 	}
 
@@ -155,6 +156,26 @@ final class ATC_REST_Portal {
 			array(
 				'PUT' => static function ( WP_REST_Request $r ) {
 					$res = ATC_Partner::save_payout( self::pid(), self::body( $r ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( self::me() );
+				},
+			)
+		);
+
+		self::route(
+			'/account/password',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return self::out( ATC_Partner::change_password( get_current_user_id(), (string) ( $b['current'] ?? '' ), (string) ( $b['new'] ?? '' ) ) );
+				},
+			)
+		);
+		self::route(
+			'/account/email',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b   = self::body( $r );
+					$res = ATC_Partner::request_email_change( get_current_user_id(), (string) ( $b['email'] ?? '' ), (string) ( $b['current'] ?? '' ) );
 					return is_wp_error( $res ) ? $res : rest_ensure_response( self::me() );
 				},
 			)

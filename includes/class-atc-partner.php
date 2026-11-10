@@ -164,6 +164,83 @@ final class ATC_Partner {
 		return true;
 	}
 
+	/* ---------- Account: sign-in email and password ---------- */
+
+	public static function account( int $user_id ): array {
+		$u       = get_userdata( $user_id );
+		$pending = get_user_meta( $user_id, 'atc_pending_email', true );
+		return array(
+			'email'         => $u ? $u->user_email : '',
+			'pending_email' => is_array( $pending ) && $pending['expires'] > time() ? $pending['email'] : '',
+		);
+	}
+
+	public static function change_password( int $user_id, string $current, string $new ) {
+		$u = get_userdata( $user_id );
+		if ( ! $u || ! wp_check_password( $current, $u->user_pass, $user_id ) ) {
+			return new WP_Error( 'atc_pass', 'Your current password is not right.', array( 'status' => 400 ) );
+		}
+		if ( strlen( $new ) < 10 ) {
+			return new WP_Error( 'atc_pass', 'Use a new password of at least 10 characters.', array( 'status' => 400 ) );
+		}
+		$res = wp_update_user( array( 'ID' => $user_id, 'user_pass' => $new ) );
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+		ATC_Install::log( 'user', $user_id, 'password_changed' );
+		return array( 'ok' => true );
+	}
+
+	/** Starts an email change: nothing changes until the link sent to the new address is clicked. */
+	public static function request_email_change( int $user_id, string $email, string $current ) {
+		$u     = get_userdata( $user_id );
+		$email = sanitize_email( $email );
+		if ( ! $u || ! wp_check_password( $current, $u->user_pass, $user_id ) ) {
+			return new WP_Error( 'atc_email', 'Your current password is not right.', array( 'status' => 400 ) );
+		}
+		if ( ! is_email( $email ) ) {
+			return new WP_Error( 'atc_email', 'Enter a valid email address.', array( 'status' => 400 ) );
+		}
+		if ( strtolower( $email ) === strtolower( $u->user_email ) ) {
+			return new WP_Error( 'atc_email', 'That is already your sign-in email.', array( 'status' => 400 ) );
+		}
+		if ( email_exists( $email ) ) {
+			return new WP_Error( 'atc_email', 'Another account already uses this email.', array( 'status' => 400 ) );
+		}
+		$token = wp_generate_password( 32, false, false );
+		update_user_meta( $user_id, 'atc_pending_email', array( 'email' => $email, 'hash' => wp_hash( $token ), 'expires' => time() + DAY_IN_SECONDS ) );
+		$link = add_query_arg( 'token', $token, home_url( '/portal/confirm-email/' ) );
+		wp_mail( $email, 'Confirm your new sign-in email', "Hi {$u->display_name},\n\nClick this link within 24 hours to use this address to sign in to the Airport Transportation provider portal:\n\n{$link}\n\nIf you did not ask for this, ignore this email.", array( 'From: Airport Transportation <' . ATC_Settings::get( 'from_email' ) . '>' ) );
+		ATC_Install::log( 'user', $user_id, 'email_change_requested' );
+		return self::account( $user_id );
+	}
+
+	public static function confirm_email_change( int $user_id, string $token ) {
+		$p = get_user_meta( $user_id, 'atc_pending_email', true );
+		if ( ! is_array( $p ) || $p['expires'] < time() || ! hash_equals( (string) $p['hash'], wp_hash( $token ) ) ) {
+			return new WP_Error( 'atc_email', 'This link has expired or was already used. Ask for a new one under Account.' );
+		}
+		if ( email_exists( $p['email'] ) ) {
+			return new WP_Error( 'atc_email', 'Another account already uses this email.' );
+		}
+		global $wpdb;
+		$u   = get_userdata( $user_id );
+		$old = $u->user_email;
+		$res = wp_update_user( array( 'ID' => $user_id, 'user_email' => $p['email'] ) );
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+		delete_user_meta( $user_id, 'atc_pending_email' );
+		// Keep the booking email in step when it was the same address.
+		$party = self::party_id_for_user( $user_id );
+		if ( $party ) {
+			$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'parties' ) . ' SET email = %s WHERE id = %d AND email = %s', $p['email'], $party, $old ) );
+		}
+		wp_mail( $old, 'Your sign-in email was changed', "The sign-in email of your Airport Transportation provider account is now {$p['email']}.\n\nIf this wasn't you, write to " . ATC_Settings::get( 'from_email' ) . ' right away.', array( 'From: Airport Transportation <' . ATC_Settings::get( 'from_email' ) . '>' ) );
+		ATC_Install::log( 'user', $user_id, 'email_changed' );
+		return true;
+	}
+
 	/* ---------- Setup steps ---------- */
 
 	public static function steps( int $party_id ): array {

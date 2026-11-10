@@ -28,7 +28,7 @@ final class ATC_Portal {
 	/** Providers land in the portal after signing in, never in wp-admin. */
 	public static function login_redirect( $to, $requested, $user ) {
 		if ( $user instanceof WP_User && $user->has_cap( 'atc_provider_portal' ) && ! $user->has_cap( 'edit_posts' ) ) {
-			return home_url( '/portal/' );
+			return ( $requested && 0 === strpos( $requested, home_url( '/portal/' ) ) ) ? $requested : home_url( '/portal/' );
 		}
 		return $to;
 	}
@@ -81,7 +81,15 @@ final class ATC_Portal {
 			exit;
 		}
 		if ( ! is_user_logged_in() ) {
-			wp_safe_redirect( home_url( '/portal/login/' ) );
+			$here = home_url( isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '/portal/' );
+			wp_safe_redirect( add_query_arg( 'redirect_to', rawurlencode( $here ), home_url( '/portal/login/' ) ) );
+			exit;
+		}
+		if ( 'confirm-email' === $view ) {
+			$res = ATC_Partner::confirm_email_change( get_current_user_id(), isset( $_GET['token'] ) ? sanitize_text_field( wp_unslash( $_GET['token'] ) ) : '' );
+			self::frame_open( 'Sign-in email' );
+			echo '<main class="atc-wrap atc-narrow"><section class="card pad"><h1>' . ( is_wp_error( $res ) ? 'Email not changed' : 'Email changed' ) . '</h1><p>' . esc_html( is_wp_error( $res ) ? $res->get_error_message() : 'From now on, sign in with ' . wp_get_current_user()->user_email . '.' ) . '</p><p><a class="btn dark" href="' . esc_url( home_url( '/portal/account/' ) ) . '">Back to the portal</a></p></section></main>';
+			self::frame_close();
 			exit;
 		}
 		if ( ! ATC_Partner::current_party_id() ) {
@@ -250,7 +258,7 @@ final class ATC_Portal {
 		}
 		wp_login_form(
 			array(
-				'redirect'       => home_url( '/portal/' ),
+				'redirect'       => isset( $_GET['redirect_to'] ) ? wp_validate_redirect( esc_url_raw( wp_unslash( $_GET['redirect_to'] ) ), home_url( '/portal/' ) ) : home_url( '/portal/' ),
 				'label_username' => 'Email',
 				'label_log_in'   => 'Sign in',
 				'remember'       => true,

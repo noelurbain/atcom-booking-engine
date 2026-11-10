@@ -66,7 +66,8 @@
     ['prices', 'Prices', null],
     ['documents', 'Documents', 'documents'],
     ['payout', 'Payout details', 'payout'],
-    ['agreement', 'Agreement', 'agreement']
+    ['agreement', 'Agreement', 'agreement'],
+    ['account', 'Account', null]
   ];
 
   function path() {
@@ -99,7 +100,7 @@
     var p = path();
     clear(app);
     ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices,
-       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement }[p] || viewSetup)();
+       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount }[p] || viewSetup)();
   }
 
   function head(title, sub) {
@@ -410,6 +411,40 @@
         accepted
           ? h('p', { class: 'chip green', text: 'Accepted on ' + p.agreement_accepted_at.slice(0, 16).replace('T', ' ') + ' (UTC)' })
           : h('div', { class: 'atc-actions' }, h('label', { class: 'tick' }, box, 'I have read the agreement and accept it on behalf of ' + p.name + '.'), btn))]);
+  }
+
+  /* ---------- Account ---------- */
+
+  function viewAccount() {
+    var a = me.account;
+    var newEmail = h('input', { type: 'email', autocomplete: 'email' });
+    var pwE = h('input', { type: 'password', autocomplete: 'current-password' });
+    var eBtn = h('button', { class: 'btn dark', type: 'submit', text: 'Send confirmation link' });
+    var cur = h('input', { type: 'password', autocomplete: 'current-password' });
+    var nw = h('input', { type: 'password', minlength: 10, autocomplete: 'new-password' });
+    var pBtn = h('button', { class: 'btn dark', type: 'submit', text: 'Change password' });
+    add(app, [
+      head('Account', 'How you sign in to the portal.'),
+      h('form', { class: 'card pad', onsubmit: function (e) {
+        e.preventDefault(); eBtn.disabled = true;
+        api('POST', '/account/email', { email: newEmail.value, current: pwE.value })
+          .then(function (d) { saved(d, 'Check ' + d.account.pending_email + ' and click the link to confirm.'); }).catch(fail).then(function () { eBtn.disabled = false; });
+      } },
+        h('h2', { text: 'Sign-in email' }),
+        h('p', null, 'You sign in with ', h('strong', { text: a.email }), '.'),
+        a.pending_email ? h('p', { class: 'chip orange', text: 'Waiting for you to confirm ' + a.pending_email + ' (link sent, valid 24 hours)' }) : null,
+        h('div', { class: 'grid2' }, field('New sign-in email', newEmail), field('Your current password', pwE)),
+        h('p', { class: 'small atc-muted', text: 'We send a link to the new address. Your email only changes when you click it. The email for bookings is under Company.' }),
+        h('div', { class: 'atc-actions' }, eBtn)),
+      h('form', { class: 'card pad', onsubmit: function (e) {
+        e.preventDefault(); pBtn.disabled = true;
+        api('POST', '/account/password', { current: cur.value, new: nw.value })
+          .then(function () { cur.value = ''; nw.value = ''; toast('Password changed.'); }).catch(fail).then(function () { pBtn.disabled = false; });
+      } },
+        h('h2', { text: 'Password' }),
+        h('div', { class: 'grid2' }, field('Current password', cur), field('New password (at least 10 characters)', nw)),
+        h('div', { class: 'atc-actions' }, pBtn))
+    ]);
   }
 
   /* ---------- start ---------- */
