@@ -122,6 +122,9 @@ final class ATC_REST {
 				'label' => ATC_Catalog::airport_label( $a ),
 				'iata'  => $a['iata'] ?? null,
 				'sub'   => ! empty( $a['iata'] ) ? $a['name'] : trim( $a['city'] . ', ' . $a['country'], ', ' ),
+				'lat'   => isset( $a['lat'] ) && null !== $a['lat'] ? (float) $a['lat'] : null,
+				'lng'   => isset( $a['lng'] ) && null !== $a['lng'] ? (float) $a['lng'] : null,
+				'cc'    => strtolower( (string) ( $a['country'] ?? '' ) ),
 			);
 		};
 		foreach ( ATC_Catalog::search_airports( $q ) as $a ) {

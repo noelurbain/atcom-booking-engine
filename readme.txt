@@ -1,7 +1,12 @@
 === ATCOM Booking Engine ===
-Version: 0.9.1 (checkout, part 3: emails, webhook, Manage booking)
+Version: 0.9.2 (checkout, part 3: emails, webhook, Manage booking)
 
-New in 0.9.1: usual market capacities (passengers / suitcases): Standard Sedan 3/3, Executive Sedan 3/2,
+New in 0.9.2:
+- Hotel and address suggestions only come from around the chosen airport (about 220 km, same country).
+- Stripe's payment form uses our font (Manrope) and borders; the traveler's mobile is prefilled.
+- Confirmation: "Copy link" button, and "Change it here" jumps to Manage your booking on the same page.
+
+Also in 0.9.1: usual market capacities (passengers / suitcases): Standard Sedan 3/3, Executive Sedan 3/2,
 Standard SUV 4/4, Premium SUV 6/6, Luxury SUV 6/5, Minivan 6/6, Minibus 14/14, Mini Coach 25, Midi Coach 35,
 Coach 49, Large Coach 57; limousines 8 to 18. Services still on the old placeholder numbers get them too;
 any capacity a provider or our team changed is kept.

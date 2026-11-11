@@ -86,11 +86,14 @@
     var country = form.getAttribute('data-country') || '';
     suggest(from, from.parentNode.querySelector('.ab-list'), function (v) {
       return fetch(C.airports + (C.airports.indexOf('?') > -1 ? '&' : '?') + 'local=1&q=' + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (d) {
-        return { rows: (d.results || []).map(function (a) { return { label: a.label, sub: a.sub, id: a.id, iata: a.iata }; }), note: (d.results || []).length ? '' : 'We don’t serve that airport yet.' };
+        return { rows: (d.results || []).map(function (a) { return { label: a.label, sub: a.sub, id: a.id, iata: a.iata, lat: a.lat, lng: a.lng, cc: a.cc }; }), note: (d.results || []).length ? '' : 'We don’t serve that airport yet.' };
       });
     }, function (a) {
       from.value = a.label; fromCode.value = a.iata || a.id; from.setCustomValidity('');
-      center = []; country = '';
+      // Hotels and addresses are then looked up around this airport only.
+      center = a.lat !== null && a.lat !== undefined ? [a.lat, a.lng] : [];
+      country = a.cc || '';
+      to.value = ''; lat.value = ''; lng.value = ''; pid.value = '';
     });
     // Typing again clears any old warning; the results page finds a typed airport anyway.
     from.addEventListener('input', function () { fromCode.value = ''; from.setCustomValidity(''); });
@@ -104,7 +107,11 @@
       return loadMaps().then(function () { return google.maps.importLibrary('places'); }).then(function (lib) {
         if (!token) token = new lib.AutocompleteSessionToken();
         var req = { input: v, sessionToken: token };
-        if (center.length === 2 && center[0]) req.locationBias = { center: { lat: +center[0], lng: +center[1] }, radius: 50000 };
+        // Only places within about 220 km of the airport (Cancún reaches Tulum and Holbox).
+        if (center.length === 2 && center[0] !== '' && !isNaN(+center[0])) {
+          var la = +center[0], lo = +center[1], dLng = 2 / Math.max(0.2, Math.cos(la * Math.PI / 180));
+          req.locationRestriction = { north: la + 2, south: la - 2, east: lo + dLng, west: lo - dLng };
+        }
         if (country) req.includedRegionCodes = [country];
         return lib.AutocompleteSuggestion.fetchAutocompleteSuggestions(req).then(function (r) {
           return { rows: (r.suggestions || []).filter(function (s) { return s.placePrediction; }).slice(0, 6).map(function (s) {
@@ -367,11 +374,12 @@
       var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.getAttribute('data-theme') !== 'light';
       elements = stripe.elements({
         clientSecret: P.secret,
-        appearance: { theme: dark ? 'night' : 'stripe', variables: { colorPrimary: '#15171C', borderRadius: '10px', fontFamily: 'inherit' } }
+        fonts: [{ cssSrc: 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap' }],
+        appearance: { theme: dark ? 'night' : 'stripe', variables: { colorPrimary: '#15171C', colorText: dark ? '#F3F0EA' : '#15171C', borderRadius: '12px', fontFamily: 'Manrope, system-ui, sans-serif', fontSizeBase: '15px' }, rules: { '.Label': { fontWeight: '700' }, '.Tab': { borderColor: '#D6D1C7' }, '.Input': { borderColor: '#D6D1C7' } } }
       });
       var el = payForm.querySelector('[data-ab-element]');
       el.textContent = '';
-      var pe = elements.create('payment', { layout: 'tabs', defaultValues: { billingDetails: { name: P.name, email: P.email } } });
+      var pe = elements.create('payment', { layout: 'tabs', defaultValues: { billingDetails: { name: P.name, email: P.email, phone: (P.phone || '').replace(/\s+/g, '') } } });
       pe.on('ready', function () { ready = true; canPay(); });
       pe.mount(el);
     }
@@ -586,5 +594,24 @@
     var btn = find.querySelector('[type=submit]'); btn.disabled = true;
     post(C.api + 'booking/find', { number: find.elements.number.value.trim(), email: find.elements.email.value.trim() })
       .then(function () { sent.hidden = false; }).catch(function (x) { showError(err, x.message); }).then(function () { btn.disabled = false; });
+  });
+
+  /* ---------- Confirmation: copy the booking link, jump to Manage ---------- */
+  document.querySelectorAll('[data-ab-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var url = b.getAttribute('data-ab-copy'), label = b.querySelector('[data-ab-copylabel]');
+      function done(ok) { label.textContent = ok ? 'Link copied' : 'Copy failed'; setTimeout(function () { label.textContent = 'Copy link'; }, 2500); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { done(true); }, function () { done(false); });
+      else { var t = document.createElement('textarea'); t.value = url; document.body.appendChild(t); t.select(); try { done(document.execCommand('copy')); } catch (e) { done(false); } t.remove(); }
+    });
+  });
+  document.querySelectorAll('[data-ab-tomanage]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var card = document.getElementById('manage'); if (!card) return;
+      e.preventDefault();
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      var open = card.querySelector('[data-ab-open=change]');
+      if (open && open.getAttribute('aria-expanded') !== 'true') open.click();
+    });
   });
 })();

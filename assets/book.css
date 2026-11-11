@@ -273,3 +273,6 @@
 .ab-stars-in label{font-size:40px;line-height:1;color:#D6D1C7;cursor:pointer;padding:2px}
 .ab-stars-in input:checked~label,.ab-stars-in label:hover,.ab-stars-in label:hover~label{color:#E08A00}
 .ab-stars-in input:focus-visible+label{outline:2px solid #E07A1F;outline-offset:2px;border-radius:6px}
+.ab-keep{display:flex;flex-direction:column;gap:10px}
+.ab-trust a{color:var(--brown);font-weight:800}
+.ab-copy{min-height:40px;padding:0 16px;font-size:14px;align-self:flex-start}

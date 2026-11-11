@@ -833,8 +833,8 @@ final class ATC_Book {
 				</section>
 				<?php endif; ?>
 				<div class="ab-trust">
-					<span>Flight changed? Update it in Manage booking</span>
-					<span>Keep this page: its link opens your booking any time</span>
+					<?php if ( ! $cancelled && ATC_Manage::can_change( $b ) ) : ?><span>Flight changed? <a href="#manage" data-ab-tomanage>Change it here</a></span><?php endif; ?>
+					<span class="ab-keep"><span>Save this page’s link to come back to your booking any time.</span><button type="button" class="ab-btn is-line ab-copy" data-ab-copy="<?php echo esc_attr( ATC_Checkout::reservation_url( $b['number'], $key ) ); ?>"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg><span data-ab-copylabel>Copy link</span></button></span>
 				</div>
 			</aside>
 		</section>
