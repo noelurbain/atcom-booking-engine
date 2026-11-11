@@ -324,11 +324,10 @@
   /* ---------- Prices ---------- */
 
   function viewPrices() {
-    add(app, head('Prices', 'Your price for each zone and vehicle, one way and round trip. Type them here or upload your own price list.'));
     var box = h('div', { class: 'pe-root' });
     add(app, box);
     window.ATCPrices.mount(box, {
-      api: api, base: '/prices', who: 'provider', toast: toast, fail: fail,
+      api: api, base: '/prices', who: 'provider', h1: true, toast: toast, fail: fail,
       onSaved: function () { api('GET', '/me').then(function (d) { me = d; nav(); }); }
     });
   }

@@ -50,6 +50,18 @@ final class ATC_REST_Control {
 			)
 		);
 
+		self::route(
+			'/bookings',
+			array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Bookings::list( array( 'status' => $r['status'], 'q' => $r['q'], 'provider' => $r['provider'], 'page' => $r['page'] ) ) ) )
+		);
+		self::route(
+			'/bookings/(?P<number>[A-Za-z0-9]+)',
+			array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Bookings::get( (string) $r['number'] ) ) )
+		);
+		self::route(
+			'/bookings/(?P<number>[A-Za-z0-9]+)/notes',
+			array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Bookings::add_note( (string) $r['number'], (string) ( self::body( $r )['text'] ?? '' ) ) ) )
+		);
 		self::route( '/dashboard', array( 'GET' => static fn() => rest_ensure_response( ATC_Dashboard::data() ) ) );
 
 		self::route(

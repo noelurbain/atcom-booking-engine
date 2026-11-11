@@ -1,5 +1,13 @@
 === ATCOM Booking Engine ===
-Version: 0.5.1 (control panel menu)
+Version: 0.6.0 (bookings, price screen as in the mockup)
+
+New in 0.6.0:
+- Bookings in the control panel: the list (All, Coming up, No provider, Paid, Not paid, Cancelled; find by
+  reference) and the booking page as in the mockup: each trip leg, traveler, what happened with internal notes,
+  the money both ways, payment and where it came from. Old-site bookings say they are run from the old site.
+- The price screen follows the approved mockup: One way / Round trip switch, each cell shows the Suggested
+  retail price and what the provider gets, click a cell to edit it in the side panel (type either amount),
+  Remove, "Only zones with missing prices", Download Excel (re-uploadable), Upload Excel or CSV.
 
 New in 0.5.1: the control panel gets the layout from the approved mockups: menu on the left (Dashboard,
 Bookings, Providers, Prices, Zones and hotels, Payouts, Tickets, Crisp inbox, Settings, Status, WordPress;

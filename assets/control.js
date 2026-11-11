@@ -94,7 +94,139 @@
     if (parts[0] === 'providers') return viewProviders();
     if (parts[0] === 'import') return viewImport();
     if (parts[0] === 'zones') return viewZones();
+    if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
+    if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
+  }
+
+  /* ---------- Bookings ---------- */
+
+  function bookingLink(n) { return h('a', { class: 'strong ref', href: C.base + 'bookings/' + n + '/', 'data-go': 'bookings/' + n, text: n }); }
+
+  function viewBookings() {
+    clear(app);
+    var params = new URLSearchParams(location.search);
+    var st = { status: params.get('status') || '', q: params.get('q') || '', page: 1 };
+    var tbody = h('tbody');
+    var info = h('span', { class: 'small atc-muted' });
+    var pager = h('div', { class: 'atc-actions' });
+    var search = h('input', { type: 'search', placeholder: 'Find a reference', 'aria-label': 'Find a booking by reference', value: st.q });
+    var pills = h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Show' });
+    var opts = [['', 'All'], ['upcoming', 'Coming up'], ['no_provider', 'No provider'], ['paid', 'Paid'], ['unpaid', 'Not paid'], ['cancelled', 'Cancelled']];
+    function drawPills() {
+      clear(pills);
+      opts.forEach(function (o) {
+        add(pills, h('button', { type: 'button', class: 'pe-pill' + (st.status === o[0] ? ' on' : ''), 'aria-pressed': st.status === o[0] ? 'true' : 'false', text: o[1], onclick: function () { st.status = o[0]; st.page = 1; drawPills(); load(); } }));
+      });
+    }
+    add(app, [
+      h('div', { class: 'atc-head' },
+        h('div', null, h('h1', { text: 'Bookings' }), h('p', { class: 'atc-muted', text: 'Every booking, newest first. Pick-up times in the airport\'s local time.' }))),
+      h('div', { class: 'pe-bar' }, pills, search),
+      h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+        h('thead', null, h('tr', null, ['Reference', 'Pick-up', 'Route', 'Vehicle', 'Pax', 'Provider', 'Total', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+        tbody))),
+      h('div', { class: 'pe-bar' }, info, pager)
+    ]);
+    drawPills();
+    var timer;
+    search.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { st.q = search.value; st.page = 1; load(); }, 300); });
+    function load() {
+      var qs = '?status=' + encodeURIComponent(st.status) + '&q=' + encodeURIComponent(st.q) + '&page=' + st.page;
+      api('GET', '/bookings' + qs).then(function (r) {
+        clear(tbody); clear(pager);
+        if (!r.bookings.length) add(tbody, h('tr', null, h('td', { colspan: 8, class: 'atc-muted', text: 'No bookings match.' })));
+        r.bookings.forEach(function (b) {
+          add(tbody, h('tr', null,
+            h('td', null, bookingLink(b.number), h('div', { class: 'small atc-muted', text: 'booked ' + b.booked + (b.legacy ? ' · old site' : '') })),
+            h('td', { class: 'strong', text: b.travel || '–' }),
+            h('td', null, h('div', { text: b.route || '–' }), h('div', { class: 'small atc-muted', text: b.trip === 'round_trip' ? 'Round trip' : 'One way' })),
+            h('td', { text: b.vehicle || '–' }),
+            h('td', { text: String(b.pax) }),
+            h('td', null, b.provider ? document.createTextNode(b.provider) : (b.status === 'Paid' ? h('span', { class: 'chip red', text: 'Nobody yet' }) : '–')),
+            h('td', { class: 'strong nowrap', text: cash(b.total) }),
+            h('td', null, h('span', { class: 'chip ' + b.tone, text: b.status }))));
+        });
+        info.textContent = r.total + ' booking' + (r.total === 1 ? '' : 's') + (r.pages > 1 ? ' · page ' + r.page + ' of ' + r.pages : '');
+        if (r.page > 1) add(pager, h('button', { class: 'btn', type: 'button', text: '← Newer', onclick: function () { st.page--; load(); } }));
+        if (r.page < r.pages) add(pager, h('button', { class: 'btn', type: 'button', text: 'Older →', onclick: function () { st.page++; load(); } }));
+      }).catch(fail);
+    }
+    load();
+  }
+
+  function kv(label, value) {
+    return h('div', null, h('div', { class: 'small atc-muted strong', text: label }), h('div', { class: 'strong kv-v' }, value === null || value === undefined || value === '' ? '–' : value));
+  }
+
+  function viewBooking(number) {
+    clear(app);
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/bookings/' + encodeURIComponent(number)).then(function draw(b) {
+      clear(app);
+      var leg0 = b.legs[0] || {};
+      var noteBox = h('textarea', { rows: 2, placeholder: 'Add a note' });
+      var noteBtn = h('button', { class: 'btn', type: 'button', text: 'Add note', onclick: function () {
+        noteBtn.disabled = true;
+        api('POST', '/bookings/' + encodeURIComponent(number) + '/notes', { text: noteBox.value }).then(function (nb) { toast('Note added.'); draw(nb); }).catch(fail).then(function () { noteBtn.disabled = false; });
+      } });
+      add(app, [
+        h('a', { class: 'back', href: C.base + 'bookings/', 'data-go': 'bookings', text: '← Bookings' }),
+        h('section', { class: 'card pad bk-head' },
+          h('div', null,
+            h('div', { class: 'atc-actions' }, h('h1', { text: b.number }), h('span', { class: 'chip ' + b.tone, text: b.status }), b.legacy ? h('span', { class: 'chip grey', text: 'From the old site' }) : null),
+            h('p', { class: 'atc-muted', text: [b.traveler.name || null, 'booked ' + b.booked, b.source.site || null, (b.lang || '').toUpperCase()].filter(Boolean).join(' · ') })),
+          h('p', { class: 'small atc-muted', text: b.legacy ? 'This trip is run from the old site: change the provider, the trip or refunds there.' : 'Changing the provider, editing the trip, refunds and resending the voucher come with checkout.' })),
+        h('div', { class: 'pe-split' },
+          h('div', { class: 'pe-left' },
+            b.legs.map(function (l, i) {
+              return h('section', { class: 'card pad' },
+                h('h2', { text: (b.legs.length > 1 ? (i === 0 ? 'Going' : 'Coming back') : 'Trip') + ' · ' + (l.direction === 'arrival' ? 'from the airport' : 'to the airport') }),
+                h('div', { class: 'kv' },
+                  kv('Pick-up', l.pickup ? l.pickup + ' (' + l.timezone + ')' : null),
+                  kv('Airport', l.airport),
+                  kv(l.direction === 'arrival' ? 'Drop-off' : 'Pick-up place', (l.direction === 'arrival' ? l.to : l.from) + (l.zone ? ' · zone ' + l.zone : '')),
+                  kv('Vehicle and party', [l.vehicle, (b.pax.adults + b.pax.children) + ' passengers', l.bags ? l.bags + ' bags' : null].filter(Boolean).join(' · ')),
+                  kv('Provider', l.party_id ? h('a', { href: C.base + 'providers/' + l.party_id + '/', 'data-go': 'providers/' + l.party_id, text: l.provider }) : h('span', { class: 'chip red', text: 'Nobody yet' })),
+                  kv('Flight', l.flight || null)),
+                l.notes ? h('p', { class: 'note', text: 'Note from the traveler: ' + l.notes }) : null);
+            }),
+            h('section', { class: 'card pad' },
+              h('h2', { text: 'Traveler' }),
+              b.legacy && !b.traveler.name ? h('p', { class: 'atc-muted', text: 'Name, email and phone were not copied from the old site; they are on the old site\'s booking.' }) :
+                h('div', { class: 'kv' }, kv('Name', b.traveler.name), kv('Email', b.traveler.email), kv('Mobile and WhatsApp', b.traveler.phone), kv('Account', b.traveler.account))),
+            h('section', { class: 'card pad' },
+              h('h2', { text: 'What happened' }),
+              h('ol', { class: 'timeline' }, b.events.map(function (e) {
+                return h('li', null, h('span', { class: 'atc-muted small strong', text: e.when }), h('span', null, h('strong', { text: e.note ? 'Note: ' : '' }), e.what, h('span', { class: 'atc-muted', text: ' · ' + e.who })));
+              })),
+              h('label', { class: 'field' }, h('span', { text: 'Internal note (our team only)' }), noteBox),
+              h('div', { class: 'atc-actions' }, noteBtn))),
+          h('div', { class: 'bk-side' },
+            h('section', { class: 'card pad money' },
+              h('h2', { text: 'The money, both ways' }),
+              h('table', { class: 'bare' }, h('tbody', null, b.money.map(function (m, i) {
+                return h('tr', { class: i === b.money.length - 1 && b.money.length > 2 ? 'total' : '' },
+                  h('th', { scope: 'row' }, h('div', { text: m.party }), m.status ? h('div', { class: 'small atc-muted', text: m.status }) : null),
+                  h('td', { text: (m.amount < 0 ? '− ' : '') + cash(Math.abs(m.amount)) }));
+              })))),
+            h('section', { class: 'card pad' },
+              h('h2', { text: 'Payment' }),
+              h('div', { class: 'rows' },
+                h('div', null, h('span', { text: 'State' }), h('strong', { text: b.payment.state })),
+                h('div', null, h('span', { text: 'Method' }), h('strong', { text: b.payment.method ? b.payment.method.charAt(0).toUpperCase() + b.payment.method.slice(1) : '–' })),
+                b.payment.stripe ? h('div', null, h('span', { text: 'Stripe payment' }), h('a', { href: 'https://dashboard.stripe.com/payments/' + b.payment.stripe, target: '_blank', rel: 'noopener', text: 'Open in Stripe ↗' })) : null,
+                h('div', null, h('span', { text: 'Refunded' }), h('strong', { text: b.payment.refunded ? cash(b.payment.refunded) : 'nothing' })))),
+            h('section', { class: 'card pad' },
+              h('h2', { text: 'Where it came from' }),
+              h('div', { class: 'rows' },
+                h('div', null, h('span', { text: 'Site' }), h('strong', { text: b.source.site || '–' })),
+                h('div', null, h('span', { text: 'Channel' }), h('strong', { text: b.channel })),
+                h('div', null, h('span', { text: 'Affiliate' }), h('strong', { text: b.source.affiliate || 'none' })),
+                h('div', null, h('span', { text: 'Coupon' }), h('strong', { text: b.source.coupon || 'none' })),
+                b.source.area ? h('div', null, h('span', { text: 'Their area name' }), h('strong', { text: b.source.area })) : null))))
+      ]);
+    }).catch(fail);
   }
 
   /* ---------- Dashboard ---------- */
@@ -110,7 +242,7 @@
       h('tbody', null, rows.map(function (r) {
         return h('tr', null,
           h('td', { class: 'strong', text: r.when || '–' }),
-          h('td', { text: r.number }),
+          h('td', null, bookingLink(r.number)),
           h('td', { text: r.airport || '–' }),
           h('td', null, h('div', { text: (r.direction === 'arrival' ? 'Airport → ' : '→ Airport · ') + (r.zone || '') }), h('div', { class: 'small atc-muted', text: r.place || '' })),
           h('td', { text: r.vehicle || '–' }),
@@ -157,7 +289,7 @@
               h('thead', null, h('tr', null, ['Booking', 'Airport', 'Total', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
               h('tbody', null, d.recent.length ? d.recent.map(function (r) {
                 return h('tr', null,
-                  h('td', null, h('div', { class: 'strong', text: r.number }), h('div', { class: 'small atc-muted', text: r.booked + (r.legacy ? ' · old site' : '') })),
+                  h('td', null, bookingLink(r.number), h('div', { class: 'small atc-muted', text: r.booked + (r.legacy ? ' · old site' : '') })),
                   h('td', { text: r.airport || '–' }),
                   h('td', { text: cash(+r.total_cents) + (r.trip_type === 'round_trip' ? ' RT' : '') }),
                   h('td', null, bookingChip(r)));

@@ -83,109 +83,161 @@
    */
   function mount(root, opts) {
     var who = opts.who || 'provider';
-    var basis = who === 'provider' ? 'provider' : 'retail';
-    var g = null;           // grid data
-    var edits = {};          // key zone:vehicle:dir → cents typed (or '' to clear)
+    var g = null;            // grid data
+    var dir = 'one_way';     // which direction the grid shows
+    var sel = null;          // {zone, type} being edited
+    var onlyGaps = false;
     var extraZones = [], extraVehicles = [];
-    var gridBox = h('div');
     var uploadBox = h('div');
+    var uploadOpen = false;
 
     function load(airportId) {
-      clear(gridBox); add(gridBox, h('p', { class: 'atc-muted', text: 'Loading prices…' }));
-      return opts.api('GET', opts.base + (airportId ? '?airport_id=' + airportId : '')).then(function (d) { g = d; edits = {}; extraZones = []; extraVehicles = []; render(); }).catch(opts.fail);
+      clear(root); add(root, h('p', { class: 'atc-muted', text: 'Loading prices…' }));
+      return opts.api('GET', opts.base + (airportId ? '?airport_id=' + airportId : '')).then(function (d) { g = d; sel = null; extraZones = []; extraVehicles = []; render(); }).catch(opts.fail);
     }
 
-    function cell(zid, vid, dir) {
+    function cell(zid, vid, d) {
       var c = g.cells[zid + ':' + vid];
-      return c && c[dir] ? c[dir] : null;
+      return c && c[d || dir] ? c[d || dir] : null;
     }
+    function shownZones() { return g.zones.filter(function (z) { return z.served || z.status === 'proposed' || extraZones.indexOf(z.id) > -1; }); }
+    function shownTypes(zones) { return g.vehicle_types.filter(function (t) { return t.offered || extraVehicles.indexOf(t.id) > -1 || zones.some(function (z) { return g.cells[z.id + ':' + t.id]; }); }); }
 
     function render() {
       clear(root);
       if (!g || !g.airport) { add(root, h('p', { class: 'atc-muted', text: 'Add your airport and the zones you serve first.' })); return; }
       var bp = g.commission_bp;
-      var zones = g.zones.filter(function (z) { return z.served || z.status === 'proposed' || extraZones.indexOf(z.id) > -1; });
-      var types = g.vehicle_types.filter(function (t) { return t.offered || extraVehicles.indexOf(t.id) > -1 || zones.some(function (z) { return g.cells[z.id + ':' + t.id]; }); });
+      var zones = shownZones();
+      var types = shownTypes(zones);
+      var gaps = 0;
+      zones.forEach(function (z) { types.forEach(function (t) { if (!cell(z.id, t.id)) gaps++; }); });
+      var rows = onlyGaps ? zones.filter(function (z) { return types.some(function (t) { return !cell(z.id, t.id); }); }) : zones;
+      if (!sel && zones.length && types.length) sel = { zone: zones[0], type: types[0] };
 
+      var pill = function (d, label) {
+        return h('button', { type: 'button', class: 'pe-pill' + (dir === d ? ' on' : ''), 'aria-pressed': dir === d ? 'true' : 'false', text: label, onclick: function () { dir = d; render(); } });
+      };
       var airportSel = g.airports.length > 1 ? h('select', { 'aria-label': 'Airport', onchange: function () { load(+airportSel.value); } },
-        g.airports.map(function (a) { return h('option', { value: a.id, selected: a.id === g.airport.id, text: a.label }); })) : h('strong', { text: g.airport.label });
+        g.airports.map(function (a) { return h('option', { value: a.id, selected: a.id === g.airport.id, text: a.label }); })) : null;
 
-      var basisSel = h('select', { 'aria-label': 'What you type', onchange: function () { basis = basisSel.value; edits = {}; render(); } },
-        h('option', { value: 'provider', selected: basis === 'provider', text: who === 'provider' ? 'What I get paid' : 'What the provider gets paid' }),
-        h('option', { value: 'retail', selected: basis === 'retail', text: 'What travelers pay (Suggested retail price)' }));
-
-      var zoneAdd = h('select', { 'aria-label': 'Add a zone', onchange: function () { if (zoneAdd.value) { extraZones.push(+zoneAdd.value); render(); } } },
+      var zoneAdd = h('select', { 'aria-label': 'Add a zone', onchange: function () { if (zoneAdd.value) { var z = g.zones.filter(function (x) { return x.id === +zoneAdd.value; })[0]; extraZones.push(z.id); sel = { zone: z, type: sel ? sel.type : types[0] }; render(); } } },
         h('option', { value: '', text: '+ Add a zone' }),
         g.zones.filter(function (z) { return zones.indexOf(z) === -1; }).map(function (z) { return h('option', { value: z.id, text: z.name }); }));
-      var vehAdd = h('select', { 'aria-label': 'Add a vehicle category', onchange: function () { if (vehAdd.value) { extraVehicles.push(+vehAdd.value); render(); } } },
+      var vehAdd = h('select', { 'aria-label': 'Add a vehicle category', onchange: function () { if (vehAdd.value) { var t = g.vehicle_types.filter(function (x) { return x.id === +vehAdd.value; })[0]; extraVehicles.push(t.id); sel = { zone: sel ? sel.zone : zones[0], type: t }; render(); } } },
         h('option', { value: '', text: '+ Add a vehicle category' }),
         g.vehicle_types.filter(function (t) { return types.indexOf(t) === -1; }).map(function (t) { return h('option', { value: t.id, text: t.name + ' (up to ' + t.max_passengers + ')' }); }));
 
-      function input(z, t, dir) {
-        var key = z.id + ':' + t.id + ':' + dir;
-        var c = cell(z.id, t.id, dir);
-        var shown = key in edits ? edits[key] : (c ? c[basis] : null);
-        var other = h('small', { class: 'atc-muted pe-other' });
-        function hint(v) {
-          if (v === null || v === '') { other.textContent = ''; return; }
-          var o = basis === 'retail' ? providerFromRetail(v, bp) : retailFromProvider(v, bp);
-          other.textContent = (basis === 'retail' ? 'paid ' : 'sells ') + dollars(o);
-        }
-        var el = h('input', { type: 'text', inputmode: 'decimal', class: 'pe-in' + (key in edits ? ' changed' : ''), value: dollars(shown), placeholder: '–',
-          'aria-label': z.name + ', ' + t.name + ', ' + (dir === 'one_way' ? 'one way' : 'round trip') });
-        el.addEventListener('input', function () {
-          var v = cents(el.value);
-          var orig = c ? c[basis] : null;
-          if (el.value.trim() === '') { if (c) edits[key] = ''; else delete edits[key]; }
-          else if (v !== null && v !== orig) edits[key] = v;
-          else delete edits[key];
-          el.classList.toggle('changed', key in edits);
-          hint(v);
-          count();
-        });
-        hint(shown);
-        return h('label', { class: 'pe-cell' }, h('span', { class: 'pe-dir', text: dir === 'one_way' ? 'One way' : 'Round trip' }), el, other);
-      }
-
-      var saveBtn = h('button', { class: 'btn dark', type: 'button', text: 'Save prices', disabled: true, onclick: save });
-      var changes = h('span', { class: 'small atc-muted' });
-      function count() {
-        var n = Object.keys(edits).length;
-        saveBtn.disabled = !n;
-        changes.textContent = n ? n + ' change' + (n > 1 ? 's' : '') + ' not saved' : '';
-      }
+      var table = zones.length && types.length ? h('div', { class: 'pe-grid' }, h('table', { class: 'pe' },
+        h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), types.map(function (t) { return h('th', { scope: 'col' }, h('div', { class: 'strong', text: t.name }), h('small', { class: 'atc-muted', text: 'up to ' + t.max_passengers + (t.offered && t.offered !== 'live' ? ' · ' + t.offered : '') })); }))),
+        h('tbody', null, rows.map(function (z) {
+          return h('tr', null,
+            h('th', { scope: 'row' }, h('div', { text: z.name }), z.status === 'proposed' ? h('span', { class: 'chip orange', text: 'Zone pending' }) : (!z.shaped ? h('span', { class: 'chip grey', text: 'Shape coming' }) : null)),
+            types.map(function (t) {
+              var c = cell(z.id, t.id);
+              var on = sel && sel.zone.id === z.id && sel.type.id === t.id;
+              return h('td', null, h('button', { type: 'button', class: 'pe-c' + (on ? ' on' : '') + (c ? '' : ' empty'), 'aria-label': z.name + ', ' + t.name + (c ? ', USD ' + dollars(c.retail) : ', no price'),
+                onclick: function () { sel = { zone: z, type: t }; render(); } },
+                h('span', { class: 'pe-r', text: c ? 'USD ' + dollars(c.retail) : 'Add price' }),
+                h('span', { class: 'pe-p', text: c ? (who === 'provider' ? 'you get ' : 'provider gets ') + dollars(c.provider) : 'not offered' })));
+            }));
+        })))) : h('p', { class: 'atc-muted pad-x', text: 'Add the zones you serve and a vehicle category to start.' });
 
       add(root, [
-        h('section', { class: 'card pad' },
-          h('div', { class: 'pe-bar' },
-            h('div', { class: 'atc-actions' }, airportSel),
-            h('label', { class: 'atc-inline' }, h('span', { text: 'I type' }), basisSel)),
-          h('p', { class: 'small atc-muted', text: 'All prices in US dollars, per vehicle (not per person). Our commission is ' + (bp / 100) + '% of what travelers pay; the other amount fills in by itself. Leave a box empty where you do not go.' }),
-          zones.length && types.length ? h('div', { class: 'scroll' }, h('table', { class: 'pe' },
-            h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), types.map(function (t) { return h('th', { scope: 'col' }, h('div', { text: t.name }), h('small', { class: 'atc-muted', text: 'up to ' + t.max_passengers + ' · ' + (t.offered ? (t.offered === 'live' ? 'live' : t.offered) : 'new') })); }))),
-            h('tbody', null, zones.map(function (z) {
-              return h('tr', null,
-                h('th', { scope: 'row' }, h('div', { text: z.name }), z.status === 'proposed' ? h('span', { class: 'chip orange', text: 'Zone pending: our team approves it' }) : (!z.shaped ? h('span', { class: 'chip grey', text: 'Shape coming' }) : null)),
-                types.map(function (t) { return h('td', null, input(z, t, 'one_way'), input(z, t, 'round_trip')); }));
-            })))) : h('p', { class: 'atc-muted', text: 'Add the zones you serve and a vehicle category to start.' }),
-          h('div', { class: 'atc-actions' }, zoneAdd, vehAdd),
-          h('div', { class: 'atc-actions' }, saveBtn, changes)),
+        h('div', { class: 'atc-head' },
+          h('div', null,
+            h(opts.h1 ? 'h1' : 'h2', { class: 'pe-h', text: 'Prices · ' + g.airport.label }),
+            h('p', { class: 'atc-muted', text: 'Price per vehicle, not per person, in US dollars. Commission ' + (bp / 100) + '% of the Suggested retail price.' })),
+          h('div', { class: 'atc-actions' },
+            airportSel,
+            h('button', { class: 'btn', type: 'button', text: 'Download Excel', onclick: download }),
+            h('button', { class: 'btn', type: 'button', text: 'Upload Excel or CSV', onclick: function () { uploadOpen = true; renderUpload(); uploadBox.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }))),
+        h('div', { class: 'pe-bar' },
+          h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Direction' }, pill('one_way', 'One way'), pill('round_trip', 'Round trip')),
+          gaps ? h('button', { type: 'button', class: 'pe-gaps' + (onlyGaps ? ' on' : ''), 'aria-pressed': onlyGaps ? 'true' : 'false', text: 'Only zones with missing prices (' + gaps + ' cells)', onclick: function () { onlyGaps = !onlyGaps; render(); } }) : null),
+        h('div', { class: 'pe-split' },
+          h('div', { class: 'pe-left' }, h('div', { class: 'card' }, table), h('div', { class: 'atc-actions' }, zoneAdd, vehAdd)),
+          sel ? editor(sel.zone, sel.type, bp) : null),
         uploadBox
       ]);
       renderUpload();
     }
 
-    function save() {
-      var cells = Object.keys(edits).map(function (k) {
-        var p = k.split(':'), v = edits[k], c = { zone_id: +p[0], vehicle_type_id: +p[1], direction: p[2] };
-        if (v === '') c.clear = true; else c[basis] = v;
-        return c;
+    function editor(z, t, bp) {
+      var c = cell(z.id, t.id);
+      var retail = h('input', { type: 'text', inputmode: 'decimal', id: 'pe-retail', value: c ? dollars(c.retail) : '' });
+      var paid = h('input', { type: 'text', inputmode: 'decimal', id: 'pe-paid', value: c ? dollars(c.provider) : '' });
+      var typed = null; // which box the person typed in last
+      var note = h('p', { class: 'small', role: 'status' });
+      retail.addEventListener('input', function () {
+        typed = 'retail';
+        var v = cents(retail.value);
+        paid.value = v === null ? '' : dollars(providerFromRetail(v, bp));
+        warn(v);
       });
+      paid.addEventListener('input', function () {
+        typed = 'provider';
+        var v = cents(paid.value);
+        var r = v === null ? null : retailFromProvider(v, bp);
+        retail.value = r === null ? '' : dollars(r);
+        warn(r);
+      });
+      function warn(r) {
+        var lim = g.limits || { min: 1000, max: 500000 };
+        note.textContent = r !== null && (r < lim.min || r > lim.max) ? 'That looks unusual. Check it is in US dollars, per vehicle.' : '';
+        note.className = 'small' + (note.textContent ? ' pe-warn' : '');
+      }
+      var saveBtn = h('button', { class: 'btn dark grow', type: 'button', text: 'Save price', onclick: function () {
+        var cellIn = { zone_id: z.id, vehicle_type_id: t.id, direction: dir };
+        if (typed === 'provider') cellIn.provider = cents(paid.value); else cellIn.retail = cents(retail.value);
+        if ((cellIn.retail === null || cellIn.retail === undefined) && (cellIn.provider === null || cellIn.provider === undefined)) { opts.toast('Type a price first.', true); return; }
+        send([cellIn], 'Saved.');
+      } });
+      var removeBtn = c ? h('button', { class: 'btn', type: 'button', text: 'Remove', onclick: function () { send([{ zone_id: z.id, vehicle_type_id: t.id, direction: dir, clear: true }], 'Removed.'); } }) : null;
+      var other = cell(z.id, t.id, dir === 'one_way' ? 'round_trip' : 'one_way');
+      return h('aside', { class: 'pe-edit', 'aria-label': 'Edit price' },
+        h('div', null, h('div', { class: 'pe-kicker', text: 'EDIT PRICE' }), h('div', { class: 'pe-title2', text: z.name }), h('div', { class: 'atc-muted small', text: t.name + ' · ' + (dir === 'one_way' ? 'One way' : 'Round trip') })),
+        h('div', { class: 'pe-two' },
+          h('label', { class: 'field', for: 'pe-retail' }, h('span', { text: 'Suggested retail price' }), h('span', { class: 'pe-money' }, h('span', { text: 'USD' }), retail)),
+          h('label', { class: 'field', for: 'pe-paid' }, h('span', { text: who === 'provider' ? 'Amount you will get paid' : 'Amount the provider gets paid' }), h('span', { class: 'pe-money' }, h('span', { text: 'USD' }), paid))),
+        h('div', { class: 'pe-rate' }, h('span', { text: 'Commission rate' }), h('strong', { text: (bp / 100).toFixed(2) + '%' })),
+        h('p', { class: 'small atc-muted', text: 'Type either box; the other fills in. The traveler pays the Suggested retail price, with no fees added.' + (other ? ' ' + (dir === 'one_way' ? 'Round trip' : 'One way') + ' here: USD ' + dollars(other.retail) + '.' : '') }),
+        note,
+        h('div', { class: 'atc-actions' }, saveBtn, removeBtn));
+    }
+
+    function send(cells, msg) {
       opts.api('POST', opts.base, { airport_id: g.airport.id, cells: cells }).then(function (r) {
-        g = r.grid; edits = {}; extraZones = []; extraVehicles = []; render();
-        opts.toast((r.saved ? r.saved + ' prices saved' : 'Saved') + (r.cleared ? ', ' + r.cleared + ' removed' : '') + '.');
+        var keep = sel;
+        g = r.grid;
+        if (keep) {
+          var z = g.zones.filter(function (x) { return x.id === keep.zone.id; })[0];
+          var t = g.vehicle_types.filter(function (x) { return x.id === keep.type.id; })[0];
+          sel = z && t ? { zone: z, type: t } : null;
+        }
+        render();
+        opts.toast(msg);
         if (r.flagged && r.flagged.length) showFlags(r.flagged);
         if (opts.onSaved) opts.onSaved();
+      }).catch(opts.fail);
+    }
+
+    function download() {
+      var zones = shownZones(), types = shownTypes(zones);
+      var key = who === 'provider' ? 'provider' : 'retail';
+      var head = ['Zone'];
+      types.forEach(function (t) { head.push(t.name, t.name + ' round trip'); });
+      var rows = [[key === 'provider' ? 'Prices in USD per vehicle: what you get paid. Change them and upload this file again.' : 'Prices in USD per vehicle: what travelers pay (Suggested retail price).'], head];
+      zones.forEach(function (z) {
+        var r = [z.name];
+        types.forEach(function (t) {
+          ['one_way', 'round_trip'].forEach(function (d) { var c = cell(z.id, t.id, d); r.push(c ? c[key] / 100 : ''); });
+        });
+        rows.push(r);
+      });
+      loadSheetJS().then(function (X) {
+        var wb = X.utils.book_new();
+        X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(rows), 'Prices');
+        X.writeFile(wb, 'prices-' + (g.airport.iata || 'airport').toLowerCase() + '.xlsx');
       }).catch(opts.fail);
     }
 
@@ -197,6 +249,7 @@
 
     function renderUpload(result) {
       clear(uploadBox);
+      if (!uploadOpen && !result) return;
       var file = h('input', { type: 'file', accept: '.xlsx,.xls,.csv,.ods,text/csv' });
       var paste = h('textarea', { rows: 4, placeholder: 'Or paste the table here (copy it from Excel or Google Sheets)' });
       var go = h('button', { class: 'btn dark', type: 'button', text: 'Read my price list' });
@@ -247,7 +300,7 @@
         Object.keys(vehSel).forEach(function (k) { v[k] = vehSel[k].value; });
         saveBtn.disabled = true;
         opts.api('POST', opts.base + '/apply', { airport_id: g.airport.id, lines: pv.lines, places: p, vehicles: v, basis: basisSel.value, found: found }).then(function (r) {
-          g = r.grid; edits = {}; render();
+          g = r.grid; render();
           var msg = r.saved + ' prices saved.' + (r.new_zones.length ? ' New zones waiting for our team: ' + r.new_zones.join(', ') + '. Their prices count once approved.' : '');
           renderUpload(h('p', { class: 'chip green', text: msg }));
           if (r.flagged && r.flagged.length) showFlags(r.flagged);
@@ -263,7 +316,7 @@
         h('div', { class: 'scroll' }, h('table', { class: 'narrow' }, h('tbody', null, places))),
         h('h3', { class: 'label', text: 'Your vehicles → our categories' }),
         h('div', { class: 'scroll' }, h('table', { class: 'narrow' }, h('tbody', null, vehicles))),
-        h('div', { class: 'atc-actions' }, saveBtn, h('button', { class: 'btn', type: 'button', text: 'Start over', onclick: function () { renderUpload(); } }))));
+        h('div', { class: 'atc-actions' }, saveBtn, h('button', { class: 'btn', type: 'button', text: 'Start over', onclick: function () { renderUpload(); } }), h('button', { class: 'btn', type: 'button', text: 'Close', onclick: function () { uploadOpen = false; renderUpload(); } }))));
       uploadBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
