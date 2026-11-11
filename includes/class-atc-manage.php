@@ -75,9 +75,10 @@ final class ATC_Manage {
 		$legs  = array();
 		$limit = time() + self::free_seconds();
 
-		// Arrival.
-		$arr = $b['legs'][0];
-		if ( self::open_leg( $arr ) ) {
+		// Arrival (airport to place), when the booking has one.
+		$arr = ATC_Checkout::leg( $b, 'arrival' );
+		$one = $b['legs'][0];
+		if ( $arr && self::open_leg( $arr ) ) {
 			$new = array(
 				'airline'      => mb_substr( $s( 'airline' ), 0, 100 ),
 				'flight'       => $flt( $s( 'flight' ) ),
@@ -102,7 +103,7 @@ final class ATC_Manage {
 		}
 
 		// Return.
-		$ret = $b['legs'][1] ?? null;
+		$ret = ATC_Checkout::leg( $b, 'departure' );
 		if ( $ret && self::open_leg( $ret ) ) {
 			$rd   = $date( $s( 'return_date' ) ) ?: (string) ( $d['return_date'] ?? '' );
 			$pick = $time( $s( 'return_pickup' ) ) ?: (string) ( $d['return_pickup'] ?? '' );
@@ -112,19 +113,19 @@ final class ATC_Manage {
 				return new WP_Error( 'atc_change', 'Check the return date and pickup time.', array( 'status' => 400 ) );
 			}
 			if ( strtotime( $at . ' UTC' ) < $limit ) {
-				return new WP_Error( 'atc_change', 'The new return pickup is too soon to change online.', array( 'status' => 400 ) );
+				return new WP_Error( 'atc_change', 'The new pickup time is too soon to change online.', array( 'status' => 400 ) );
 			}
-			if ( isset( $legs[ (int) $arr['id'] ] ) && strtotime( $at . ' UTC' ) <= strtotime( $legs[ (int) $arr['id'] ]['pickup_at'] . ' UTC' ) ) {
+			if ( $arr && isset( $legs[ (int) $arr['id'] ] ) && strtotime( $at . ' UTC' ) <= strtotime( $legs[ (int) $arr['id'] ]['pickup_at'] . ' UTC' ) ) {
 				return new WP_Error( 'atc_change', 'The return pickup must be after your arrival.', array( 'status' => 400 ) );
 			}
 			$from = mb_substr( $s( 'return_from' ), 0, 255 ) ?: (string) $ret['from_place'];
 			$ral  = mb_substr( $s( 'return_airline' ), 0, 100 );
 			$rfl  = $flt( $s( 'return_flight' ) );
 			if ( $at !== $ret['pickup_at'] ) {
-				$chg[] = 'Return pickup: ' . ATC_Mail::local( $at, $tz );
+				$chg[] = ( $arr ? 'Return pickup: ' : 'Pickup: ' ) . ATC_Mail::local( $at, $tz );
 			}
 			if ( $from !== $ret['from_place'] ) {
-				$chg[] = 'Return pickup address: ' . $from;
+				$chg[] = ( $arr ? 'Return pickup address: ' : 'Pickup address: ' ) . $from;
 			}
 			if ( $rfl !== (string) $ret['flight_number'] || $ral !== (string) $ret['flight_airline'] ) {
 				$chg[] = 'Departure flight: ' . ( trim( $ral . ' ' . $rfl ) ?: 'not given yet' );
@@ -134,11 +135,11 @@ final class ATC_Manage {
 		}
 
 		// Shared details.
-		$bags  = max( 0, min( 60, (int) ( $in['suitcases'] ?? $arr['suitcases'] ) ) );
-		$carry = max( 0, min( 60, (int) ( $in['carry_ons'] ?? $arr['carry_ons'] ) ) );
+		$bags  = max( 0, min( 60, (int) ( $in['suitcases'] ?? $one['suitcases'] ) ) );
+		$carry = max( 0, min( 60, (int) ( $in['carry_ons'] ?? $one['carry_ons'] ) ) );
 		$notes = mb_substr( trim( sanitize_textarea_field( (string) ( $in['notes'] ?? '' ) ) ), 0, 1000 );
 		$hname = mb_substr( $s( 'hotel_name' ), 0, 100 );
-		if ( $bags !== (int) $arr['suitcases'] || $carry !== (int) $arr['carry_ons'] ) {
+		if ( $bags !== (int) $one['suitcases'] || $carry !== (int) $one['carry_ons'] ) {
 			$chg[] = 'Luggage: ' . $bags . ' suitcases, ' . $carry . ' carry-ons';
 		}
 		if ( $notes !== (string) ( $d['notes'] ?? '' ) ) {

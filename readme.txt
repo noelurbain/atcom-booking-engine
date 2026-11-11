@@ -1,7 +1,12 @@
 === ATCOM Booking Engine ===
-Version: 0.9.2 (checkout, part 3: emails, webhook, Manage booking)
+Version: 0.9.3 (checkout, part 3: emails, webhook, Manage booking)
 
-New in 0.9.2:
+New in 0.9.3: hotel to airport. A swap button between From and To turns the search around (one way;
+Round trip switches back to airport first). Labels become Pickup date / Pickup time. Step 2 asks for the
+pickup (hotel booking name), the flight (optional) and the hotel pickup time, suggested from the flight.
+The booking has one 'departure' ride; confirmation, emails, reminders and Manage booking follow it.
+
+Also in 0.9.2:
 - Hotel and address suggestions only come from around the chosen airport (about 220 km, same country).
 - Stripe's payment form uses our font (Manrope) and borders; the traveler's mobile is prefilled.
 - Confirmation: "Copy link" button, and "Change it here" jumps to Manage your booking on the same page.

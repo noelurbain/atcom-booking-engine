@@ -69,8 +69,30 @@
     var trip = form.querySelector('input[name=trip]');
     var ret = form.querySelector('.ab-return');
     var retInput = ret ? ret.querySelector('input') : null;
+    // Swap: airport → hotel, or hotel → airport (one way only; a round trip starts at the airport).
+    var dirIn = form.querySelector('input[name=dir]');
+    var swapBtn = form.querySelector('[data-ab-swap]');
+    function setDir(rev) {
+      var af = form.querySelector('[data-ab-airportfield]'), pf = form.querySelector('[data-ab-placefield]');
+      if ((dirIn.value === 'to_airport') === rev) return;
+      dirIn.value = rev ? 'to_airport' : '';
+      var row = af.parentNode;
+      if (rev) { row.insertBefore(pf, af); row.insertBefore(swapBtn, af); }
+      else { row.insertBefore(af, pf); row.insertBefore(swapBtn, pf); }
+      form.querySelector('[data-ab-airportlabel]').textContent = rev ? 'To' : 'From';
+      form.querySelector('[data-ab-placelabel]').textContent = rev ? 'From' : 'To';
+      form.querySelector('[data-ab-datelabel]').textContent = rev ? 'Pickup date' : 'Landing date';
+      form.querySelector('[data-ab-timelabel]').textContent = rev ? 'Pickup time' : 'Landing time';
+      swapBtn.setAttribute('aria-label', 'Swap: ' + (rev ? 'from the airport to a hotel' : 'from a hotel to the airport'));
+      if (rev && trip.value === 'round_trip') form.querySelector('[data-trip=one_way]').click();
+    }
+    if (swapBtn) swapBtn.addEventListener('click', function () {
+      setDir(dirIn.value !== 'to_airport');
+      swapBtn.classList.remove('is-spin'); void swapBtn.offsetWidth; swapBtn.classList.add('is-spin');
+    });
     form.querySelectorAll('[data-trip]').forEach(function (b) {
       b.addEventListener('click', function () {
+        if (b.getAttribute('data-trip') === 'round_trip' && dirIn && dirIn.value === 'to_airport') setDir(false);
         trip.value = b.getAttribute('data-trip');
         form.querySelectorAll('[data-trip]').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
         var round = trip.value === 'round_trip';
@@ -159,6 +181,7 @@
       // Typed but not picked: send the text, the results page finds the airport.
       if (!fromCode.value) fromCode.value = from.value.trim();
       if (!lat.value) { lat.disabled = lng.disabled = pid.disabled = true; }
+      if (dirIn && !dirIn.value) dirIn.disabled = true;
       if (+count.children.value === 0) count.children.disabled = true;
     });
   }
@@ -201,8 +224,9 @@
     }).then(function (libs) {
       var map = new libs[0].Map(mapEl, { center: A, zoom: 10, disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative' });
       var bounds = new google.maps.LatLngBounds(); bounds.extend(A); bounds.extend(B); map.fitBounds(bounds, 40);
-      new google.maps.Marker({ map: map, position: A, title: mapEl.getAttribute('data-from-label'), label: { text: '✈', color: '#FFFFFF' } });
-      new google.maps.Marker({ map: map, position: B, title: mapEl.getAttribute('data-to-label') });
+      var airAtEnd = mapEl.getAttribute('data-airport') === 'to';
+      new google.maps.Marker({ map: map, position: A, title: mapEl.getAttribute('data-from-label'), label: airAtEnd ? undefined : { text: '✈', color: '#FFFFFF' } });
+      new google.maps.Marker({ map: map, position: B, title: mapEl.getAttribute('data-to-label'), label: airAtEnd ? { text: '✈', color: '#FFFFFF' } : undefined });
       function say(mins, km) {
         var txt = 'About ' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + ' · ' + km + ' km';
         var d = document.querySelector('[data-ab-dist]'); if (d) d.textContent = txt;

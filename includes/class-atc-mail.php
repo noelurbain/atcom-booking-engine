@@ -121,17 +121,27 @@ final class ATC_Mail {
 		$s   = $b['snap'];
 		$tz  = (string) ( $s['timezone'] ?? 'UTC' );
 		$d   = (array) ( $s['details'] ?? array() );
-		$arr = $b['legs'][0] ?? array();
-		$ret = $b['legs'][1] ?? array();
-		$rows = array(
-			array( 'Reservation', $b['number'] ),
-			array( 'Arrival', self::local( $arr['flight_time'] ?? $arr['pickup_at'] ?? null, $tz ) . ( ! empty( $arr['flight_number'] ) ? ' · ' . trim( $arr['flight_airline'] . ' ' . $arr['flight_number'] ) : ' · flight not given yet' ) ),
-			array( 'From', $arr['from_place'] ?? '' ),
-			array( 'To', ( $arr['to_place'] ?? '' ) . ( ! empty( $d['hotel_name'] ) ? ' (hotel booking under ' . $d['hotel_name'] . ')' : '' ) ),
-		);
-		if ( $ret ) {
-			$rows[] = array( 'Return pickup', self::local( $ret['pickup_at'], $tz ) . ' at ' . $ret['from_place'] . ( ! empty( $ret['flight_number'] ) ? ' · flight ' . trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) . ( $ret['flight_time'] ? ' at ' . self::local( $ret['flight_time'], $tz, 'H:i' ) : '' ) : '' ) );
+		$arr  = ATC_Checkout::leg( $b, 'arrival' );
+		$ret  = ATC_Checkout::leg( $b, 'departure' );
+		$one  = $b['legs'][0] ?? array();
+		$hn   = ! empty( $d['hotel_name'] ) ? ' (hotel booking under ' . $d['hotel_name'] . ')' : '';
+		$rows = array( array( 'Reservation', $b['number'] ) );
+		if ( $arr ) {
+			$rows[] = array( 'Arrival', self::local( $arr['flight_time'] ?? $arr['pickup_at'] ?? null, $tz ) . ( ! empty( $arr['flight_number'] ) ? ' · ' . trim( $arr['flight_airline'] . ' ' . $arr['flight_number'] ) : ' · flight not given yet' ) );
+			$rows[] = array( 'From', $arr['from_place'] );
+			$rows[] = array( 'To', $arr['to_place'] . $hn );
 		}
+		if ( $ret ) {
+			$flight = ! empty( $ret['flight_number'] ) ? ' · flight ' . trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) . ( $ret['flight_time'] ? ' at ' . self::local( $ret['flight_time'], $tz, 'H:i' ) : '' ) : '';
+			if ( $arr ) {
+				$rows[] = array( 'Return pickup', self::local( $ret['pickup_at'], $tz ) . ' at ' . $ret['from_place'] . $flight );
+			} else {
+				$rows[] = array( 'Pickup', self::local( $ret['pickup_at'], $tz ) . $flight );
+				$rows[] = array( 'From', $ret['from_place'] . $hn );
+				$rows[] = array( 'To', $ret['to_place'] );
+			}
+		}
+		$arr = $one;
 		$rows[] = array( 'Vehicle', ( $s['vehicle'] ?? '' ) . ', private' );
 		$rows[] = array( 'Passengers', self::pax( $b ) . ' · ' . (int) ( $arr['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $arr['carry_ons'] ?? 0 ) . ' carry-ons' );
 		if ( $for_provider ) {
@@ -145,6 +155,10 @@ final class ATC_Mail {
 	}
 
 	private static function meeting_html( array $b ): string {
+		if ( ! ATC_Checkout::leg( $b, 'arrival' ) ) {
+			$ret = ATC_Checkout::leg( $b, 'departure' );
+			return '<h2 style="margin:22px 0 8px;font-size:17px">Meeting your driver</h2>' . self::p( 'Your driver waits at the entrance or lobby of <strong>' . self::e( $ret['from_place'] ?? '' ) . '</strong> at the pickup time, with a sign with your name.' );
+		}
 		$s   = $b['snap'];
 		$aid = (int) ( $s['airport_id'] ?? 0 );
 		if ( ! $aid && ! empty( $s['iata'] ) ) {
@@ -319,10 +333,10 @@ final class ATC_Mail {
 			$done[]                     = (int) $leg['id'];
 			$b['snap']['reminded_legs'] = $done;
 			ATC_Checkout::snapshot( (int) $b['id'], $b['snap'] );
-			$is_ret = (int) ( $b['legs'][1]['id'] ?? 0 ) === (int) $leg['id'];
+			$is_ret = (int) ( ATC_Checkout::leg( $b, 'departure' )['id'] ?? 0 ) === (int) $leg['id'];
 			$body   = self::p( 'Hi ' . self::e( $b['first_name'] ) . ', your ' . ( $is_ret ? 'ride back to the airport' : 'airport pickup' ) . ' is tomorrow. Check your flight details are right; you can still change them in Manage booking.' )
 				. self::table( self::trip_rows( $b ) )
-				. ( $is_ret ? '' : self::meeting_html( $b ) )
+				. ( $is_ret && ATC_Checkout::leg( $b, 'arrival' ) ? '' : self::meeting_html( $b ) )
 				. self::provider_html( $b );
 			self::send( $b['email'], ( $is_ret ? 'Your ride to the airport is tomorrow' : 'Your airport pickup is tomorrow' ) . ' · ' . $b['number'], self::wrap( $is_ret ? 'Your ride to the airport is tomorrow' : 'Your airport pickup is tomorrow', $body, 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'reminder' ) );
 		}

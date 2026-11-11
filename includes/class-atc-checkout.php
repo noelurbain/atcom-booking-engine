@@ -67,6 +67,16 @@ final class ATC_Checkout {
 		return $b;
 	}
 
+	/** The ride of a booking going one way: 'arrival' (airport to place) or 'departure' (place to airport); [] if none. */
+	public static function leg( array $b, string $direction ): array {
+		foreach ( (array) ( $b['legs'] ?? array() ) as $l ) {
+			if ( $direction === $l['direction'] ) {
+				return $l;
+			}
+		}
+		return array();
+	}
+
 	/** A booking with its snapshot and legs, without any access check (server side only: emails, webhook, cron). */
 	public static function find( string $number = '', int $id = 0, string $payment_intent = '' ): ?array {
 		global $wpdb;
@@ -252,6 +262,21 @@ final class ATC_Checkout {
 		$air = (string) $s['airport']['name'];
 		$to  = (string) ( $d['dropoff'] ?? $s['destination']['label'] );
 		$wpdb->delete( $t, array( 'booking_id' => $booking_id ) );
+		$dep  = static fn( string $from ) => array(
+			'direction'      => 'departure',
+			'pickup_at'      => self::utc( (string) ( $d['return_date'] ?? ( $q['return_date'] ?: $q['date'] ) ), (string) ( $d['return_pickup'] ?? '' ) ?: (string) ( $q['time'] ?: ATC_Search::DEFAULT_TIME ), $tz ),
+			'flight_airline' => $d['return_airline'] ?? null,
+			'flight_number'  => $d['return_flight'] ?? null,
+			'flight_time'    => self::utc( (string) ( $d['return_date'] ?? ( $q['return_date'] ?: $q['date'] ) ), (string) ( $d['return_flight_time'] ?? '' ), $tz ),
+			'from_place'     => (string) ( $d['return_from'] ?? $from ),
+			'to_place'       => $air,
+			'suitcases'      => (int) ( $d['suitcases'] ?? 0 ),
+			'carry_ons'      => (int) ( $d['carry_ons'] ?? 0 ),
+			'notes'          => $d['notes'] ?? null,
+		);
+		if ( 'to_airport' === ( $q['dir'] ?? '' ) ) {
+			$legs = array( $dep( $to ) );
+		} else {
 		$legs = array(
 			array(
 				'direction'      => 'arrival',
@@ -267,18 +292,8 @@ final class ATC_Checkout {
 			),
 		);
 		if ( 'round_trip' === $q['trip'] ) {
-			$legs[] = array(
-				'direction'      => 'departure',
-				'pickup_at'      => self::utc( (string) ( $d['return_date'] ?? $q['return_date'] ), (string) ( $d['return_pickup'] ?? '' ), $tz ),
-				'flight_airline' => $d['return_airline'] ?? null,
-				'flight_number'  => $d['return_flight'] ?? null,
-				'flight_time'    => self::utc( (string) ( $d['return_date'] ?? $q['return_date'] ), (string) ( $d['return_flight_time'] ?? '' ), $tz ),
-				'from_place'     => (string) ( $d['return_from'] ?? $to ),
-				'to_place'       => $air,
-				'suitcases'      => (int) ( $d['suitcases'] ?? 0 ),
-				'carry_ons'      => (int) ( $d['carry_ons'] ?? 0 ),
-				'notes'          => $d['notes'] ?? null,
-			);
+			$legs[] = $dep( $to );
+		}
 		}
 		$n = count( $legs );
 		foreach ( $legs as $i => $l ) {
@@ -302,6 +317,25 @@ final class ATC_Checkout {
 
 	private static function details( array $in, array $q ) {
 		$s   = static fn( $k ) => trim( sanitize_text_field( (string) ( $in[ $k ] ?? '' ) ) );
+		if ( 'to_airport' === ( $q['dir'] ?? '' ) ) {
+			// Hotel to airport: one ride, picked up at the hotel; the flight is optional.
+			$d = array(
+				'return_date'        => preg_match( '/^\d{4}-\d{2}-\d{2}$/', $s( 'return_date' ) ) ? $s( 'return_date' ) : $q['date'],
+				'return_pickup'      => preg_match( '/^\d{1,2}:\d{2}$/', $s( 'return_pickup' ) ) ? $s( 'return_pickup' ) : '',
+				'return_flight_time' => preg_match( '/^\d{1,2}:\d{2}$/', $s( 'return_flight_time' ) ) ? $s( 'return_flight_time' ) : '',
+				'return_airline'     => mb_substr( $s( 'return_airline' ), 0, 100 ) ?: null,
+				'return_flight'      => mb_substr( strtoupper( preg_replace( '/\s+/', '', $s( 'return_flight' ) ) ), 0, 20 ) ?: null,
+				'hotel_name'         => mb_substr( $s( 'hotel_name' ), 0, 100 ),
+				'suitcases'          => max( 0, min( 60, (int) ( $in['suitcases'] ?? 0 ) ) ),
+				'carry_ons'          => max( 0, min( 60, (int) ( $in['carry_ons'] ?? 0 ) ) ),
+				'notes'              => mb_substr( trim( sanitize_textarea_field( (string) ( $in['notes'] ?? '' ) ) ), 0, 1000 ),
+				'domestic'           => ! empty( $in['domestic'] ),
+			);
+			if ( '' === (string) $d['return_date'] || '' === $d['return_pickup'] ) {
+				return new WP_Error( 'atc_pickup', 'Pick the date and the time your driver picks you up.', array( 'status' => 400 ) );
+			}
+			return $d;
+		}
 		$no  = ! empty( $in['no_flight'] );
 		$d   = array(
 			'no_flight'    => $no,
@@ -367,8 +401,13 @@ final class ATC_Checkout {
 			return $d;
 		}
 		// The landing time the traveler typed is the real pickup time: check notice and price against it.
-		$q['date'] = $d['landing_date'];
-		$q['time'] = $d['landing_time'];
+		if ( 'to_airport' === ( $q['dir'] ?? '' ) ) {
+			$q['date'] = $d['return_date'];
+			$q['time'] = $d['return_pickup'];
+		} else {
+			$q['date'] = $d['landing_date'];
+			$q['time'] = $d['landing_time'];
+		}
 		if ( 'round_trip' === $q['trip'] ) {
 			$q['return_date'] = $d['return_date'];
 		}

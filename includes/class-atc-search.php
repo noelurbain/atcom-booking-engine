@@ -50,7 +50,10 @@ final class ATC_Search {
 		$ret  = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $s( 'return_date' ) ) ? $s( 'return_date' ) : '';
 		$adults   = '' !== $s( 'adults' ) ? (int) $s( 'adults' ) : ( '' !== $s( 'pax' ) ? (int) $s( 'pax' ) : 2 );
 		$children = (int) $s( 'children' );
+		// to_airport: from a hotel or address to the airport (one way); the place stays in 'to'.
+		$dir = 'to_airport' === $s( 'dir' ) ? 'to_airport' : 'from_airport';
 		return array(
+			'dir'         => $dir,
 			'airport'     => $s( 'airport' ) ?: $s( 'pickup' ),
 			'to'          => $s( 'to' ) ?: $s( 'dropoff' ),
 			'lat'         => is_numeric( $s( 'lat' ) ) ? (float) $s( 'lat' ) : null,
@@ -58,8 +61,8 @@ final class ATC_Search {
 			'pid'         => preg_replace( '/[^A-Za-z0-9_-]/', '', $s( 'pid' ) ),
 			'date'        => $date,
 			'time'        => $time,
-			'trip'        => ( 'round_trip' === $s( 'trip' ) || '' !== $ret ) ? 'round_trip' : 'one_way',
-			'return_date' => $ret,
+			'trip'        => 'from_airport' === $dir && ( 'round_trip' === $s( 'trip' ) || '' !== $ret ) ? 'round_trip' : 'one_way',
+			'return_date' => 'from_airport' === $dir ? $ret : '',
 			'adults'      => max( 1, min( 60, $adults ) ),
 			'children'    => max( 0, min( 40, $children ) ),
 			'sort'        => 'rating' === $s( 'sort' ) ? 'rating' : 'price',
@@ -70,6 +73,7 @@ final class ATC_Search {
 	public static function query( array $q, array $extra = array() ): string {
 		$keep = array_filter(
 			array(
+				'dir'         => 'to_airport' === ( $q['dir'] ?? '' ) ? 'to_airport' : '',
 				'airport'     => $q['airport_code'] ?? $q['airport'],
 				'to'          => $q['to'],
 				'lat'         => null === $q['lat'] ? '' : $q['lat'],

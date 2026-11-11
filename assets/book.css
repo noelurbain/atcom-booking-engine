@@ -276,3 +276,15 @@
 .ab-keep{display:flex;flex-direction:column;gap:10px}
 .ab-trust a{color:var(--brown);font-weight:800}
 .ab-copy{min-height:40px;padding:0 16px;font-size:14px;align-self:flex-start}
+
+/* swap direction */
+.ab-swap{flex:0 0 auto;align-self:flex-end;width:44px;height:44px;margin-bottom:3px;border-radius:999px;border:1px solid var(--line2);background:#fff;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.ab-swap:hover{background:var(--soft)}
+.ab-swap:focus-visible{outline:2px solid #E07A1F;outline-offset:2px}
+.ab-swap.is-spin svg{animation:ab-spin .35s ease}
+@keyframes ab-spin{from{transform:rotate(0)}to{transform:rotate(180deg)}}
+@media (max-width:640px){.ab-swap{align-self:center;margin:-6px auto;transform:rotate(90deg)}}
+@media (min-width:641px){
+  .ab-search .ab-from{flex:1 1 170px}.ab-search .ab-to{flex:1.4 1 200px}.ab-search .ab-date{flex:0 1 160px}.ab-search .ab-time{flex:0 1 120px}.ab-search .ab-pax{flex:0 1 180px}
+  .ab-search .ab-row{gap:10px}
+}

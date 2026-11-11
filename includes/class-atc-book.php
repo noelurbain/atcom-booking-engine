@@ -48,11 +48,12 @@ final class ATC_Book {
 	 */
 	public static function search_box( array $args = array() ): string {
 		self::assets();
-		$q        = wp_parse_args( $args, array( 'airport' => '', 'to' => '', 'date' => '', 'time' => '', 'trip' => 'one_way', 'return_date' => '', 'adults' => 2, 'children' => 0, 'lat' => '', 'lng' => '', 'pid' => '', 'compact' => false ) );
+		$q        = wp_parse_args( $args, array( 'dir' => 'from_airport', 'airport' => '', 'to' => '', 'date' => '', 'time' => '', 'trip' => 'one_way', 'return_date' => '', 'adults' => 2, 'children' => 0, 'lat' => '', 'lng' => '', 'pid' => '', 'compact' => false ) );
 		$airport  = $q['airport'] ? ATC_Search::find_airport( $q['airport'] ) : null;
 		$alabel   = $airport ? ATC_Catalog::airport_label( $airport ) : '';
 		$acode    = $airport ? ( $airport['iata'] ?: $airport['id'] ) : '';
-		$round    = 'round_trip' === $q['trip'];
+		$rev      = 'to_airport' === $q['dir'];
+		$round    = ! $rev && 'round_trip' === $q['trip'];
 		$pax      = (int) $q['adults'] + (int) $q['children'];
 		$uid      = 'ab' . wp_rand( 1000, 9999 );
 		$center   = $airport && null !== $airport['lat'] ? $airport['lat'] . ',' . $airport['lng'] : '';
@@ -61,29 +62,37 @@ final class ATC_Book {
 		?>
 		<form class="ab-search<?php echo $q['compact'] ? ' is-compact' : ''; ?>" action="<?php echo esc_url( home_url( '/search/' ) ); ?>" method="get" role="search" aria-label="Search transfers" data-ab-search data-center="<?php echo esc_attr( $center ); ?>" data-country="<?php echo esc_attr( $country ); ?>">
 			<input type="hidden" name="trip" value="<?php echo esc_attr( $round ? 'round_trip' : 'one_way' ); ?>">
+			<input type="hidden" name="dir" value="<?php echo $rev ? 'to_airport' : ''; ?>">
 			<div class="ab-pills" role="group" aria-label="Trip type">
 				<button type="button" data-trip="one_way" aria-pressed="<?php echo $round ? 'false' : 'true'; ?>">One way</button>
 				<button type="button" data-trip="round_trip" aria-pressed="<?php echo $round ? 'true' : 'false'; ?>">Round trip</button>
 			</div>
 			<div class="ab-row">
-				<div class="ab-field ab-from ab-ac">
-					<label for="<?php echo esc_attr( $uid ); ?>-from">From</label>
+				<?php ob_start(); ?>
+				<div class="ab-field ab-from ab-ac" data-ab-airportfield>
+					<label for="<?php echo esc_attr( $uid ); ?>-from" data-ab-airportlabel><?php echo $rev ? 'To' : 'From'; ?></label>
 					<input id="<?php echo esc_attr( $uid ); ?>-from" type="text" data-ab-airport value="<?php echo esc_attr( $alabel ); ?>" placeholder="Airport or code" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="<?php echo esc_attr( $uid ); ?>-from-list" required>
 					<input type="hidden" name="airport" value="<?php echo esc_attr( (string) $acode ); ?>">
 					<ul id="<?php echo esc_attr( $uid ); ?>-from-list" class="ab-list" role="listbox" hidden></ul>
 				</div>
-				<div class="ab-field ab-to ab-ac">
-					<label for="<?php echo esc_attr( $uid ); ?>-to">To</label>
+				<?php $airport_html = ob_get_clean(); ob_start(); ?>
+				<div class="ab-field ab-to ab-ac" data-ab-placefield>
+					<label for="<?php echo esc_attr( $uid ); ?>-to" data-ab-placelabel><?php echo $rev ? 'From' : 'To'; ?></label>
 					<input id="<?php echo esc_attr( $uid ); ?>-to" type="text" name="to" data-ab-to value="<?php echo esc_attr( $q['to'] ); ?>" placeholder="Hotel name or address" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="<?php echo esc_attr( $uid ); ?>-to-list" required>
 					<input type="hidden" name="lat" value="<?php echo esc_attr( (string) $q['lat'] ); ?>"><input type="hidden" name="lng" value="<?php echo esc_attr( (string) $q['lng'] ); ?>"><input type="hidden" name="pid" value="<?php echo esc_attr( (string) $q['pid'] ); ?>">
 					<ul id="<?php echo esc_attr( $uid ); ?>-to-list" class="ab-list" role="listbox" hidden></ul>
 				</div>
+				<?php
+				$place_html = ob_get_clean();
+				$swap       = '<button type="button" class="ab-swap" data-ab-swap aria-label="Swap: ' . ( $rev ? 'from the airport to a hotel' : 'from a hotel to the airport' ) . '" title="Swap direction"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"></path></svg></button>';
+				echo $rev ? $place_html . $swap . $airport_html : $airport_html . $swap . $place_html; // phpcs:ignore -- escaped above.
+				?>
 				<div class="ab-field ab-date">
-					<label for="<?php echo esc_attr( $uid ); ?>-date">Landing date</label>
+					<label for="<?php echo esc_attr( $uid ); ?>-date" data-ab-datelabel><?php echo $rev ? 'Pickup date' : 'Landing date'; ?></label>
 					<input id="<?php echo esc_attr( $uid ); ?>-date" type="date" name="date" value="<?php echo esc_attr( $q['date'] ); ?>" min="<?php echo esc_attr( gmdate( 'Y-m-d' ) ); ?>" required>
 				</div>
 				<div class="ab-field ab-time">
-					<label for="<?php echo esc_attr( $uid ); ?>-time">Landing time</label>
+					<label for="<?php echo esc_attr( $uid ); ?>-time" data-ab-timelabel><?php echo $rev ? 'Pickup time' : 'Landing time'; ?></label>
 					<input id="<?php echo esc_attr( $uid ); ?>-time" type="time" name="time" value="<?php echo esc_attr( $q['time'] ); ?>">
 				</div>
 				<div class="ab-field ab-pax">
@@ -217,9 +226,14 @@ final class ATC_Book {
 		?>
 		<section class="ab-bar"><div class="ab-wrap">
 			<div class="ab-sum" data-ab-sum>
-				<span><small>From</small><strong><?php echo esc_html( $res['airport'] ? ( $res['airport']['iata'] ? $res['airport']['iata'] . ' · ' . $res['airport']['city'] : $res['airport']['name'] ) : '–' ); ?></strong></span>
-				<span><small>To</small><strong><?php echo esc_html( $res['destination']['label'] ?? ( $q['to'] ?: '–' ) ); ?></strong></span>
-				<span><small>Landing</small><strong><?php echo esc_html( $when ); ?></strong></span>
+				<?php
+				$air_txt   = $res['airport'] ? ( $res['airport']['iata'] ? $res['airport']['iata'] . ' · ' . $res['airport']['city'] : $res['airport']['name'] ) : '–';
+				$place_txt = $res['destination']['label'] ?? ( $q['to'] ?: '–' );
+				$rev       = 'to_airport' === ( $q['dir'] ?? '' );
+				?>
+				<span><small>From</small><strong><?php echo esc_html( $rev ? $place_txt : $air_txt ); ?></strong></span>
+				<span><small>To</small><strong><?php echo esc_html( $rev ? $air_txt : $place_txt ); ?></strong></span>
+				<span><small><?php echo $rev ? 'Pickup' : 'Landing'; ?></small><strong><?php echo esc_html( $when ); ?></strong></span>
 				<span><small>Passengers</small><strong><?php echo esc_html( $pax . ( $q['children'] ? ' (' . $q['children'] . ( 1 === (int) $q['children'] ? ' child)' : ' children)' ) : '' ) ); ?></strong></span>
 				<button type="button" class="ab-btn is-line" data-ab-edit aria-expanded="false">Edit search</button>
 			</div>
@@ -293,10 +307,10 @@ final class ATC_Book {
 								<a href="<?php echo esc_url( home_url( '/search/?' . ATC_Search::query( array_merge( $q, array( 'sort' => 'rating' ) ) ) ) ); ?>" aria-current="<?php echo $by_rating ? 'true' : 'false'; ?>">Best rated</a>
 							</div>
 						<?php endif; ?>
-						<div class="ab-pills" role="group" aria-label="Trip type">
+						<?php if ( 'to_airport' !== $q['dir'] ) : ?><div class="ab-pills" role="group" aria-label="Trip type">
 							<a href="<?php echo esc_url( home_url( '/search/?' . ATC_Search::query( array_merge( $q, array( 'trip' => 'one_way', 'return_date' => '' ) ) ) ) ); ?>" aria-current="<?php echo $round ? 'false' : 'true'; ?>">One way</a>
 							<a href="<?php echo esc_url( home_url( '/search/?' . ATC_Search::query( array_merge( $q, array( 'trip' => 'round_trip' ) ) ) ) ); ?>" aria-current="<?php echo $round ? 'true' : 'false'; ?>">Round trip</a>
-						</div>
+						</div><?php endif; ?>
 						</div>
 					<?php endif; ?>
 				</div>
@@ -344,11 +358,15 @@ final class ATC_Book {
 				<?php if ( $res['destination'] && $res['airport'] ) : ?>
 					<section class="ab-card ab-mapcard" aria-label="Trip map">
 						<div class="ab-cardhead"><h2>Your route</h2><span class="ab-muted" data-ab-dist></span></div>
-						<div class="ab-map" data-ab-map data-from="<?php echo esc_attr( $res['airport']['lat'] . ',' . $res['airport']['lng'] ); ?>" data-to="<?php echo esc_attr( $res['destination']['lat'] . ',' . $res['destination']['lng'] ); ?>" data-from-label="<?php echo esc_attr( $res['airport']['label'] ); ?>" data-to-label="<?php echo esc_attr( $res['destination']['label'] ); ?>"></div>
-						<div class="ab-route">
-							<span><i class="ab-dot"></i><?php echo esc_html( $res['airport']['name'] ); ?></span>
-							<span><i class="ab-dot is-to"></i><span><?php echo esc_html( $res['destination']['label'] ); ?><?php echo $res['destination']['zone'] ? '<small class="ab-muted">Zone: ' . esc_html( $res['destination']['zone'] ) . '</small>' : ''; ?></span></span>
-						</div>
+						<?php
+						$rev    = 'to_airport' === $q['dir'];
+						$a_ll   = $res['airport']['lat'] . ',' . $res['airport']['lng'];
+						$p_ll   = $res['destination']['lat'] . ',' . $res['destination']['lng'];
+						$a_line = '<span><i class="ab-dot' . ( $rev ? ' is-to' : '' ) . '"></i>' . esc_html( $res['airport']['name'] ) . '</span>';
+						$p_line = '<span><i class="ab-dot' . ( $rev ? '' : ' is-to' ) . '"></i><span>' . esc_html( $res['destination']['label'] ) . ( $res['destination']['zone'] ? '<small class="ab-muted">Zone: ' . esc_html( $res['destination']['zone'] ) . '</small>' : '' ) . '</span></span>';
+						?>
+						<div class="ab-map" data-ab-map data-airport="<?php echo $rev ? 'to' : 'from'; ?>" data-from="<?php echo esc_attr( $rev ? $p_ll : $a_ll ); ?>" data-to="<?php echo esc_attr( $rev ? $a_ll : $p_ll ); ?>" data-from-label="<?php echo esc_attr( $rev ? $res['destination']['label'] : $res['airport']['label'] ); ?>" data-to-label="<?php echo esc_attr( $rev ? $res['airport']['label'] : $res['destination']['label'] ); ?>"></div>
+						<div class="ab-route"><?php echo $rev ? $p_line . $a_line : $a_line . $p_line; // phpcs:ignore -- escaped above. ?></div>
 					</section>
 				<?php endif; ?>
 				<?php echo self::trust(); // phpcs:ignore ?>
@@ -446,6 +464,9 @@ final class ATC_Book {
 					<span class="ab-muted"><?php echo esc_html( self::day( $q['date'] ) ); ?> · on landing</span>
 					<span><small class="ab-k">Return</small><?php echo esc_html( $to ); ?> → <strong><?php echo esc_html( $air['iata'] ?: $air['name'] ); ?></strong></span>
 					<span class="ab-muted"><?php echo esc_html( self::day( $q['return_date'] ) ); ?><?php echo ! empty( $legs[1]['pickup_at'] ) ? ' · pickup ' . esc_html( self::local( $legs[1]['pickup_at'], $tz, 'H:i' ) ) : ''; ?></span>
+				<?php elseif ( 'to_airport' === ( $q['dir'] ?? '' ) ) : ?>
+					<span><?php echo esc_html( $to ); ?> → <strong><?php echo esc_html( $air['iata'] ?: $air['name'] ); ?></strong></span>
+					<span class="ab-muted"><?php echo esc_html( self::day( $q['date'] ) ); ?><?php echo ! empty( $legs[0]['pickup_at'] ) ? ' · pickup ' . esc_html( self::local( $legs[0]['pickup_at'], $tz, 'H:i' ) ) : ''; ?> · <?php echo (int) $pax; ?> passengers</span>
 				<?php else : ?>
 					<span><strong><?php echo esc_html( $air['iata'] ?: $air['name'] ); ?></strong> → <?php echo esc_html( $to ); ?></span>
 					<span class="ab-muted"><?php echo esc_html( self::day( $q['date'] ) ); ?> · <?php echo (int) $pax; ?> passengers</span>
@@ -483,6 +504,7 @@ final class ATC_Book {
 			return (string) ob_get_clean();
 		}
 		$round  = 'round_trip' === $q['trip'];
+		$rev    = 'to_airport' === ( $q['dir'] ?? '' );
 		$air    = $res['airport'];
 		$to     = (string) ( $res['destination']['label'] ?? $q['to'] );
 		$d      = $b['snap']['details'] ?? array();
@@ -511,7 +533,7 @@ final class ATC_Book {
 
 					<section class="ab-card ab-pad" aria-labelledby="ab-h-contact">
 						<h2 id="ab-h-contact">Your contact details</h2>
-						<p class="ab-muted">Your confirmation goes to this email, and your driver uses this number to reach you on arrival day.</p>
+						<p class="ab-muted">Your confirmation goes to this email, and your driver uses this number to reach you on the day of your transfer.</p>
 						<div class="ab-grid is-two">
 							<div class="ab-field"><label for="ab-first">First name</label><input id="ab-first" name="first_name" autocomplete="given-name" required value="<?php echo esc_attr( $b['first_name'] ?? '' ); ?>"></div>
 							<div class="ab-field"><label for="ab-last">Last name</label><input id="ab-last" name="last_name" autocomplete="family-name" required value="<?php echo esc_attr( $b['last_name'] ?? '' ); ?>"></div>
@@ -528,6 +550,31 @@ final class ATC_Book {
 						<label class="ab-check"><input type="checkbox" name="whatsapp" value="1" <?php checked( $b ? ! empty( $b['snap']['whatsapp'] ) : true ); ?>> This number has WhatsApp</label>
 					</section>
 
+					<?php if ( $rev ) : ?>
+					<section class="ab-card ab-pad" aria-labelledby="ab-h-pickup">
+						<h2 id="ab-h-pickup">Your pickup</h2>
+						<p class="ab-muted">The address the price is based on. To be picked up somewhere else, change your search: another area may have another price.</p>
+						<div class="ab-place"><span><?php echo esc_html( $to ); ?><?php echo ! empty( $res['destination']['zone'] ) ? '<small class="ab-muted">Zone: ' . esc_html( $res['destination']['zone'] ) . '</small>' : ''; ?></span><button type="button" class="ab-link" data-ab-edit>Change</button></div>
+						<div class="ab-field"><label for="ab-hname">Name of the hotel reservation (optional)</label><input id="ab-hname" name="hotel_name" autocomplete="off" value="<?php echo esc_attr( $v( 'hotel_name' ) ); ?>" placeholder="If it is not the lead traveler’s name"></div>
+					</section>
+					<section class="ab-card ab-pad" aria-labelledby="ab-h-dep" data-ab-return>
+						<h2 id="ab-h-dep">Your flight</h2>
+						<p class="ab-muted">We use your flight time to suggest when your driver picks you up, so you reach <?php echo esc_html( $air['name'] ); ?> with time to spare.</p>
+						<div class="ab-grid">
+							<div class="ab-field"><label for="ab-rairline">Airline</label><input id="ab-rairline" name="return_airline" autocomplete="off" value="<?php echo esc_attr( $v( 'return_airline' ) ); ?>"></div>
+							<div class="ab-field"><label for="ab-rflight">Flight number</label><input id="ab-rflight" name="return_flight" autocomplete="off" value="<?php echo esc_attr( $v( 'return_flight' ) ); ?>"></div>
+							<div class="ab-field"><label for="ab-rdate">Pickup date</label><input id="ab-rdate" name="return_date" type="date" required value="<?php echo esc_attr( $v( 'return_date', $q['date'] ) ); ?>" min="<?php echo esc_attr( gmdate( 'Y-m-d' ) ); ?>"></div>
+							<div class="ab-field"><label for="ab-rtime">Flight departure time</label><input id="ab-rtime" name="return_flight_time" type="time" value="<?php echo esc_attr( $v( 'return_flight_time' ) ); ?>" data-ab-rtime></div>
+						</div>
+						<label class="ab-check"><input type="checkbox" name="domestic" value="1" data-ab-domestic <?php checked( ! empty( $d['domestic'] ) ); ?>> <span>It’s a domestic flight (within <?php echo esc_html( 'MX' === (string) ( $air['country'] ?? '' ) ? 'Mexico' : 'the country' ); ?>)</span></label>
+						<div class="ab-suggest">
+							<div class="ab-field"><label for="ab-rpick">Hotel pickup time</label><input id="ab-rpick" name="return_pickup" type="time" required value="<?php echo esc_attr( $v( 'return_pickup', $q['time'] ) ); ?>" data-ab-rpick></div>
+							<p class="ab-muted" data-ab-suggest-note>Type your flight time and we suggest a pickup: 3 hours before an international flight, 2 hours before a domestic one, including the drive. You can change it.</p>
+						</div>
+						<p class="ab-muted">Don’t know your flight yet? Leave it empty and add it later in Manage booking, at least 24 h before pickup.</p>
+						<input type="hidden" name="return_from" value="<?php echo esc_attr( $to ); ?>">
+					</section>
+					<?php else : ?>
 					<section class="ab-card ab-pad" aria-labelledby="ab-h-arrival">
 						<h2 id="ab-h-arrival">Your arrival</h2>
 						<p class="ab-muted">We follow your flight. If it lands early or late, your driver adjusts the pickup.</p>
@@ -548,6 +595,8 @@ final class ATC_Book {
 						<div class="ab-place"><span><?php echo esc_html( $to ); ?><?php echo ! empty( $res['destination']['zone'] ) ? '<small class="ab-muted">Zone: ' . esc_html( $res['destination']['zone'] ) . '</small>' : ''; ?></span><button type="button" class="ab-link" data-ab-edit>Change</button></div>
 						<div class="ab-field"><label for="ab-hname">Name of the hotel reservation (optional)</label><input id="ab-hname" name="hotel_name" autocomplete="off" value="<?php echo esc_attr( $v( 'hotel_name' ) ); ?>" placeholder="If it is not the lead traveler’s name"></div>
 					</section>
+
+					<?php endif; ?>
 
 					<?php if ( $round ) : ?>
 					<section class="ab-card ab-pad" aria-labelledby="ab-h-return" data-ab-return>
@@ -652,8 +701,9 @@ final class ATC_Book {
 		} elseif ( ! $err ) {
 			$err = 'Payments are not set up yet on this site.';
 		}
-		$arr = $b['legs'][0] ?? array();
-		$ret = $b['legs'][1] ?? array();
+		$arr = ATC_Checkout::leg( $b, 'arrival' );
+		$ret = ATC_Checkout::leg( $b, 'departure' );
+		$one = $b['legs'][0] ?? array();
 		$row = static fn( $k, $val, $href = '' ) => '<div class="ab-rev"><span class="ab-k">' . esc_html( $k ) . '</span><span>' . $val . '</span>' . ( $href ? '<a class="ab-link" href="' . esc_url( $href ) . '">Edit</a>' : '' ) . '</div>';
 		$flight = ! empty( $d['no_flight'] ) || empty( $arr['flight_number'] ) ? 'Flight to be added · lands ' . esc_html( self::local( $arr['pickup_at'] ?? null, $tz ) ) : esc_html( trim( ( $arr['flight_airline'] ?? '' ) . ' ' . $arr['flight_number'] ) . ' · lands ' . self::local( $arr['flight_time'] ?? null, $tz ) );
 		$moved = $was !== (int) $b['total_cents'];
@@ -682,13 +732,17 @@ final class ATC_Book {
 					<section class="ab-card ab-pad" aria-labelledby="ab-h-rev">
 						<h2 id="ab-h-rev">Review and book</h2>
 						<?php
-						echo $row( 'Arrival', $flight, $edit ); // phpcs:ignore
-						echo $row( 'Drop-off', esc_html( $to ) . ( ! empty( $d['hotel_name'] ) ? ' · reservation under ' . esc_html( $d['hotel_name'] ) : '' ), $edit ); // phpcs:ignore
-						if ( $round ) {
-							echo $row( 'Return', 'Pickup ' . esc_html( self::local( $ret['pickup_at'] ?? null, $tz ) ) . ' at ' . esc_html( (string) ( $ret['from_place'] ?? '' ) ) . ( ! empty( $ret['flight_number'] ) ? ' · ' . esc_html( trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) ) : '' ), $edit ); // phpcs:ignore
+						if ( $arr ) {
+							echo $row( 'Arrival', $flight, $edit ); // phpcs:ignore
+							echo $row( 'Drop-off', esc_html( $to ) . ( ! empty( $d['hotel_name'] ) ? ' · reservation under ' . esc_html( $d['hotel_name'] ) : '' ), $edit ); // phpcs:ignore
+						} elseif ( ! empty( $d['hotel_name'] ) ) {
+							echo $row( 'Hotel booking', esc_html( 'Under ' . $d['hotel_name'] ), $edit ); // phpcs:ignore
+						}
+						if ( $ret ) {
+							echo $row( $arr ? 'Return' : 'Pickup', 'Pickup ' . esc_html( self::local( $ret['pickup_at'] ?? null, $tz ) ) . ' at ' . esc_html( (string) ( $ret['from_place'] ?? '' ) ) . ( ! empty( $ret['flight_number'] ) ? ' · ' . esc_html( trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) ) : '' ), $edit ); // phpcs:ignore
 						}
 						echo $row( 'Lead traveler', esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . $b['email'] . ' · ' . $b['phone'] ), $edit ); // phpcs:ignore
-						echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $arr['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $arr['carry_ons'] ?? 0 ) . ' carry-ons' ), $edit ); // phpcs:ignore
+						echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $one['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $one['carry_ons'] ?? 0 ) . ' carry-ons' ), $edit ); // phpcs:ignore
 						?>
 						<label class="ab-check"><input type="checkbox" name="agree" required data-ab-agree> <span>I agree to the <a href="<?php echo esc_url( home_url( '/reservation-policies/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="reservation-policies">reservation policies</a> and the <a href="<?php echo esc_url( home_url( '/privacy-policy/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="privacy-policy">privacy policy</a>.</span></label>
 						<div class="ab-alert" role="alert" hidden data-ab-error></div>
@@ -712,11 +766,12 @@ final class ATC_Book {
 		$snap  = $b['snap'];
 		$tz    = (string) ( $snap['timezone'] ?? 'UTC' );
 		$d     = (array) ( $snap['details'] ?? array() );
-		$arr   = $b['legs'][0] ?? array();
-		$ret   = $b['legs'][1] ?? array();
+		$arr   = ATC_Checkout::leg( $b, 'arrival' );
+		$ret   = ATC_Checkout::leg( $b, 'departure' );
+		$one   = $b['legs'][0] ?? array();
 		$prov  = ATC_Checkout::provider( $b );
 		$free  = (int) ATC_Settings::get( 'free_cancel_hours' );
-		$first = $arr['pickup_at'] ?? null;
+		$first = $one['pickup_at'] ?? null;
 		ob_start();
 		if ( 'held' === $b['status'] ) :
 			?>
@@ -734,9 +789,9 @@ final class ATC_Book {
 			$found = ATC_Search::find_airport( (string) $snap['iata'] );
 			$aid   = $found ? (int) $found['id'] : 0;
 		}
-		$meet      = ATC_Meeting::for_booking( $aid, (int) ( $arr['party_id'] ?? 0 ) );
+		$meet      = ATC_Meeting::for_booking( $aid, (int) ( $one['party_id'] ?? 0 ) );
 		$where     = ( $snap['iata'] ?? '' ) ?: ( $snap['airport'] ?? '' );
-		$land      = $arr['flight_time'] ?? $first;
+		$land      = $arr ? ( $arr['flight_time'] ?? $arr['pickup_at'] ) : null;
 		$until     = $first ? gmdate( 'Y-m-d H:i:s', strtotime( $first . ' UTC' ) - $free * HOUR_IN_SECONDS ) : null;
 		$can_free  = $until && strtotime( $until . ' UTC' ) > time();
 		?>
@@ -765,9 +820,11 @@ final class ATC_Book {
 					</div>
 
 					<div class="ab-facts">
-						<div class="ab-fact is-key"><small class="ab-k"><?php echo $ret ? 'Arrival pickup' : 'Pickup'; ?></small><strong><?php echo esc_html( self::local( $land, $tz, 'D j M' ) ); ?></strong><span><?php echo esc_html( self::local( $land, $tz, 'H:i' ) ); ?> · on landing at <?php echo esc_html( $where ); ?></span></div>
+						<?php if ( $arr ) : ?>
+							<div class="ab-fact is-key"><small class="ab-k"><?php echo $ret ? 'Arrival pickup' : 'Pickup'; ?></small><strong><?php echo esc_html( self::local( $land, $tz, 'D j M' ) ); ?></strong><span><?php echo esc_html( self::local( $land, $tz, 'H:i' ) ); ?> · on landing at <?php echo esc_html( $where ); ?></span></div>
+						<?php endif; ?>
 						<?php if ( $ret ) : ?>
-							<div class="ab-fact is-key"><small class="ab-k">Return pickup</small><strong><?php echo esc_html( self::local( $ret['pickup_at'], $tz, 'D j M' ) ); ?></strong><span><?php echo esc_html( self::local( $ret['pickup_at'], $tz, 'H:i' ) ); ?> · at your hotel</span></div>
+							<div class="ab-fact is-key"><small class="ab-k"><?php echo $arr ? 'Return pickup' : 'Pickup'; ?></small><strong><?php echo esc_html( self::local( $ret['pickup_at'], $tz, 'D j M' ) ); ?></strong><span><?php echo esc_html( self::local( $ret['pickup_at'], $tz, 'H:i' ) ); ?> · at your hotel</span></div>
 						<?php endif; ?>
 						<div class="ab-fact"><small class="ab-k">Vehicle</small><strong><?php echo esc_html( (string) ( $snap['vehicle'] ?? '' ) ); ?></strong><span>Private · <?php echo (int) $b['adults'] + (int) $b['children']; ?> passengers</span></div>
 						<div class="ab-fact"><small class="ab-k">Total paid</small><strong><?php echo esc_html( self::money( (int) $b['total_cents'] ) ); ?></strong><span><?php echo ! empty( $snap['card']['last4'] ) ? esc_html( ucfirst( (string) $snap['card']['brand'] ) . ' •••• ' . $snap['card']['last4'] ) : 'Paid'; ?></span></div>
@@ -782,6 +839,7 @@ final class ATC_Book {
 					</section>
 				<?php endif; ?>
 
+				<?php if ( $arr ) : ?>
 				<section class="ab-card ab-pad ab-meetcard" aria-labelledby="ab-h-meet">
 					<h2 id="ab-h-meet">Meeting your driver at <?php echo esc_html( $where ); ?></h2>
 					<?php if ( count( $meet['sets'] ) > 1 ) : ?>
@@ -798,18 +856,26 @@ final class ATC_Book {
 						</div>
 					<?php endforeach; ?>
 				</section>
+				<?php else : ?>
+				<section class="ab-card ab-pad ab-meetcard" aria-labelledby="ab-h-meet">
+					<h2 id="ab-h-meet">Meeting your driver</h2>
+					<p>Your driver waits at the entrance or lobby of <strong><?php echo esc_html( (string) ( $ret['from_place'] ?? '' ) ); ?></strong> at the pickup time, with a sign with your name. Be ready a few minutes early with your luggage.</p>
+				</section>
+				<?php endif; ?>
 
 				<?php echo self::rate_card( $b, $key ); // phpcs:ignore -- escaped inside. ?>
 
 				<section class="ab-card ab-pad" aria-labelledby="ab-h-trip">
 					<h2 id="ab-h-trip">Trip details</h2>
 					<?php
-					echo $row( 'Route', esc_html( ( $snap['iata'] ?? '' ) . ' ' . ( $snap['airport'] ?? '' ) . ' → ' . ( $arr['to_place'] ?? '' ) ) ); // phpcs:ignore
-					echo $row( 'Arrival', '<strong>' . esc_html( self::local( $land, $tz ) ) . '</strong>' . esc_html( ! empty( $arr['flight_number'] ) ? ' · ' . trim( $arr['flight_airline'] . ' ' . $arr['flight_number'] ) : ' · flight to be added in Manage booking' ) ); // phpcs:ignore
-					if ( $ret ) {
-						echo $row( 'Return', '<strong>Pickup ' . esc_html( self::local( $ret['pickup_at'], $tz ) ) . '</strong>' . esc_html( ' at ' . $ret['from_place'] . ( ! empty( $ret['flight_number'] ) ? ' · ' . trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) : '' ) ) ); // phpcs:ignore
+					echo $row( 'Route', esc_html( $arr ? ( $snap['iata'] ?? '' ) . ' ' . ( $snap['airport'] ?? '' ) . ' → ' . ( $arr['to_place'] ?? '' ) : ( $ret['from_place'] ?? '' ) . ' → ' . ( $snap['iata'] ?? '' ) . ' ' . ( $snap['airport'] ?? '' ) ) ); // phpcs:ignore
+					if ( $arr ) {
+						echo $row( 'Arrival', '<strong>' . esc_html( self::local( $land, $tz ) ) . '</strong>' . esc_html( ! empty( $arr['flight_number'] ) ? ' · ' . trim( $arr['flight_airline'] . ' ' . $arr['flight_number'] ) : ' · flight to be added in Manage booking' ) ); // phpcs:ignore
 					}
-					echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $arr['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $arr['carry_ons'] ?? 0 ) . ' carry-ons' ) ); // phpcs:ignore
+					if ( $ret ) {
+						echo $row( $arr ? 'Return' : 'Pickup', '<strong>Pickup ' . esc_html( self::local( $ret['pickup_at'], $tz ) ) . '</strong>' . esc_html( ' at ' . $ret['from_place'] . ( ! empty( $ret['flight_number'] ) ? ' · ' . trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) : '' ) ) ); // phpcs:ignore
+					}
+					echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $one['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $one['carry_ons'] ?? 0 ) . ' carry-ons' ) ); // phpcs:ignore
 					if ( ! empty( $d['hotel_name'] ) ) {
 						echo $row( 'Hotel booking', esc_html( 'Under ' . $d['hotel_name'] ) ); // phpcs:ignore
 					}
@@ -863,8 +929,9 @@ final class ATC_Book {
 		$free   = (int) ATC_Settings::get( 'free_cancel_hours' );
 		$tz     = (string) ( $b['snap']['timezone'] ?? 'UTC' );
 		$d      = (array) ( $b['snap']['details'] ?? array() );
-		$arr    = $b['legs'][0] ?? array();
-		$ret    = $b['legs'][1] ?? array();
+		$arr    = ATC_Checkout::leg( $b, 'arrival' );
+		$ret    = ATC_Checkout::leg( $b, 'departure' );
+		$one    = $b['legs'][0] ?? array();
 		$v      = static fn( $k, $def = '' ) => (string) ( $d[ $k ] ?? $def );
 		$cfg    = array( 'number' => $b['number'], 'key' => $key, 'back' => ATC_Checkout::reservation_url( $b['number'], $key ) );
 		ob_start();
@@ -881,7 +948,7 @@ final class ATC_Book {
 				</div>
 				<?php if ( $change ) : ?>
 				<form class="ab-form" id="ab-change" hidden novalidate data-ab-change>
-					<?php if ( ATC_Manage::open_leg( $arr ) ) : ?>
+					<?php if ( $arr && ATC_Manage::open_leg( $arr ) ) : ?>
 						<h3 class="ab-h3">Arrival</h3>
 						<div class="ab-grid">
 							<div class="ab-field"><label for="m-airline">Airline</label><input id="m-airline" name="airline" value="<?php echo esc_attr( (string) $arr['flight_airline'] ); ?>"></div>
@@ -891,20 +958,20 @@ final class ATC_Book {
 						</div>
 					<?php endif; ?>
 					<?php if ( $ret && ATC_Manage::open_leg( $ret ) ) : ?>
-						<h3 class="ab-h3">Return</h3>
+						<h3 class="ab-h3"><?php echo $arr ? 'Return' : 'Pickup and flight'; ?></h3>
 						<div class="ab-field"><label for="m-rfrom">Hotel pickup address</label><input id="m-rfrom" name="return_from" value="<?php echo esc_attr( (string) $ret['from_place'] ); ?>"></div>
 						<div class="ab-grid">
 							<div class="ab-field"><label for="m-rairline">Departure airline</label><input id="m-rairline" name="return_airline" value="<?php echo esc_attr( (string) $ret['flight_airline'] ); ?>"></div>
 							<div class="ab-field"><label for="m-rflight">Departure flight number</label><input id="m-rflight" name="return_flight" value="<?php echo esc_attr( (string) $ret['flight_number'] ); ?>"></div>
-							<div class="ab-field"><label for="m-rdate">Departure date</label><input id="m-rdate" name="return_date" type="date" required value="<?php echo esc_attr( self::local( $ret['pickup_at'], $tz, 'Y-m-d' ) ); ?>"></div>
+							<div class="ab-field"><label for="m-rdate"><?php echo $arr ? 'Departure date' : 'Pickup date'; ?></label><input id="m-rdate" name="return_date" type="date" required value="<?php echo esc_attr( self::local( $ret['pickup_at'], $tz, 'Y-m-d' ) ); ?>"></div>
 							<div class="ab-field"><label for="m-rft">Flight departure time</label><input id="m-rft" name="return_flight_time" type="time" value="<?php echo esc_attr( $ret['flight_time'] ? self::local( $ret['flight_time'], $tz, 'H:i' ) : '' ); ?>"></div>
 							<div class="ab-field"><label for="m-rpick">Hotel pickup time</label><input id="m-rpick" name="return_pickup" type="time" required value="<?php echo esc_attr( self::local( $ret['pickup_at'], $tz, 'H:i' ) ); ?>"></div>
 						</div>
 					<?php endif; ?>
 					<h3 class="ab-h3">Details</h3>
 					<div class="ab-grid">
-						<div class="ab-field"><label for="m-bags">Suitcases</label><input id="m-bags" name="suitcases" type="number" min="0" max="60" value="<?php echo (int) ( $arr['suitcases'] ?? 0 ); ?>"></div>
-						<div class="ab-field"><label for="m-carry">Carry-ons</label><input id="m-carry" name="carry_ons" type="number" min="0" max="60" value="<?php echo (int) ( $arr['carry_ons'] ?? 0 ); ?>"></div>
+						<div class="ab-field"><label for="m-bags">Suitcases</label><input id="m-bags" name="suitcases" type="number" min="0" max="60" value="<?php echo (int) ( $one['suitcases'] ?? 0 ); ?>"></div>
+						<div class="ab-field"><label for="m-carry">Carry-ons</label><input id="m-carry" name="carry_ons" type="number" min="0" max="60" value="<?php echo (int) ( $one['carry_ons'] ?? 0 ); ?>"></div>
 						<div class="ab-field"><label for="m-hname">Name of the hotel reservation (optional)</label><input id="m-hname" name="hotel_name" value="<?php echo esc_attr( $v( 'hotel_name' ) ); ?>"></div>
 					</div>
 					<div class="ab-field"><label for="m-notes">Notes for your driver</label><textarea id="m-notes" name="notes" rows="3" maxlength="1000"><?php echo esc_textarea( $v( 'notes' ) ); ?></textarea></div>
