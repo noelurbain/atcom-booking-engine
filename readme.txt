@@ -1,5 +1,17 @@
 === ATCOM Booking Engine ===
-Version: 0.6.0 (bookings, price screen as in the mockup)
+Version: 0.7.0 (checkout, part 1: search and results)
+
+New in 0.7.0:
+- Search box (atc_engine_search_box(), used by the theme's booking bar): One way / Round trip, From (only
+  airports we serve), To (Google places near the airport; typing an address without picking also works),
+  landing date and time, Passengers with Adults and Children, return date for round trips.
+- /search, step 1 "Choose your vehicle": the search summary with Edit search, one card per vehicle category
+  at the lowest price among live providers serving the zone (capacity and minimum notice respected), the trip
+  map with the road route, time and distance, "Your transfer" with Continue.
+- When nothing can be booked it says why: address outside our zones (with the nearest places we serve and
+  their from-prices), no prices for that area yet, pickup too soon (earliest time), or a group too big.
+- The theme's older forms (sticky bar, mobile sheet) also land on /search.
+- /checkout shows the chosen vehicle; details and payment come in the next update.
 
 New in 0.6.0:
 - Bookings in the control panel: the list (All, Coming up, No provider, Paid, Not paid, Cancelled; find by

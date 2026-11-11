@@ -59,6 +59,7 @@ final class ATC_REST {
 			$out[]                  = array(
 				'id'    => (int) $a['id'],
 				'label' => ATC_Catalog::airport_label( $a ),
+				'iata'  => $a['iata'] ?? null,
 				'sub'   => ! empty( $a['iata'] ) ? $a['name'] : trim( $a['city'] . ', ' . $a['country'], ', ' ),
 			);
 		};
@@ -66,7 +67,8 @@ final class ATC_REST {
 			$local( $a );
 		}
 		// Google only when we have nothing, or the visitor asks for more. Limited per visitor: each search costs money.
-		if ( ! $out || ! empty( $r['more'] ) ) {
+		// Travelers (local=1) only ever pick airports we serve.
+		if ( empty( $r['local'] ) && ( ! $out || ! empty( $r['more'] ) ) ) {
 			$resp['google'] = 'failed';
 			if ( ATC_Partner::rate_ok( 'airports', 40 ) ) {
 				[ $list, $err ] = ATC_Geo::search_airports( $q );
