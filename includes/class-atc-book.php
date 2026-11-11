@@ -378,46 +378,20 @@ final class ATC_Book {
 		return (string) ob_get_clean();
 	}
 
-	/** Country calling codes for the mobile number. */
-	private static function phone_codes(): array {
-		return array(
-			'+1'   => 'United States / Canada +1',
-			'+52'  => 'Mexico +52',
-			'+44'  => 'United Kingdom +44',
-			'+34'  => 'Spain +34',
-			'+33'  => 'France +33',
-			'+49'  => 'Germany +49',
-			'+39'  => 'Italy +39',
-			'+31'  => 'Netherlands +31',
-			'+32'  => 'Belgium +32',
-			'+41'  => 'Switzerland +41',
-			'+43'  => 'Austria +43',
-			'+353' => 'Ireland +353',
-			'+351' => 'Portugal +351',
-			'+45'  => 'Denmark +45',
-			'+46'  => 'Sweden +46',
-			'+47'  => 'Norway +47',
-			'+358' => 'Finland +358',
-			'+48'  => 'Poland +48',
-			'+55'  => 'Brazil +55',
-			'+54'  => 'Argentina +54',
-			'+56'  => 'Chile +56',
-			'+57'  => 'Colombia +57',
-			'+51'  => 'Peru +51',
-			'+506' => 'Costa Rica +506',
-			'+507' => 'Panama +507',
-			'+502' => 'Guatemala +502',
-			'+61'  => 'Australia +61',
-			'+64'  => 'New Zealand +64',
-			'+81'  => 'Japan +81',
-			'+82'  => 'South Korea +82',
-			'+86'  => 'China +86',
-			'+91'  => 'India +91',
-			'+65'  => 'Singapore +65',
-			'+971' => 'United Arab Emirates +971',
-			'+972' => 'Israel +972',
-			'+27'  => 'South Africa +27',
-		);
+	/** Every country with its calling code; the usual ones first. Value "+1|US" keeps the country. */
+	private static function phone_options( string $selected ): string {
+		$all  = require ATC_DIR . 'includes/phone-codes.php';
+		$top  = array( 'US', 'CA', 'MX', 'GB', 'ES', 'FR', 'DE', 'IT', 'NL', 'BR', 'AR', 'CO' );
+		$opt  = static fn( $iso, $sel ) => '<option value="' . esc_attr( $all[ $iso ][1] . '|' . $iso ) . '"' . ( $all[ $iso ][1] . '|' . $iso === $sel ? ' selected' : '' ) . '>' . esc_html( $all[ $iso ][0] . ' ' . $all[ $iso ][1] ) . '</option>';
+		$out  = '<optgroup label="Most used">';
+		foreach ( $top as $iso ) {
+			$out .= $opt( $iso, $selected );
+		}
+		$out .= '</optgroup><optgroup label="All countries">';
+		foreach ( array_keys( $all ) as $iso ) {
+			$out .= $opt( $iso, in_array( $iso, $top, true ) ? '' : $selected );
+		}
+		return $out . '</optgroup>';
 	}
 
 	/** A UTC datetime shown in the airport's time zone. */
@@ -502,10 +476,9 @@ final class ATC_Book {
 		$d      = $b['snap']['details'] ?? array();
 		$v      = static fn( $k, $def = '' ) => (string) ( $d[ $k ] ?? $def );
 		$phone  = $b ? explode( ' ', (string) $b['phone'], 2 ) : array();
-		$pcode  = isset( $phone[1] ) ? $phone[0] : '+1';
+		$pcode  = ( $b['snap']['phone_country'] ?? '' ) ? $phone[0] . '|' . $b['snap']['phone_country'] : '+1|US';
 		$pnum   = isset( $phone[1] ) ? $phone[1] : ( $phone[0] ?? '' );
-		$codes  = self::phone_codes();
-		$total  = $b ? (int) $b['total_cents'] : (int) $offer['retail'];
+				$total  = $b ? (int) $b['total_cents'] : (int) $offer['retail'];
 		$cfg    = array(
 			'start'   => esc_url_raw( rest_url( 'atc/v1/checkout/start' ) ),
 			'details' => esc_url_raw( rest_url( 'atc/v1/checkout/details' ) ),
@@ -534,7 +507,7 @@ final class ATC_Book {
 							<div class="ab-field"><label for="ab-phone">Mobile number</label>
 								<div class="ab-tel">
 									<select name="phone_code" aria-label="Country code" autocomplete="tel-country-code">
-										<?php foreach ( $codes as $c => $label ) : ?><option value="<?php echo esc_attr( $c ); ?>" <?php selected( $c === $pcode ); ?>><?php echo esc_html( $label ); ?></option><?php endforeach; ?>
+										<?php echo self::phone_options( $pcode ); // phpcs:ignore -- escaped inside. ?>
 									</select>
 									<input id="ab-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel-national" required value="<?php echo esc_attr( $pnum ); ?>">
 								</div>

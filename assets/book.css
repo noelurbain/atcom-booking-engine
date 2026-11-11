@@ -151,7 +151,7 @@
 .ab-form input:focus-visible,.ab-form select:focus-visible,.ab-form textarea:focus-visible,.ab-main a:focus-visible,.ab-main button:focus-visible{outline:2px solid #E07A1F;outline-offset:2px}
 .ab-form input:disabled{background:var(--soft);color:var(--muted)}
 .ab-tel{display:flex;gap:8px}
-.ab-tel select{flex:0 0 110px;width:110px;padding-right:6px;text-overflow:ellipsis}
+.ab-tel select{flex:0 0 150px;width:150px;padding-right:6px;text-overflow:ellipsis}
 .ab-check{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:600;line-height:1.45;cursor:pointer}
 .ab-check input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--ink);flex-shrink:0}
 .ab-check a{color:inherit;text-decoration:underline}

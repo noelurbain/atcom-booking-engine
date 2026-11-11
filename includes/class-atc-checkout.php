@@ -81,7 +81,9 @@ final class ATC_Checkout {
 		$first = trim( sanitize_text_field( (string) ( $in['first_name'] ?? '' ) ) );
 		$last  = trim( sanitize_text_field( (string) ( $in['last_name'] ?? '' ) ) );
 		$email = sanitize_email( (string) ( $in['email'] ?? '' ) );
-		$code  = preg_replace( '/[^0-9+]/', '', (string) ( $in['phone_code'] ?? '' ) );
+		$pc    = explode( '|', (string) ( $in['phone_code'] ?? '' ) );
+		$code  = preg_replace( '/[^0-9+]/', '', $pc[0] );
+		$iso   = strtoupper( preg_replace( '/[^A-Za-z]/', '', $pc[1] ?? '' ) );
 		$phone = preg_replace( '/[^0-9]/', '', (string) ( $in['phone'] ?? '' ) );
 		if ( '' === $first || '' === $last ) {
 			return new WP_Error( 'atc_contact', 'Please type the lead traveler’s first and last name.', array( 'status' => 400 ) );
@@ -98,6 +100,7 @@ final class ATC_Checkout {
 			'email'      => mb_substr( $email, 0, 190 ),
 			'phone'      => mb_substr( ( '' !== $code ? ( '+' === $code[0] ? $code : '+' . $code ) . ' ' : '' ) . $phone, 0, 40 ),
 			'whatsapp'   => ! empty( $in['whatsapp'] ),
+			'country'    => strlen( $iso ) === 2 ? $iso : '',
 		);
 	}
 
@@ -155,6 +158,7 @@ final class ATC_Checkout {
 			'slug'     => $o['slug'],
 			'provider' => $o['provider'],
 			'whatsapp' => $c['whatsapp'],
+			'phone_country' => $c['country'],
 			'step'     => 'contact',
 		);
 		$total = (int) $o['retail'];
@@ -329,6 +333,7 @@ final class ATC_Checkout {
 		$snap['search']   = $q;
 		$snap['details']  = $d;
 		$snap['whatsapp'] = $c['whatsapp'];
+		$snap['phone_country'] = $c['country'];
 		$snap['step']     = 'payment';
 		$wpdb->update(
 			self::t( 'bookings' ),
