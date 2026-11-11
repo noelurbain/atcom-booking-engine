@@ -179,6 +179,12 @@ final class ATC_Book {
 		return '<div class="ab-trust"><span>' . $tick . 'Price per vehicle, all taxes included</span><span>' . $tick . 'Free cancellation up to ' . $free . ' h before pickup</span><span>' . $tick . 'Change your flight in Manage booking</span></div>';
 	}
 
+	/** "★ 4.8 (23 reviews)", accessible. */
+	private static function stars( float $rating, int $count ): string {
+		$full = (int) round( $rating );
+		return '<span class="ab-stars" role="img" aria-label="' . esc_attr( number_format( $rating, 1 ) . ' out of 5 stars from ' . $count . ' reviews' ) . '"><span aria-hidden="true">' . str_repeat( '★', $full ) . '<span class="ab-off">' . str_repeat( '★', 5 - $full ) . '</span></span> <strong>' . esc_html( number_format( $rating, 1 ) ) . '</strong> <span class="ab-muted">(' . (int) $count . ')</span></span>';
+	}
+
 	private static function vehicle_icon(): string {
 		return '<svg width="88" height="48" viewBox="0 0 88 48" aria-hidden="true"><path d="M8 32 L14 16 Q16 11 22 11 H60 Q66 11 70 16 L80 28 Q82 31 82 34 V38 H8 Z" fill="#E9E4DA"></path><path d="M20 15 H40 V26 H15 Z M44 15 H60 Q63 15 66 19 L71 26 H44 Z" fill="#FFFFFF"></path><circle cx="24" cy="38" r="7" fill="#15171C"></circle><circle cx="66" cy="38" r="7" fill="#15171C"></circle><circle cx="24" cy="38" r="2.5" fill="#E9E4DA"></circle><circle cx="66" cy="38" r="2.5" fill="#E9E4DA"></circle></svg>';
 	}
@@ -197,23 +203,46 @@ final class ATC_Book {
 				<div class="ab-titlerow">
 					<h1 class="ab-h1">Choose your vehicle</h1>
 					<?php if ( $res['airport'] && $res['destination'] ) : ?>
+						<div class="ab-tools">
+						<?php if ( ! empty( $res['rated'] ) && count( $res['offers'] ) > 1 ) : $by_rating = 'rating' === $q['sort']; ?>
+							<div class="ab-pills" role="group" aria-label="Sort by">
+								<a href="<?php echo esc_url( home_url( '/search/?' . ATC_Search::query( array_merge( $q, array( 'sort' => 'price' ) ) ) ) ); ?>" aria-current="<?php echo $by_rating ? 'false' : 'true'; ?>">Lowest price</a>
+								<a href="<?php echo esc_url( home_url( '/search/?' . ATC_Search::query( array_merge( $q, array( 'sort' => 'rating' ) ) ) ) ); ?>" aria-current="<?php echo $by_rating ? 'true' : 'false'; ?>">Best rated</a>
+							</div>
+						<?php endif; ?>
 						<div class="ab-pills" role="group" aria-label="Trip type">
 							<a href="<?php echo esc_url( home_url( '/search/?' . ATC_Search::query( array_merge( $q, array( 'trip' => 'one_way', 'return_date' => '' ) ) ) ) ); ?>" aria-current="<?php echo $round ? 'false' : 'true'; ?>">One way</a>
 							<a href="<?php echo esc_url( home_url( '/search/?' . ATC_Search::query( array_merge( $q, array( 'trip' => 'round_trip' ) ) ) ) ); ?>" aria-current="<?php echo $round ? 'true' : 'false'; ?>">Round trip</a>
 						</div>
+						</div>
 					<?php endif; ?>
 				</div>
 				<?php
+				$types = array();
+				foreach ( $res['offers'] as $o ) {
+					$types[ $o['vehicle_type_id'] ] = $o['name'];
+				}
+				if ( count( $types ) > 1 ) :
+					?>
+					<div class="ab-chips" role="group" aria-label="Vehicle type">
+						<button type="button" aria-pressed="true" data-ab-vt="">All (<?php echo count( $res['offers'] ); ?>)</button>
+						<?php foreach ( $types as $vt => $name ) : ?>
+							<button type="button" aria-pressed="false" data-ab-vt="<?php echo (int) $vt; ?>"><?php echo esc_html( $name ); ?></button>
+						<?php endforeach; ?>
+					</div>
+					<?php
+				endif;
 				if ( $res['offers'] ) :
 					foreach ( $res['offers'] as $i => $o ) :
 						$next = home_url( '/checkout/?' . ATC_Search::query( $q, array( 'service' => $o['service_id'] ) ) );
 						?>
-						<article class="ab-offer<?php echo 0 === $i ? ' is-on' : ''; ?>" data-ab-offer data-name="<?php echo esc_attr( $o['name'] ); ?>" data-price="<?php echo esc_attr( self::money( $o['retail'] ) ); ?>" data-href="<?php echo esc_url( $next ); ?>">
+						<article class="ab-offer<?php echo 0 === $i ? ' is-on' : ''; ?>" data-ab-offer data-name="<?php echo esc_attr( $o['name'] ); ?>" data-provider="<?php echo esc_attr( $o['provider'] ); ?>" data-vt="<?php echo (int) $o['vehicle_type_id']; ?>" data-price="<?php echo esc_attr( self::money( $o['retail'] ) ); ?>" data-href="<?php echo esc_url( $next ); ?>">
 							<div class="ab-pic"><?php echo self::vehicle_icon(); // phpcs:ignore ?></div>
 							<div class="ab-info">
 								<h2><?php echo esc_html( $o['name'] ); ?></h2>
 								<span class="ab-muted">Up to <?php echo (int) $o['max_passengers']; ?> passengers · <?php echo (int) $o['max_bags']; ?> bags</span>
 								<span>Private · Flight monitored · <?php echo (int) $o['free_wait']; ?> min free waiting · Free cancellation up to <?php echo (int) $free; ?> h</span>
+								<span class="ab-by">by <?php echo esc_html( $o['provider'] ); ?><?php echo null !== $o['rating'] ? ' · ' . self::stars( $o['rating'], $o['reviews'] ) : ''; // phpcs:ignore -- escaped in stars(). ?></span>
 							</div>
 							<div class="ab-price">
 								<small><?php echo $round ? 'Round trip, total' : 'One way, total'; ?></small>
@@ -247,7 +276,7 @@ final class ATC_Book {
 							<span><?php echo esc_html( $q['date'] ? wp_date( 'D j M Y', strtotime( $q['date'] . ' 12:00 UTC' ), new DateTimeZone( 'UTC' ) ) : '' ); ?> · <?php echo (int) ( $q['adults'] + $q['children'] ); ?> passengers</span>
 							<span data-ab-time></span>
 						</div>
-						<div class="ab-total"><span class="ab-muted" data-ab-selname><?php echo esc_html( $o['name'] . ( $round ? ', round trip' : ', one way' ) ); ?></span><strong data-ab-selprice><?php echo esc_html( self::money( $o['retail'] ) ); ?></strong></div>
+						<div class="ab-total"><span class="ab-muted"><span data-ab-selname><?php echo esc_html( $o['name'] . ( $round ? ', round trip' : ', one way' ) ); ?></span><small class="ab-selby" data-ab-selby>by <?php echo esc_html( $o['provider'] ); ?></small></span><strong data-ab-selprice><?php echo esc_html( self::money( $o['retail'] ) ); ?></strong></div>
 						<a class="ab-btn is-accent is-block" href="<?php echo esc_url( home_url( '/checkout/?' . ATC_Search::query( $q, array( 'service' => $o['service_id'] ) ) ) ); ?>" data-ab-continue>Continue</a>
 					</section>
 				<?php endif; ?>

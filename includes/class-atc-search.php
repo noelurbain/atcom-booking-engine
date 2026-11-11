@@ -5,7 +5,8 @@
  * Pricing rule (requirements): a hand-placed hotel wins; otherwise the zone shape that contains
  * the address; otherwise nothing to sell (we say so and show the nearest places we serve).
  * Only live providers with live services that serve the zone and have a price for the direction.
- * One offer per vehicle category: the lowest Suggested retail price.
+ * Every provider's offer is shown (two providers with a Minivan = two cards), with the provider's
+ * name and stars (from 3 traveler reviews). Sorted by price, or by stars when the traveler asks.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -13,6 +14,7 @@ defined( 'ABSPATH' ) || exit;
 final class ATC_Search {
 
 	const DEFAULT_TIME = '12:00';
+	const MIN_REVIEWS  = 3;
 
 	private static function t( string $n ): string {
 		return ATC_Schema::table( $n );
@@ -60,6 +62,7 @@ final class ATC_Search {
 			'return_date' => $ret,
 			'adults'      => max( 1, min( 60, $adults ) ),
 			'children'    => max( 0, min( 40, $children ) ),
+			'sort'        => 'rating' === $s( 'sort' ) ? 'rating' : 'price',
 		);
 	}
 
@@ -78,6 +81,7 @@ final class ATC_Search {
 				'return_date' => $q['return_date'],
 				'adults'      => $q['adults'],
 				'children'    => $q['children'] ?: '',
+				'sort'        => 'rating' === ( $q['sort'] ?? '' ) ? 'rating' : '',
 			),
 			static fn( $v ) => '' !== $v && null !== $v
 		);
@@ -104,7 +108,7 @@ final class ATC_Search {
 		return $wpdb->get_results(
 			$wpdb->prepare(
 				'SELECT s.id service_id, s.party_id, s.max_passengers, s.max_bags, s.free_wait_minutes,
-					COALESCE(s.min_notice_minutes, p.min_notice_minutes, 1440) min_notice, v.id vehicle_type_id, v.slug, v.name, v.sort, pr.retail_cents
+					COALESCE(s.min_notice_minutes, p.min_notice_minutes, 1440) min_notice, p.name provider, p.rating_avg, p.rating_count, v.id vehicle_type_id, v.slug, v.name, v.sort, pr.retail_cents
 				FROM ' . self::t( 'services' ) . ' s
 				JOIN ' . self::t( 'parties' ) . " p ON p.id = s.party_id AND p.status = 'live' AND p.type = 'provider'
 				JOIN " . self::t( 'service_zones' ) . ' sz ON sz.service_id = s.id AND sz.zone_id = %d
@@ -224,7 +228,7 @@ final class ATC_Search {
 		$now       = time();
 		$lead      = null === $utc ? null : ( strtotime( $utc . ' UTC' ) - $now ) / 60;
 		$raw       = self::raw_offers( (int) $airport['id'], (int) $at['zone_id'], $direction );
-		$by_type   = array();
+		$offers    = array();
 		$too_small = 0;
 		$too_soon  = array();
 		$largest   = 0;
@@ -238,11 +242,13 @@ final class ATC_Search {
 				$too_soon[] = (int) $o['min_notice'];
 				continue;
 			}
-			$k = (int) $o['vehicle_type_id'];
-			if ( ! isset( $by_type[ $k ] ) || (int) $o['retail_cents'] < $by_type[ $k ]['retail'] ) {
-				$by_type[ $k ] = array(
+			$rated    = (int) $o['rating_count'] >= self::MIN_REVIEWS && null !== $o['rating_avg'];
+			$offers[] = array(
 					'service_id'      => (int) $o['service_id'],
-					'vehicle_type_id' => $k,
+					'vehicle_type_id' => (int) $o['vehicle_type_id'],
+					'provider'        => $o['provider'],
+					'rating'          => $rated ? round( (float) $o['rating_avg'], 1 ) : null,
+					'reviews'         => $rated ? (int) $o['rating_count'] : 0,
 					'slug'            => $o['slug'],
 					'name'            => $o['name'],
 					'max_passengers'  => (int) $o['max_passengers'],
@@ -250,12 +256,23 @@ final class ATC_Search {
 					'free_wait'       => (int) $o['free_wait_minutes'],
 					'retail'          => (int) $o['retail_cents'],
 					'sort'            => (int) $o['sort'],
-				);
-			}
+			);
 		}
-		$offers = array_values( $by_type );
-		usort( $offers, static fn( $a, $b ) => $a['retail'] <=> $b['retail'] ?: $a['sort'] <=> $b['sort'] );
+		$by_rating = 'rating' === ( $q['sort'] ?? '' );
+		usort(
+			$offers,
+			static function ( $a, $b ) use ( $by_rating ) {
+				if ( $by_rating ) {
+					$c = ( $b['rating'] ?? -1 ) <=> ( $a['rating'] ?? -1 ) ?: $b['reviews'] <=> $a['reviews'];
+					if ( $c ) {
+						return $c;
+					}
+				}
+				return $a['retail'] <=> $b['retail'] ?: $a['sort'] <=> $b['sort'];
+			}
+		);
 		$res['offers'] = $offers;
+		$res['rated']  = (bool) array_filter( $offers, static fn( $o ) => null !== $o['rating'] );
 		if ( ! $offers ) {
 			if ( $too_soon ) {
 				$res['reason']   = 'notice';

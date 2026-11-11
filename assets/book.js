@@ -182,8 +182,16 @@
       });
       var n = document.querySelector('[data-ab-selname]'), p = document.querySelector('[data-ab-selprice]');
       if (n) n.textContent = card.getAttribute('data-name') + n.textContent.replace(/^[^,]*/, '');
+      var by = document.querySelector('[data-ab-selby]'); if (by) by.textContent = 'by ' + card.getAttribute('data-provider');
       if (p) p.textContent = card.getAttribute('data-price');
       if (cont) { cont.href = card.getAttribute('data-href'); cont.focus(); }
+    });
+  });
+  document.querySelectorAll('[data-ab-vt]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var vt = chip.getAttribute('data-ab-vt');
+      document.querySelectorAll('[data-ab-vt]').forEach(function (c) { c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'); });
+      document.querySelectorAll('[data-ab-offer]').forEach(function (card) { card.hidden = !!vt && card.getAttribute('data-vt') !== vt; });
     });
   });
   var first = document.querySelector('[data-ab-offer] [data-ab-select]');

@@ -13,7 +13,7 @@
 defined( 'ABSPATH' ) || exit;
 
 define( 'ATC_VERSION', '0.7.0' );
-define( 'ATC_DB_VERSION', '6' );
+define( 'ATC_DB_VERSION', '7' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ATC_URL', plugin_dir_url( __FILE__ ) );

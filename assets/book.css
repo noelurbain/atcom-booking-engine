@@ -126,3 +126,13 @@
   .ab-paxpop{left:0;right:auto}
 }
 .ab-route span span{display:block}
+.ab-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ab-by{font-size:13px;color:var(--muted)}
+.ab-stars{color:var(--ink);white-space:nowrap}
+.ab-stars>span:first-child{color:#E08A00;letter-spacing:1px}
+.ab-stars .ab-off{color:#D6D1C7}
+.ab-total>span{display:flex;flex-direction:column}
+.ab-selby{font-size:12px}
+.ab-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ab-chips button{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:8px 14px;font:inherit;font-size:14px;font-weight:700;color:var(--ink);cursor:pointer}
+.ab-chips button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}

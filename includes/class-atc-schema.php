@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews',
 		);
 	}
 
@@ -68,6 +68,8 @@ final class ATC_Schema {
   home_airport_id bigint(20) unsigned NULL,
   invited_at datetime NULL,
   invite_count int(11) NOT NULL DEFAULT 0,
+  rating_avg decimal(3,2) NULL,
+  rating_count int(11) NOT NULL DEFAULT 0,
   status varchar(20) NOT NULL DEFAULT 'pending',
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
@@ -390,6 +392,20 @@ final class ATC_Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY source_object_legacy (source,object_type,legacy_id),
   KEY new_id (object_type,new_id)
+) $c;";
+
+		// Traveler ratings of a provider after a completed trip (1-5). Stars show from 3 published reviews.
+		$sql[] = "CREATE TABLE {$p}reviews (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  booking_id bigint(20) unsigned NOT NULL,
+  party_id bigint(20) unsigned NOT NULL,
+  rating tinyint(4) NOT NULL,
+  comment text NULL,
+  status varchar(20) NOT NULL DEFAULT 'published',
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY booking_party (booking_id,party_id),
+  KEY party_status (party_id,status)
 ) $c;";
 
 		// Provider documents (permit, registration, insurance). Files live outside public URLs.

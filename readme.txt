@@ -5,9 +5,12 @@ New in 0.7.0:
 - Search box (atc_engine_search_box(), used by the theme's booking bar): One way / Round trip, From (only
   airports we serve), To (Google places near the airport; typing an address without picking also works),
   landing date and time, Passengers with Adults and Children, return date for round trips.
-- /search, step 1 "Choose your vehicle": the search summary with Edit search, one card per vehicle category
-  at the lowest price among live providers serving the zone (capacity and minimum notice respected), the trip
-  map with the road route, time and distance, "Your transfer" with Continue.
+- /search, step 1 "Choose your vehicle": the search summary with Edit search, one card per provider and
+  vehicle (two providers with a Minivan = two cards; capacity and minimum notice respected), the provider's
+  name under each card with its stars (from 3 traveler reviews), sorted by lowest price, "Best rated" when any
+  result has stars, vehicle type filters, the trip map with the road route, time and distance, "Your transfer"
+  with Continue.
+- Reviews table and provider rating (filled by traveler reviews after completed trips, coming with the emails).
 - When nothing can be booked it says why: address outside our zones (with the nearest places we serve and
   their from-prices), no prices for that area yet, pickup too soon (earliest time), or a group too big.
 - The theme's older forms (sticky bar, mobile sheet) also land on /search.
