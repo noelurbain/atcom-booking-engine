@@ -289,6 +289,37 @@ final class ATC_Search {
 		return $res;
 	}
 
+	/**
+	 * Remember a search we could not sell, so our team sees the demand: an airport we don't have
+	 * ('airport'), an address outside every zone ('address'), or a zone nobody has priced ('unpriced').
+	 */
+	public static function log_miss( string $kind, string $term, int $airport_id = 0, ?float $lat = null, ?float $lng = null ): void {
+		global $wpdb;
+		$term = mb_substr( trim( preg_replace( '/\s+/', ' ', $term ) ), 0, 190 );
+		if ( mb_strlen( $term ) < 2 || ( ! empty( $_SERVER['HTTP_USER_AGENT'] ) && preg_match( '/bot|crawl|spider|slurp|preview/i', (string) $_SERVER['HTTP_USER_AGENT'] ) ) ) { // phpcs:ignore
+			return;
+		}
+		if ( ! ATC_Partner::rate_ok( 'demand', 30 ) ) {
+			return;
+		}
+		$now  = current_time( 'mysql', true );
+		$geo  = null === $lat || null === $lng ? 'NULL, NULL' : sprintf( '%.7F, %.7F', $lat, $lng );
+		$wpdb->query(
+			$wpdb->prepare(
+				'INSERT INTO ' . self::t( 'demand' ) . " (kind, airport_id, term, lat, lng, hits, first_at, last_at, status) VALUES (%s, %d, %s, {$geo}, 1, %s, %s, %s)
+				ON DUPLICATE KEY UPDATE hits = hits + 1, last_at = VALUES(last_at), status = IF(status = %s, status, %s)",
+				$kind,
+				$airport_id,
+				$term,
+				$now,
+				$now,
+				'open',
+				'ignored',
+				'open'
+			)
+		); // phpcs:ignore
+	}
+
 	public static function local( string $utc, string $tz, string $fmt = 'D j M, H:i' ): string {
 		try {
 			$d = new DateTime( $utc, new DateTimeZone( 'UTC' ) );

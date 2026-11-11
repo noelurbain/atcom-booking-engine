@@ -117,6 +117,16 @@ final class ATC_Book {
 		self::assets();
 		$q   = ATC_Search::parse( $_GET ); // phpcs:ignore WordPress.Security.NonceVerification -- a public search.
 		$res = ATC_Search::run( $q );
+		if ( 'search' === $view ) {
+			$reason = $res['reason'] ?? '';
+			if ( 'no_airport' === $reason && '' !== $q['airport'] ) {
+				ATC_Search::log_miss( 'airport', $q['airport'] );
+			} elseif ( 'coverage' === $reason ) {
+				ATC_Search::log_miss( 'address', (string) $res['destination']['label'], (int) $res['airport']['id'], (float) $res['destination']['lat'], (float) $res['destination']['lng'] );
+			} elseif ( 'none' === $reason ) {
+				ATC_Search::log_miss( 'unpriced', (string) $res['destination']['zone'], (int) $res['airport']['id'] );
+			}
+		}
 		$title = 'checkout' === $view ? 'Your details' : 'Choose your vehicle';
 		add_filter( 'pre_get_document_title', static fn() => $title . ' · Airport Transportation' );
 		add_filter( 'body_class', static fn( $c ) => array_merge( $c, array( 'ab-page' ) ) );

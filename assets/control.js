@@ -256,6 +256,32 @@
     return h('span', { class: 'chip green', text: 'Paid' });
   }
 
+  function demandCard(dm) {
+    if (!dm || (!dm.airport.length && !dm.address.length && !dm.unpriced.length)) {
+      return h('section', { class: 'card pad' }, h('h2', { text: 'What travelers asked for and we don’t sell yet' }), h('p', { class: 'atc-muted', text: 'Nothing yet. Airports we don’t have, addresses outside our zones and areas nobody has priced show here as travelers search for them.' }));
+    }
+    function list(title, rows, hint, airportCol) {
+      if (!rows.length) return null;
+      return h('div', null, h('p', { class: 'label', text: title }), h('p', { class: 'small atc-muted', text: hint }),
+        h('div', { class: 'scroll' }, h('table', { class: 'narrow' }, h('tbody', null, rows.map(function (r) {
+          var x = h('button', { class: 'link', type: 'button', text: 'Dismiss', onclick: function () {
+            api('POST', '/demand/' + r.id).then(function () { x.closest('tr').remove(); }).catch(fail);
+          } });
+          return h('tr', null,
+            h('td', null, h('div', { class: 'strong', text: r.term }), r.map ? h('a', { class: 'small', href: 'https://www.google.com/maps?q=' + encodeURIComponent(r.map), target: '_blank', rel: 'noopener', text: 'See on the map ↗' }) : null),
+            airportCol ? h('td', { text: r.airport || '' }) : null,
+            h('td', { class: 'nowrap', text: r.hits + (r.hits === 1 ? ' search' : ' searches') }),
+            h('td', { class: 'small atc-muted nowrap', text: 'last ' + r.last }),
+            h('td', null, x));
+        })))));
+    }
+    return h('section', { class: 'card pad' },
+      h('h2', { text: 'What travelers asked for and we don’t sell yet' }),
+      list('Airports we don’t have', dm.airport, 'What they typed in the airport box and we could not find. Add the airport and its providers.', false),
+      list('Addresses outside our zones', dm.address, 'Bookable once a zone covers them: draw or widen a zone.', true),
+      list('Zones nobody has priced', dm.unpriced, 'The zone exists but no live provider has a price there.', true));
+  }
+
   function viewDashboard() {
     clear(app);
     add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
@@ -347,6 +373,8 @@
             td.no_shape.length ? h('div', { class: 'ticks' }, td.no_shape.map(function (r) {
               return h('a', { class: 'chip grey', href: C.base + 'zones/', 'data-go': 'zones', text: r.airport + ': ' + r.n });
             })) : h('p', { class: 'atc-muted', text: 'Every zone has a shape.' }))),
+
+        demandCard(td.demand),
 
         td.held_prices.length ? h('section', { class: 'card pad' },
           h('details', null,

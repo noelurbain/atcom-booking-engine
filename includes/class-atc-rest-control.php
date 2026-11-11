@@ -62,6 +62,16 @@ final class ATC_REST_Control {
 			'/bookings/(?P<number>[A-Za-z0-9]+)/notes',
 			array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Bookings::add_note( (string) $r['number'], (string) ( self::body( $r )['text'] ?? '' ) ) ) )
 		);
+		self::route(
+			'/demand/(?P<id>\\d+)',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					global $wpdb;
+					$wpdb->update( ATC_Schema::table( 'demand' ), array( 'status' => 'ignored' ), array( 'id' => (int) $r['id'] ) );
+					return rest_ensure_response( array( 'ok' => true ) );
+				},
+			)
+		);
 		self::route( '/dashboard', array( 'GET' => static fn() => rest_ensure_response( ATC_Dashboard::data() ) ) );
 
 		self::route(

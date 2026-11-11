@@ -158,11 +158,36 @@ final class ATC_Dashboard {
 			'todo'      => array(
 				'new_signups' => $new_signups,
 				'proposed'    => ATC_Prices::proposed_zones(),
+				'demand'      => self::demand(),
 				'documents'   => $docs,
 				'no_shape'    => $no_shape,
 				'held_prices' => array_slice( $held, 0, 60 ),
 				'import_at'   => is_array( $import ) ? $import['at'] : null,
 			),
 		);
+	}
+
+	/** What travelers searched for and we could not sell, most asked first. */
+	public static function demand(): array {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			'SELECT d.id, d.kind, d.term, d.hits, d.lat, d.lng, d.last_at, COALESCE(a.iata, a.name) airport FROM ' . self::t( 'demand' ) . ' d LEFT JOIN ' . self::t( 'airports' ) . " a ON a.id = d.airport_id
+			WHERE d.status = 'open' ORDER BY d.hits DESC, d.last_at DESC LIMIT 60",
+			ARRAY_A
+		); // phpcs:ignore
+		$out = array( 'airport' => array(), 'address' => array(), 'unpriced' => array() );
+		foreach ( $rows as $r ) {
+			if ( isset( $out[ $r['kind'] ] ) && count( $out[ $r['kind'] ] ) < 20 ) {
+				$out[ $r['kind'] ][] = array(
+					'id'      => (int) $r['id'],
+					'term'    => $r['term'],
+					'hits'    => (int) $r['hits'],
+					'airport' => $r['airport'],
+					'map'     => null !== $r['lat'] ? $r['lat'] . ',' . $r['lng'] : null,
+					'last'    => substr( (string) $r['last_at'], 0, 10 ),
+				);
+			}
+		}
+		return $out;
 	}
 }

@@ -1,5 +1,9 @@
 === ATCOM Booking Engine ===
-Version: 0.7.1 (checkout, part 1: search and results)
+Version: 0.7.2 (checkout, part 1: search and results)
+
+New in 0.7.2: Dashboard → "What travelers asked for and we don't sell yet": airports typed in the search box
+that we don't have, addresses outside every zone (with a map link), and zones nobody has priced, each with
+how many searches and when last. Dismiss hides one for good.
 
 New in 0.7.1: the airport box finds airports by any mix of words ("cancun airport", "aeropuerto de cancún",
 "CUN"): words like airport, international or aeropuerto are ignored, accents don't matter. A typed airport

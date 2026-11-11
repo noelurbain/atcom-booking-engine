@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand',
 		);
 	}
 
@@ -392,6 +392,23 @@ final class ATC_Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY source_object_legacy (source,object_type,legacy_id),
   KEY new_id (object_type,new_id)
+) $c;";
+
+		// What travelers searched for and we could not sell: airports we don't have, addresses outside our zones.
+		$sql[] = "CREATE TABLE {$p}demand (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  kind varchar(20) NOT NULL,
+  airport_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  term varchar(190) NOT NULL,
+  lat decimal(10,7) NULL,
+  lng decimal(10,7) NULL,
+  hits int(11) NOT NULL DEFAULT 1,
+  first_at datetime NOT NULL,
+  last_at datetime NOT NULL,
+  status varchar(20) NOT NULL DEFAULT 'open',
+  PRIMARY KEY  (id),
+  UNIQUE KEY kind_airport_term (kind,airport_id,term),
+  KEY last_at (last_at)
 ) $c;";
 
 		// Traveler ratings of a provider after a completed trip (1-5). Stars show from 3 published reviews.
