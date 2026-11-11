@@ -28,25 +28,39 @@ final class ATC_Catalog {
 		return ! empty( $a['iata'] ) ? $a['city'] . ' (' . $a['iata'] . ')' : (string) $a['name'];
 	}
 
-	/** Our airports matching a city, airport name or code. */
+	/**
+	 * Our airports matching what a person types: a code ("CUN"), a city, an airport name, or a mix
+	 * ("cancun airport", "aeropuerto de cancún"). Every meaningful word must match the code, city or name;
+	 * words like "airport", "international" or "aeropuerto" are ignored. Accents don't matter.
+	 */
 	public static function search_airports( string $q, int $limit = 6 ): array {
 		global $wpdb;
-		$q = trim( $q );
+		$q = trim( preg_replace( '/[\s,·\-–()]+/u', ' ', $q ) );
 		if ( '' === $q ) {
 			return array();
 		}
-		$like = '%' . $wpdb->esc_like( $q ) . '%';
-		return $wpdb->get_results(
-			$wpdb->prepare(
-				'SELECT id, iata, name, city, country FROM ' . self::t( 'airports' ) . " WHERE status = 'active' AND (iata = %s OR city LIKE %s OR name LIKE %s) ORDER BY (iata = %s) DESC, city, name LIMIT %d",
-				$q,
-				$like,
-				$like,
-				$q,
-				$limit
-			),
-			ARRAY_A
-		);
+		$stop  = array( 'airport', 'airports', 'international', 'intl', 'int', 'aeropuerto', 'internacional', 'aeroport', 'aéroport', 'flughafen', 'aeroporto', 'de', 'del', 'the', 'of', 'la', 'el', 'terminal', 'apt' );
+		$words = array();
+		foreach ( explode( ' ', mb_strtolower( $q ) ) as $w ) {
+			if ( '' !== $w && ! in_array( remove_accents( $w ), $stop, true ) && ! in_array( $w, $stop, true ) ) {
+				$words[] = $w;
+			}
+		}
+		if ( ! $words ) {
+			return array();
+		}
+		$t     = self::t( 'airports' );
+		$where = array();
+		$args  = array();
+		foreach ( array_slice( $words, 0, 5 ) as $w ) {
+			$like    = '%' . $wpdb->esc_like( $w ) . '%';
+			$where[] = '(iata = %s OR city LIKE %s OR name LIKE %s)';
+			array_push( $args, $w, $like, $like );
+		}
+		$code = strtoupper( $words[0] );
+		$sql  = "SELECT id, iata, name, city, country FROM {$t} WHERE status = 'active' AND " . implode( ' AND ', $where ) . ' ORDER BY (iata = %s) DESC, city, name LIMIT %d';
+		array_push( $args, $code, $limit );
+		return $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A ); // phpcs:ignore
 	}
 
 	/** The airport we already have for a Google place: same place id, or within 4 km of the point. */

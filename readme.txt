@@ -1,5 +1,9 @@
 === ATCOM Booking Engine ===
-Version: 0.7.0 (checkout, part 1: search and results)
+Version: 0.7.1 (checkout, part 1: search and results)
+
+New in 0.7.1: the airport box finds airports by any mix of words ("cancun airport", "aeropuerto de cancún",
+"CUN"): words like airport, international or aeropuerto are ignored, accents don't matter. A typed airport
+that was not picked from the list is still found on the results page.
 
 New in 0.7.0:
 - Search box (atc_engine_search_box(), used by the theme's booking bar): One way / Round trip, From (only

@@ -149,7 +149,8 @@
     paint();
 
     form.addEventListener('submit', function (e) {
-      if (!fromCode.value) { e.preventDefault(); from.setCustomValidity('Pick your airport from the list.'); from.reportValidity(); from.setCustomValidity(''); return; }
+      // Typed but not picked: send the text, the results page finds the airport.
+      if (!fromCode.value) fromCode.value = from.value.trim();
       if (!lat.value) { lat.disabled = lng.disabled = pid.disabled = true; }
       if (+count.children.value === 0) count.children.disabled = true;
     });
