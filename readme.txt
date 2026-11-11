@@ -1,7 +1,12 @@
 === ATCOM Booking Engine ===
-Version: 0.9.0 (checkout, part 3: emails, webhook, Manage booking)
+Version: 0.9.1 (checkout, part 3: emails, webhook, Manage booking)
 
-New in 0.9.0:
+New in 0.9.1: usual market capacities (passengers / suitcases): Standard Sedan 3/3, Executive Sedan 3/2,
+Standard SUV 4/4, Premium SUV 6/6, Luxury SUV 6/5, Minivan 6/6, Minibus 14/14, Mini Coach 25, Midi Coach 35,
+Coach 49, Large Coach 57; limousines 8 to 18. Services still on the old placeholder numbers get them too;
+any capacity a provider or our team changed is kept.
+
+Also in 0.9.0:
 - Emails: traveler confirmation (trip, service code, meeting steps, provider phone and WhatsApp, free
   cancellation date, link to the booking); new booking for the provider (with what they get paid) and a copy
   for our team; changes and cancellations to both sides. Provider emails go to "invite_test_to" while it is set.

@@ -49,6 +49,9 @@ final class ATC_Install {
 			if ( version_compare( $from, '10', '<' ) ) {
 				self::luxury_above_premium();
 			}
+			if ( version_compare( $from, '15', '<' ) ) {
+				self::market_capacities();
+			}
 			self::seed();
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
@@ -65,25 +68,26 @@ final class ATC_Install {
 	/** The vehicle categories we sell, smallest first (same 11 as the old airporttransportation.com). */
 	public static function vehicle_type_rows(): array {
 		return array(
-			array( 'executive-sedan', 'Executive Sedan', 2, 2, 10 ),
-			array( 'standard-sedan', 'Standard Sedan', 2, 2, 20 ),
+			// Usual market capacities (passengers, suitcases); each provider can change theirs.
+			array( 'executive-sedan', 'Executive Sedan', 3, 2, 10 ),
+			array( 'standard-sedan', 'Standard Sedan', 3, 3, 20 ),
 			array( 'standard-suv', 'Standard SUV', 4, 4, 25 ),
 			// Luxury is the top SUV class (Escalade, Navigator); Premium sits below it (Suburban, Tahoe, Yukon).
-			array( 'premium-suv', 'Premium SUV', 5, 5, 30 ),
-			array( 'luxury-suv', 'Luxury SUV', 5, 5, 40 ),
+			array( 'premium-suv', 'Premium SUV', 6, 6, 30 ),
+			array( 'luxury-suv', 'Luxury SUV', 6, 5, 40 ),
 			array( 'minivan', 'Minivan', 6, 6, 50 ),
-			array( 'minibus', 'Minibus', 12, 12, 60 ),
+			array( 'minibus', 'Minibus', 14, 14, 60 ),
 			array( 'mini-coach', 'Mini Coach', 25, 25, 70 ),
 			array( 'midi-coach', 'Midi Coach', 35, 35, 80 ),
-			array( 'coach', 'Coach', 45, 45, 90 ),
-			array( 'large-coach', 'Large Coach', 55, 55, 100 ),
+			array( 'coach', 'Coach', 49, 49, 90 ),
+			array( 'large-coach', 'Large Coach', 57, 57, 100 ),
 			// Limousines: shown to providers under "Other categories".
 			array( 'lincoln-stretch-limousine', 'Lincoln Stretch Limousine', 8, 4, 200, 'limousine' ),
-			array( 'chrysler-300-stretch-limousine', 'Chrysler 300 Stretch Limousine', 8, 4, 210, 'limousine' ),
-			array( 'escalade-stretch-limousine', 'Escalade Stretch Limousine', 12, 6, 220, 'limousine' ),
-			array( 'suburban-stretch-limousine', 'Suburban Stretch Limousine', 14, 6, 230, 'limousine' ),
-			array( 'sprinter-limousine', 'Sprinter Limousine', 12, 8, 240, 'limousine' ),
-			array( 'hummer-h2-stretch-limousine', 'Hummer H2 Stretch Limousine', 16, 6, 250, 'limousine' ),
+			array( 'chrysler-300-stretch-limousine', 'Chrysler 300 Stretch Limousine', 10, 4, 210, 'limousine' ),
+			array( 'escalade-stretch-limousine', 'Escalade Stretch Limousine', 14, 6, 220, 'limousine' ),
+			array( 'suburban-stretch-limousine', 'Suburban Stretch Limousine', 16, 6, 230, 'limousine' ),
+			array( 'sprinter-limousine', 'Sprinter Limousine', 14, 8, 240, 'limousine' ),
+			array( 'hummer-h2-stretch-limousine', 'Hummer H2 Stretch Limousine', 18, 6, 250, 'limousine' ),
 		);
 	}
 
@@ -131,6 +135,35 @@ final class ATC_Install {
 			$swapped[] = array( (int) $r['party_id'], (int) $r['airport_id'] );
 		}
 		self::log( 'vehicle_types', $lux, 'luxury_above_premium', array( 'swapped' => $swapped ) );
+	}
+
+	/**
+	 * The first capacities were placeholders (a sedan for 2). Categories and the services still on the old
+	 * placeholder get the usual market numbers; anything a provider or our team changed stays as it is.
+	 */
+	public static function market_capacities(): void {
+		global $wpdb;
+		$old   = array(
+			'executive-sedan' => array( 2, 2 ), 'standard-sedan' => array( 2, 2 ), 'premium-suv' => array( 5, 5 ), 'luxury-suv' => array( 5, 5 ),
+			'minibus' => array( 12, 12 ), 'coach' => array( 45, 45 ), 'large-coach' => array( 55, 55 ),
+			'chrysler-300-stretch-limousine' => array( 8, 4 ), 'escalade-stretch-limousine' => array( 12, 6 ), 'suburban-stretch-limousine' => array( 14, 6 ),
+			'sprinter-limousine' => array( 12, 8 ), 'hummer-h2-stretch-limousine' => array( 16, 6 ),
+		);
+		$types = ATC_Schema::table( 'vehicle_types' );
+		$svc   = ATC_Schema::table( 'services' );
+		foreach ( self::vehicle_type_rows() as $row ) {
+			if ( ! isset( $old[ $row[0] ] ) ) {
+				continue;
+			}
+			[ $op, $ob ] = $old[ $row[0] ];
+			$id          = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$types} WHERE slug = %s", $row[0] ) ); // phpcs:ignore
+			if ( ! $id ) {
+				continue;
+			}
+			$wpdb->query( $wpdb->prepare( "UPDATE {$types} SET max_passengers = %d, max_bags = %d WHERE id = %d AND max_passengers = %d AND max_bags = %d", $row[2], $row[3], $id, $op, $ob ) ); // phpcs:ignore
+			$n = $wpdb->query( $wpdb->prepare( "UPDATE {$svc} SET max_passengers = %d, max_bags = %d WHERE vehicle_type_id = %d AND max_passengers = %d AND max_bags = %d", $row[2], $row[3], $id, $op, $ob ) ); // phpcs:ignore
+			self::log( 'vehicle_type', $id, 'capacity_updated', array( 'pax' => $row[2], 'bags' => $row[3], 'services' => (int) $n ) );
+		}
 	}
 
 	public static function seed(): void {
