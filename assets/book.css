@@ -136,3 +136,5 @@
 .ab-chips{display:flex;flex-wrap:wrap;gap:8px}
 .ab-chips button{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:8px 14px;font:inherit;font-size:14px;font-weight:700;color:var(--ink);cursor:pointer}
 .ab-chips button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.ab-pic img{width:100%;height:100%;object-fit:cover;border-radius:14px;display:block}
+.ab-pic:has(img){background:#ECEDEF;overflow:hidden}

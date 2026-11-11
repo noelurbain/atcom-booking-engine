@@ -247,7 +247,7 @@ final class ATC_Book {
 						$next = home_url( '/checkout/?' . ATC_Search::query( $q, array( 'service' => $o['service_id'] ) ) );
 						?>
 						<article class="ab-offer<?php echo 0 === $i ? ' is-on' : ''; ?>" data-ab-offer data-name="<?php echo esc_attr( $o['name'] ); ?>" data-provider="<?php echo esc_attr( $o['provider'] ); ?>" data-vt="<?php echo (int) $o['vehicle_type_id']; ?>" data-price="<?php echo esc_attr( self::money( $o['retail'] ) ); ?>" data-href="<?php echo esc_url( $next ); ?>">
-							<div class="ab-pic"><?php echo self::vehicle_icon(); // phpcs:ignore ?></div>
+							<div class="ab-pic"><?php $img = ATC_Catalog::vehicle_image( $o['slug'] ); echo $img ? '<img src="' . esc_url( $img ) . '" alt="" width="320" height="200" loading="lazy">' : self::vehicle_icon(); // phpcs:ignore ?></div>
 							<div class="ab-info">
 								<h2><?php echo esc_html( $o['name'] ); ?></h2>
 								<span class="ab-muted">Up to <?php echo (int) $o['max_passengers']; ?> passengers · <?php echo (int) $o['max_bags']; ?> bags</span>

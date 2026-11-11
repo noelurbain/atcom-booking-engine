@@ -76,6 +76,13 @@ final class ATC_Install {
 			array( 'midi-coach', 'Midi Coach', 35, 35, 80 ),
 			array( 'coach', 'Coach', 45, 45, 90 ),
 			array( 'large-coach', 'Large Coach', 55, 55, 100 ),
+			// Limousines: shown to providers under "Other categories".
+			array( 'lincoln-stretch-limousine', 'Lincoln Stretch Limousine', 8, 4, 200, 'limousine' ),
+			array( 'chrysler-300-stretch-limousine', 'Chrysler 300 Stretch Limousine', 8, 4, 210, 'limousine' ),
+			array( 'escalade-stretch-limousine', 'Escalade Stretch Limousine', 12, 6, 220, 'limousine' ),
+			array( 'suburban-stretch-limousine', 'Suburban Stretch Limousine', 14, 6, 230, 'limousine' ),
+			array( 'sprinter-limousine', 'Sprinter Limousine', 12, 8, 240, 'limousine' ),
+			array( 'hummer-h2-stretch-limousine', 'Hummer H2 Stretch Limousine', 16, 6, 250, 'limousine' ),
 		);
 	}
 
@@ -147,9 +154,11 @@ final class ATC_Install {
 
 		$types = ATC_Schema::table( 'vehicle_types' );
 		$rows  = self::vehicle_type_rows();
-		foreach ( $rows as [ $slug, $name, $pax, $bags, $sort ] ) {
+		foreach ( $rows as $row ) {
+			[ $slug, $name, $pax, $bags, $sort ] = $row;
+			$category                            = $row[5] ?? 'standard';
 			if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$types} WHERE slug = %s", $slug ) ) ) {
-				$wpdb->insert( $types, array( 'slug' => $slug, 'name' => $name, 'max_passengers' => $pax, 'max_bags' => $bags, 'sort' => $sort ) );
+				$wpdb->insert( $types, array( 'slug' => $slug, 'name' => $name, 'max_passengers' => $pax, 'max_bags' => $bags, 'sort' => $sort, 'category' => $category ) );
 			}
 		}
 	}

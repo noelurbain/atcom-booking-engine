@@ -187,7 +187,13 @@
     var airport = me.airport;
     add(app, head('Vehicles', 'Tick the categories you sell at ' + (airport ? (airport.iata ? airport.city + ' (' + airport.iata + ')' : airport.name) : 'your airport') + ', then add each vehicle.'));
 
-    var cats = h('section', { class: 'card pad' }, h('h2', { text: 'Categories you sell' }));
+    var grid = h('div', { class: 'vt-grid' });
+    var other = h('div', { class: 'vt-grid hidden' });
+    var otherCount = 0, otherOn = false;
+    var otherBtn = h('button', { class: 'btn', type: 'button' });
+    var cats = h('section', { class: 'card pad' }, h('h2', { text: 'Categories you sell' }),
+      h('p', { class: 'small atc-muted', text: 'Tick each category you sell. The passengers and bags start at our usual numbers: change them to fit your vehicles.' }),
+      grid, otherBtn, other);
     me.vehicle_types.forEach(function (t) {
       var s = me.services.find(function (x) { return x.vehicle_type_id == t.id && x.airport_id == airport.id; });
       var on = !!s && s.status !== 'paused';
@@ -206,10 +212,22 @@
       box.addEventListener('change', function () {
         if (box.checked) { body.classList.remove('hidden'); save(true); } else if (s) { save(false); } else { body.classList.add('hidden'); }
       });
-      add(cats, h('div', { class: 'svc' + (on ? ' on' : '') },
-        h('label', { class: 'svc-head' }, box, h('strong', { text: t.name }), h('span', { class: 'atc-muted', text: 'usually up to ' + t.max_passengers + ' passengers · ' + t.max_bags + ' bags' })),
+      var limo = t.category && t.category !== 'standard';
+      if (limo) { otherCount++; if (on) otherOn = true; }
+      add(limo ? other : grid, h('div', { class: 'svc vt' + (on ? ' on' : '') },
+        t.image ? h('img', { class: 'vt-img', src: t.image, alt: '', width: 320, height: 200, loading: 'lazy' }) : h('div', { class: 'vt-img vt-noimg', text: 'Photo coming soon' }),
+        h('label', { class: 'svc-head' }, box, h('strong', { text: t.name }), h('span', { class: 'atc-muted small', text: 'usually up to ' + t.max_passengers + ' passengers · ' + t.max_bags + ' bags' })),
         body));
     });
+    function paintOther() {
+      var open = !other.classList.contains('hidden');
+      otherBtn.textContent = open ? 'Hide other categories' : 'Other categories: limousines (' + otherCount + ')';
+      otherBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    if (!otherCount) otherBtn.classList.add('hidden');
+    if (otherOn) other.classList.remove('hidden');
+    otherBtn.addEventListener('click', function () { other.classList.toggle('hidden'); paintOther(); });
+    paintOther();
 
     var tbody = h('tbody');
     me.vehicles.forEach(function (v) {

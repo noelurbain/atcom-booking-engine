@@ -141,6 +141,7 @@ final class ATC_Schema {
   name varchar(100) NOT NULL,
   max_passengers int(11) NOT NULL,
   max_bags int(11) NOT NULL,
+  category varchar(20) NOT NULL DEFAULT 'standard',
   sort int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   UNIQUE KEY slug (slug)

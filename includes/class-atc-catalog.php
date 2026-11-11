@@ -140,7 +140,17 @@ final class ATC_Catalog {
 
 	public static function vehicle_types(): array {
 		global $wpdb;
-		return $wpdb->get_results( 'SELECT id, slug, name, max_passengers, max_bags FROM ' . self::t( 'vehicle_types' ) . ' ORDER BY sort, id', ARRAY_A );
+		$rows = $wpdb->get_results( 'SELECT id, slug, name, max_passengers, max_bags, category FROM ' . self::t( 'vehicle_types' ) . ' ORDER BY sort, id', ARRAY_A );
+		foreach ( $rows as &$r ) {
+			$r['image'] = self::vehicle_image( (string) $r['slug'] );
+		}
+		return $rows;
+	}
+
+	/** Our picture for a vehicle category (assets/vehicles/<slug>.webp), or '' when we have none yet. */
+	public static function vehicle_image( string $slug ): string {
+		$slug = sanitize_key( $slug );
+		return '' !== $slug && file_exists( ATC_DIR . 'assets/vehicles/' . $slug . '.webp' ) ? ATC_URL . 'assets/vehicles/' . $slug . '.webp?v=' . rawurlencode( ATC_VERSION ) : '';
 	}
 
 	/* ---------- Zones ---------- */
