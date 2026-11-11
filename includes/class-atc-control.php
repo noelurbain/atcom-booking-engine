@@ -96,19 +96,33 @@ final class ATC_Control {
 			<svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><path d="M3 17 L38 3 L28 38 L21 23 Z" fill="#FBA53E"></path></svg>
 			<span><strong>Control panel</strong><small>Airport Transportation · all sites</small></span>
 		</a>
-		<nav class="atc-nav" aria-label="Control panel">
-			<a href="<?php echo esc_url( home_url( '/control/' ) ); ?>" data-view="">Dashboard</a>
-			<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
-			<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
-			<a href="<?php echo esc_url( admin_url( 'admin.php?page=atc' ) ); ?>">Status</a>
-			<?php if ( current_user_can( 'edit_posts' ) ) : ?>
-				<a class="atc-wp" href="<?php echo esc_url( admin_url() ); ?>">WordPress ↗</a>
-			<?php endif; ?>
-		</nav>
-		<span class="atc-user"><span class="atc-avatar"><?php echo esc_html( $initials ?: '•' ); ?></span><?php echo esc_html( $user->display_name ); ?></span>
+		<form class="atc-search" role="search" action="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" method="get">
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+			<input type="search" name="q" aria-label="Search providers" placeholder="Search a provider by name or email">
+		</form>
+		<span class="atc-user"><span class="atc-avatar"><?php echo esc_html( $initials ?: '•' ); ?></span><?php echo esc_html( $user->display_name . ( current_user_can( 'manage_options' ) ? ' · Super admin' : '' ) ); ?></span>
 	</div>
 </header>
-<main id="atc-app" class="atc-wrap" aria-live="polite"><p class="atc-muted">Loading…</p></main>
+<div class="atc-wrap atc-shell">
+	<nav class="atc-sidenav" aria-label="Control menu">
+		<a href="<?php echo esc_url( home_url( '/control/' ) ); ?>" data-view="">Dashboard</a>
+		<span class="off">Bookings <i class="soon">soon</i></span>
+		<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
+		<span class="off">Prices <i class="soon">soon</i></span>
+		<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
+		<span class="off">Payouts <i class="soon">soon</i></span>
+		<span class="off">Tickets <i class="soon">soon</i></span>
+		<a href="https://app.crisp.chat/" target="_blank" rel="noopener">Crisp inbox ↗</a>
+		<?php if ( current_user_can( 'atc_settings' ) ) : ?>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=atc-settings' ) ); ?>">Settings</a>
+		<?php endif; ?>
+		<a href="<?php echo esc_url( admin_url( 'admin.php?page=atc' ) ); ?>">Status</a>
+		<?php if ( current_user_can( 'edit_posts' ) ) : ?>
+			<a class="atc-wp" href="<?php echo esc_url( admin_url() ); ?>">WordPress ↗</a>
+		<?php endif; ?>
+	</nav>
+	<main id="atc-app" class="atc-main" aria-live="polite"><p class="atc-muted">Loading…</p></main>
+</div>
 <div id="atc-toast" role="status" aria-live="polite"></div>
 <script>window.ATC = <?php echo wp_json_encode( $config ); ?>;</script>
 <script src="<?php echo esc_url( ATC_URL . 'assets/prices.js?v=' . rawurlencode( ATC_VERSION ) ); ?>"></script>

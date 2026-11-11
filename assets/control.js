@@ -70,17 +70,24 @@
   }
   function go(p) { history.pushState({}, '', C.base + p + (p ? '/' : '')); route(); }
   window.addEventListener('popstate', route);
+  var topSearch = document.querySelector('.atc-search');
+  if (topSearch) topSearch.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var q = topSearch.querySelector('input').value.trim();
+    history.pushState({}, '', C.base + 'providers/' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    route();
+  });
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a[data-go]');
     if (a) { e.preventDefault(); go(a.getAttribute('data-go')); }
   });
-  document.querySelectorAll('.atc-nav a[data-view]').forEach(function (a) {
+  document.querySelectorAll('a[data-view]').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); go(a.getAttribute('data-view')); });
   });
 
   function route() {
     var parts = path().split('/');
-    document.querySelectorAll('.atc-nav a[data-view]').forEach(function (a) {
+    document.querySelectorAll('a[data-view]').forEach(function (a) {
       a.classList.toggle('on', a.getAttribute('data-view') === (parts[0] === 'import' ? 'providers' : parts[0]));
     });
     if (parts[0] === 'providers' && parts[1]) return viewProvider(parseInt(parts[1], 10));
@@ -806,6 +813,7 @@
     var tbody = h('tbody');
     var banner = h('div');
     var search = h('input', { type: 'search', placeholder: 'Find a provider', 'aria-label': 'Find a provider' });
+    search.value = new URLSearchParams(location.search).get('q') || '';
     var filter = h('select', { 'aria-label': 'Filter' },
       [['all', 'All'], ['live', 'Live'], ['pending', 'Pending'], ['not_invited', 'Not invited yet'], ['invited', 'Invited, no password yet'], ['active', 'Using the portal']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
     var bulk = h('button', { class: 'btn', type: 'button', text: 'Invite everyone not invited yet' });

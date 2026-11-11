@@ -1,5 +1,9 @@
 === ATCOM Booking Engine ===
-Version: 0.5.0 (price editor)
+Version: 0.5.1 (control panel menu)
+
+New in 0.5.1: the control panel gets the layout from the approved mockups: menu on the left (Dashboard,
+Bookings, Providers, Prices, Zones and hotels, Payouts, Tickets, Crisp inbox, Settings, Status, WordPress;
+the ones not built yet are marked "soon"), and a search box in the top bar (providers for now).
 
 New in 0.5.0: price editor and price-list upload
 - Provider portal → Prices, and Control panel → provider record → Prices: a grid per airport, zones as rows
