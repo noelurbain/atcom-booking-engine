@@ -3,8 +3,8 @@ Version: 0.7.4 (checkout, part 1: search and results)
 
 Also in 0.7.4: our vehicle photos (assets/vehicles/<slug>.webp, 1600x1000) on the results page and on the
 provider's Vehicles page; 6 limousine categories (Lincoln, Chrysler 300, Escalade, Suburban and Hummer H2 stretch
-limousines, Sprinter limousine) shown to providers under "Other categories". Midi Coach and Coach have no photo
-yet.
+limousines, Sprinter limousine) shown to providers under "Other categories". Mini Coach has no photo yet; Coach uses the
+Large Coach photo for now.
 
 New in 0.7.4: Luxury SUV is the top SUV class (Escalade, Navigator) and Premium SUV the one below (Suburban,
 Tahoe, Yukon); Premium now lists before Luxury. Providers who priced Premium above Luxury at an airport have
