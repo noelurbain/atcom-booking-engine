@@ -41,6 +41,36 @@ final class ATC_REST {
 				'callback'            => array( __CLASS__, 'status' ),
 			)
 		);
+
+		// Checkout, for travelers (no account): the booking number and its private key open it.
+		register_rest_route(
+			self::NS,
+			'/checkout/start',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => static fn( WP_REST_Request $r ) => self::out( ATC_Checkout::start( (array) $r->get_json_params() ) ),
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/checkout/details',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => static function ( WP_REST_Request $r ) {
+					$p = (array) $r->get_json_params();
+					if ( ! ATC_Partner::rate_ok( 'checkout_details', 60 ) ) {
+						return new WP_Error( 'atc_slow', 'Too many attempts. Please wait a few minutes.', array( 'status' => 429 ) );
+					}
+					return self::out( ATC_Checkout::details_save( (string) ( $p['number'] ?? '' ), (string) ( $p['key'] ?? '' ), $p ) );
+				},
+			)
+		);
+	}
+
+	private static function out( $res ) {
+		return is_wp_error( $res ) ? $res : rest_ensure_response( $res );
 	}
 
 	public static function airport_search( WP_REST_Request $r ): WP_REST_Response {

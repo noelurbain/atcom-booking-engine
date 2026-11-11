@@ -1,7 +1,22 @@
 === ATCOM Booking Engine ===
-Version: 0.7.5 (checkout, part 1: search and results)
+Version: 0.8.0 (checkout, part 2: details, payment, confirmation)
 
-New in 0.7.5: the real logo (from the theme) in the control panel and partner portal top bars.
+New in 0.8.0:
+- Select on the results page goes straight to step 2 (Flight and details).
+- Step 2: contact (name, email, mobile with country code, WhatsApp), arrival flight (or "I don't have my flight
+  yet"), drop-off with the name of the hotel reservation, return (hotel pickup, departure flight, suggested pickup
+  3 h before an international flight or 2 h before a domestic one, editable), suitcases, carry-ons, notes.
+  The booking is saved (status held) as soon as the contact details are in, so a traveler who leaves can get a
+  reminder later; the page address then carries the booking number and its private key, so a reload resumes it.
+- Step 3 (/checkout/pay): Stripe Payment Element (card, Apple Pay, Google Pay, Link as Stripe offers them),
+  review with Edit links, policies checkbox, and a 15-minute price hold; when it runs out the price is checked
+  again. The price is always worked out again on the server.
+- /reservation/{number}/?k=...: Stripe's answer is checked on the server, the booking is confirmed once,
+  its trips wait for the provider, and the money lines are written (provider pending, our share). The page shows
+  the voucher with the service code, trip details, meeting steps, the provider, Add to calendar and Print.
+- Uses the Stripe secret key from wp-config.php and the publishable key from Settings (test mode).
+
+Also in 0.7.5: the real logo (from the theme) in the control panel and partner portal top bars.
 
 Also in 0.7.4: our vehicle photos (assets/vehicles/<slug>.webp, 1600x1000) on the results page and on the
 provider's Vehicles page; 6 limousine categories (Lincoln, Chrysler 300, Escalade, Suburban and Hummer H2 stretch

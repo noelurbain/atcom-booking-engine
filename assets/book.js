@@ -169,23 +169,11 @@
     });
   });
 
-  var cont = document.querySelector('[data-ab-continue]');
+  // Select goes straight to step 2; a click anywhere on the card does the same.
   document.querySelectorAll('[data-ab-offer]').forEach(function (card) {
     card.addEventListener('click', function (e) {
-      if (e.target.closest('[data-ab-select]') && window.matchMedia('(max-width: 900px)').matches) return; // phones go straight on
-      if (e.target.closest('[data-ab-select]')) e.preventDefault();
-      document.querySelectorAll('[data-ab-offer]').forEach(function (c) {
-        var on = c === card;
-        c.classList.toggle('is-on', on);
-        var s = c.querySelector('[data-ab-select]');
-        s.classList.toggle('is-accent', on); s.classList.toggle('is-dark', !on);
-        s.textContent = on ? 'Selected' : 'Select';
-      });
-      var n = document.querySelector('[data-ab-selname]'), p = document.querySelector('[data-ab-selprice]');
-      if (n) n.textContent = card.getAttribute('data-name') + n.textContent.replace(/^[^,]*/, '');
-      var by = document.querySelector('[data-ab-selby]'); if (by) by.textContent = 'by ' + card.getAttribute('data-provider');
-      if (p) p.textContent = card.getAttribute('data-price');
-      if (cont) { cont.href = card.getAttribute('data-href'); cont.focus(); }
+      if (e.target.closest('a, button')) return;
+      window.location.href = card.getAttribute('data-href');
     });
   });
   document.querySelectorAll('[data-ab-vt]').forEach(function (chip) {
@@ -195,8 +183,6 @@
       document.querySelectorAll('[data-ab-offer]').forEach(function (card) { card.hidden = !!vt && card.getAttribute('data-vt') !== vt; });
     });
   });
-  var first = document.querySelector('[data-ab-offer] [data-ab-select]');
-  if (first && !window.matchMedia('(max-width: 900px)').matches) first.textContent = 'Selected';
 
   /* ---------- Trip map ---------- */
   var mapEl = document.querySelector('[data-ab-map]');
@@ -213,7 +199,6 @@
       function say(mins, km) {
         var txt = 'About ' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + ' · ' + km + ' km';
         var d = document.querySelector('[data-ab-dist]'); if (d) d.textContent = txt;
-        var t = document.querySelector('[data-ab-time]'); if (t) t.textContent = txt + ' by road';
       }
       function straight() { new google.maps.Polyline({ map: map, path: [A, B], strokeColor: '#15171C', strokeWeight: 3, strokeOpacity: 0.6 }); }
       // Routes API (new Google projects), then the older Directions API, then a straight line.
@@ -238,6 +223,173 @@
     }).catch(function () {
       mapEl.classList.add('is-off');
       mapEl.textContent = 'Map not available right now.';
+    });
+  }
+
+  /* ---------- Shared bits for steps 2 and 3 ---------- */
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) { var e = new Error(d.message || 'Something went wrong. Please try again.'); e.data = d; throw e; } return d; }); });
+  }
+  function showError(box, msg) {
+    if (!box) return;
+    box.textContent = msg || ''; box.hidden = !msg;
+    if (msg) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  }
+  document.querySelectorAll('[data-ab-print]').forEach(function (b) { b.addEventListener('click', function () { window.print(); }); });
+
+  /* ---------- Step 2: contact, flight and trip details ---------- */
+  var det = document.querySelector('[data-ab-checkout]');
+  if (det) {
+    var cfg = JSON.parse(det.getAttribute('data-ab-checkout'));
+    var err = det.querySelector('[data-ab-error]');
+    var f = function (n) { return det.elements[n]; };
+    var starting = null;
+
+    // Steppers for suitcases and carry-ons.
+    det.querySelectorAll('[data-ab-step]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var p = b.getAttribute('data-ab-step').split(':'), input = f(p[0]);
+        input.value = Math.max(0, Math.min(60, +input.value + +p[1]));
+        det.querySelector('[data-ab-out=' + p[0] + ']').textContent = input.value;
+      });
+    });
+
+    // No flight yet: the flight number is not needed.
+    var nf = det.querySelector('[data-ab-noflight]');
+    function flightState() {
+      var off = nf && nf.checked;
+      f('flight').required = !off; f('airline').disabled = f('flight').disabled = off;
+      det.querySelector('[data-ab-flight]').classList.toggle('is-off', !!off);
+    }
+    if (nf) { nf.addEventListener('change', flightState); flightState(); }
+
+    // Round trip: suggest the hotel pickup from the flight time (3 h international, 2 h domestic).
+    var rtime = det.querySelector('[data-ab-rtime]'), rpick = det.querySelector('[data-ab-rpick]'), dom = det.querySelector('[data-ab-domestic]');
+    var touched = rpick && !!rpick.value;
+    function suggestPickup() {
+      if (!rtime || !rtime.value || touched) return;
+      var t = rtime.value.split(':'), mins = (+t[0] * 60 + +t[1]) - (dom && dom.checked ? 120 : 180);
+      if (mins < 0) mins += 1440; // the night before
+      rpick.value = ('0' + Math.floor(mins / 60)).slice(-2) + ':' + ('0' + (mins % 60)).slice(-2);
+      var note = det.querySelector('[data-ab-suggest-note]');
+      if (note) note.textContent = 'Suggested: ' + (dom && dom.checked ? '2 hours before a domestic flight' : '3 hours before an international flight') + ', including the drive. You can change it.';
+    }
+    if (rpick) {
+      rpick.addEventListener('input', function () { touched = !!rpick.value; });
+      rtime.addEventListener('change', function () { touched = false; suggestPickup(); });
+      if (dom) dom.addEventListener('change', function () { touched = false; suggestPickup(); });
+    }
+
+    function contact() {
+      return { first_name: f('first_name').value.trim(), last_name: f('last_name').value.trim(), email: f('email').value.trim(), phone_code: f('phone_code').value, phone: f('phone').value.trim(), whatsapp: f('whatsapp').checked ? 1 : 0 };
+    }
+    function contactReady() {
+      var c = contact();
+      return c.first_name && c.last_name && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email) && c.phone.replace(/\D/g, '').length >= 6;
+    }
+    // As soon as the contact details are in, the booking exists (so we can help if the traveler leaves).
+    function start() {
+      if (cfg.number) return Promise.resolve();
+      if (starting) return starting;
+      var body = contact(); body.search = cfg.search; body.service = cfg.service;
+      starting = post(cfg.start, body).then(function (d) {
+        cfg.number = d.number; cfg.key = d.key;
+        try { history.replaceState(null, '', location.pathname + '?b=' + encodeURIComponent(d.number) + '&k=' + encodeURIComponent(d.key)); } catch (e) {}
+      }).catch(function (e) { starting = null; throw e; });
+      return starting;
+    }
+    ['first_name', 'last_name', 'email', 'phone'].forEach(function (n) {
+      f(n).addEventListener('change', function () { if (contactReady()) start().catch(function () {}); });
+    });
+
+    det.addEventListener('submit', function (e) {
+      e.preventDefault();
+      showError(err, '');
+      // The browser's own checks first, on the fields that are on.
+      var bad = Array.prototype.find.call(det.elements, function (el) { return el.willValidate && !el.checkValidity(); });
+      if (bad) { bad.reportValidity ? bad.reportValidity() : bad.focus(); return; }
+      if (!contactReady()) { showError(err, 'Please check your name, email and mobile number.'); return; }
+      var btns = document.querySelectorAll('[form=ab-details], [data-ab-submit]');
+      btns.forEach(function (b) { b.disabled = true; });
+      start().then(function () {
+        var body = contact();
+        Array.prototype.forEach.call(det.elements, function (el) {
+          if (!el.name || el.disabled || body[el.name] !== undefined) return;
+          body[el.name] = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value;
+        });
+        body.number = cfg.number; body.key = cfg.key;
+        return post(cfg.details, body);
+      }).then(function (d) {
+        window.location.href = d.pay_url;
+      }).catch(function (x) {
+        btns.forEach(function (b) { b.disabled = false; });
+        showError(err, x.message);
+      });
+    });
+  }
+
+  /* ---------- Step 3: Stripe payment ---------- */
+  var payForm = document.querySelector('[data-ab-pay]');
+  var P = window.ATCPay;
+  if (payForm && P) {
+    var perr = payForm.querySelector('[data-ab-error]');
+    var payBtn = payForm.querySelector('[data-ab-submit]');
+    var agree = payForm.querySelector('[data-ab-agree]');
+    var holdEl = payForm.querySelector('[data-ab-hold]');
+    var stripe, elements, ready = false, expired = false;
+
+    // The price is held for 15 minutes; after that, reload to hold it again.
+    var ends = Date.now() + P.left * 1000;
+    var tick = setInterval(function () {
+      var s = Math.max(0, Math.round((ends - Date.now()) / 1000));
+      if (holdEl) holdEl.textContent = s ? 'Price held for ' + Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2) : '';
+      if (!s) {
+        clearInterval(tick); expired = true;
+        payBtn.disabled = true;
+        showError(perr, '');
+        var box = document.createElement('div');
+        box.className = 'ab-alert is-info'; box.setAttribute('role', 'status');
+        box.innerHTML = 'Your 15-minute hold ended. <a href="#">Hold the price again</a>';
+        box.querySelector('a').addEventListener('click', function (e) { e.preventDefault(); window.location.href = P.reload; });
+        payBtn.parentNode.insertBefore(box, payBtn);
+      }
+    }, 1000);
+
+    function canPay() { payBtn.disabled = !(ready && !expired); }
+
+    function mount() {
+      stripe = window.Stripe(P.pk);
+      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.getAttribute('data-theme') !== 'light';
+      elements = stripe.elements({
+        clientSecret: P.secret,
+        appearance: { theme: dark ? 'night' : 'stripe', variables: { colorPrimary: '#15171C', borderRadius: '10px', fontFamily: 'inherit' } }
+      });
+      var el = payForm.querySelector('[data-ab-element]');
+      el.textContent = '';
+      var pe = elements.create('payment', { layout: 'tabs', defaultValues: { billingDetails: { name: P.name, email: P.email } } });
+      pe.on('ready', function () { ready = true; canPay(); });
+      pe.mount(el);
+    }
+    if (window.Stripe) mount(); else window.addEventListener('load', function () {
+      if (window.Stripe) mount(); else showError(perr, 'The payment form could not load. Check your connection and refresh the page.');
+    });
+
+    payForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      showError(perr, '');
+      if (!agree.checked) { agree.focus(); showError(perr, 'Please agree to the reservation policies and the privacy policy to book.'); return; }
+      if (!ready || expired) return;
+      payBtn.disabled = true;
+      var label = payBtn.textContent; payBtn.textContent = 'Paying…';
+      stripe.confirmPayment({
+        elements: elements,
+        confirmParams: { return_url: P.return, payment_method_data: { billing_details: { name: P.name, email: P.email, phone: P.phone } } }
+      }).then(function (r) {
+        // Only reached when the payment failed or needs another try; success leaves the page.
+        if (r.error) { showError(perr, r.error.message || 'The payment did not go through. You were not charged.'); }
+        payBtn.textContent = label; canPay();
+      });
     });
   }
 })();

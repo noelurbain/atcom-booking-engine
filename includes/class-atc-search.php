@@ -245,6 +245,7 @@ final class ATC_Search {
 			$rated    = (int) $o['rating_count'] >= self::MIN_REVIEWS && null !== $o['rating_avg'];
 			$offers[] = array(
 					'service_id'      => (int) $o['service_id'],
+					'party_id'        => (int) $o['party_id'],
 					'vehicle_type_id' => (int) $o['vehicle_type_id'],
 					'provider'        => $o['provider'],
 					'rating'          => $rated ? round( (float) $o['rating_avg'], 1 ) : null,

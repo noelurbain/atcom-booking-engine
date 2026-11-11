@@ -96,6 +96,11 @@ final class ATC_Settings {
 		return defined( $const ) ? (string) constant( $const ) : '';
 	}
 
+	/** Stripe publishable key for the current mode (public by design). */
+	public static function stripe_publishable(): string {
+		return (string) self::get( 'live' === self::get( 'stripe_mode' ) ? 'stripe_live_publishable' : 'stripe_test_publishable' );
+	}
+
 	public static function has_secret( string $mode ): bool {
 		return '' !== self::stripe_secret( $mode );
 	}
