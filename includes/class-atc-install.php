@@ -39,6 +39,12 @@ final class ATC_Install {
 				global $wpdb;
 				$wpdb->query( 'ALTER TABLE ' . ATC_Schema::table( 'airports' ) . ' MODIFY iata char(3) NULL' ); // phpcs:ignore
 			}
+			if ( version_compare( $from, '9', '<' ) ) {
+				// The first Hotel Zone outline (copied from resortstours.com) left out Punta Cancún (Riu, Hyatt Ziva…).
+				// Replace it only if nobody has redrawn it since.
+				global $wpdb;
+				$wpdb->query( $wpdb->prepare( 'UPDATE ' . ATC_Schema::table( 'zones' ) . " SET polygon = %s WHERE slug = 'cancun-hotel-zone' AND polygon = %s", self::HOTEL_ZONE, self::HOTEL_ZONE_OLD ) ); // phpcs:ignore
+			}
 			self::seed();
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
@@ -103,6 +109,10 @@ final class ATC_Install {
 	 * (Cancun Hotel Zone and Playa Mujeres); the rest get drawn in /control.
 	 * Only adds names that are not there yet, so it never duplicates or overwrites.
 	 */
+	/** Cancún Hotel Zone: the whole strip from the Playa Linda bridge to Punta Nizuc, sea side to mid-lagoon. */
+	const HOTEL_ZONE     = '[[21.16,-86.818],[21.163,-86.805],[21.1605,-86.78],[21.154,-86.748],[21.146,-86.73],[21.13,-86.725],[21.105,-86.739],[21.075,-86.751],[21.045,-86.762],[21.023,-86.771],[21.017,-86.785],[21.03,-86.796],[21.055,-86.789],[21.08,-86.783],[21.105,-86.777],[21.125,-86.77],[21.134,-86.78],[21.139,-86.8],[21.15,-86.812]]';
+	const HOTEL_ZONE_OLD = '[[21.162055,-86.820107],[21.155651,-86.783715],[21.129394,-86.737023],[21.089678,-86.751443],[21.020472,-86.774789],[20.975598,-86.800881],[20.977522,-86.869546]]';
+
 	public static function seed_cun_zones(): void {
 		global $wpdb;
 		$airport = $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . ATC_Schema::table( 'airports' ) . ' WHERE iata = %s', 'CUN' ) );
@@ -112,7 +122,7 @@ final class ATC_Install {
 		$zones = ATC_Schema::table( 'zones' );
 		$list  = array(
 			array( 'Cancun Downtown', null ),
-			array( 'Cancun Hotel Zone', '[[21.162055,-86.820107],[21.155651,-86.783715],[21.129394,-86.737023],[21.089678,-86.751443],[21.020472,-86.774789],[20.975598,-86.800881],[20.977522,-86.869546]]' ),
+			array( 'Cancun Hotel Zone', self::HOTEL_ZONE ),
 			array( 'Puerto Morelos', null ),
 			array( 'Playa Mujeres', '[[21.26269,-86.818412],[21.264129,-86.810601],[21.272158,-86.726938],[21.204667,-86.679667],[21.16183,-86.799357],[21.162971,-86.823304],[21.16183,-86.799357],[21.16199,-86.822146],[21.171755,-86.822274],[21.162971,-86.823304]]' ),
 			array( 'Isla Mujeres', null ),

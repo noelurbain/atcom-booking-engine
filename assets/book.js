@@ -92,8 +92,8 @@
       from.value = a.label; fromCode.value = a.iata || a.id; from.setCustomValidity('');
       center = []; country = '';
     });
-    from.addEventListener('input', function () { fromCode.value = ''; });
-    from.addEventListener('change', function () { from.setCustomValidity(fromCode.value || !from.value ? '' : 'Pick your airport from the list.'); });
+    // Typing again clears any old warning; the results page finds a typed airport anyway.
+    from.addEventListener('input', function () { fromCode.value = ''; from.setCustomValidity(''); });
 
     // Destination: Google places near the airport; typing without picking still works (looked up on the next page).
     var to = form.querySelector('[data-ab-to]');
@@ -210,16 +210,31 @@
       var bounds = new google.maps.LatLngBounds(); bounds.extend(A); bounds.extend(B); map.fitBounds(bounds, 40);
       new google.maps.Marker({ map: map, position: A, title: mapEl.getAttribute('data-from-label'), label: { text: '✈', color: '#FFFFFF' } });
       new google.maps.Marker({ map: map, position: B, title: mapEl.getAttribute('data-to-label') });
-      var svc = new libs[1].DirectionsService();
-      svc.route({ origin: A, destination: B, travelMode: 'DRIVING' }).then(function (r) {
-        new libs[1].DirectionsRenderer({ map: map, directions: r, suppressMarkers: true, preserveViewport: false, polylineOptions: { strokeColor: '#15171C', strokeWeight: 5 } });
-        var leg = r.routes[0].legs[0];
-        var txt = 'About ' + leg.duration.text + ' · ' + leg.distance.text;
+      function say(mins, km) {
+        var txt = 'About ' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + ' · ' + km + ' km';
         var d = document.querySelector('[data-ab-dist]'); if (d) d.textContent = txt;
         var t = document.querySelector('[data-ab-time]'); if (t) t.textContent = txt + ' by road';
-      }).catch(function () {
-        new google.maps.Polyline({ map: map, path: [A, B], strokeColor: '#15171C', strokeWeight: 3, strokeOpacity: 0.6 });
-      });
+      }
+      function straight() { new google.maps.Polyline({ map: map, path: [A, B], strokeColor: '#15171C', strokeWeight: 3, strokeOpacity: 0.6 }); }
+      // Routes API (new Google projects), then the older Directions API, then a straight line.
+      function legacy() {
+        if (!libs[1].DirectionsService) { straight(); return; }
+        new libs[1].DirectionsService().route({ origin: A, destination: B, travelMode: 'DRIVING' }).then(function (r) {
+          new libs[1].DirectionsRenderer({ map: map, directions: r, suppressMarkers: true, polylineOptions: { strokeColor: '#15171C', strokeWeight: 5 } });
+          var leg = r.routes[0].legs[0];
+          say(Math.round(leg.duration.value / 60), Math.round(leg.distance.value / 1000));
+        }).catch(straight);
+      }
+      if (libs[1].Route && libs[1].Route.computeRoutes) {
+        libs[1].Route.computeRoutes({ origin: A, destination: B, travelMode: 'DRIVING', fields: ['path', 'distanceMeters', 'durationMillis'] }).then(function (r) {
+          var route = r.routes && r.routes[0];
+          if (!route) throw new Error('none');
+          route.createPolylines().forEach(function (l) { l.setOptions({ strokeColor: '#15171C', strokeWeight: 5 }); l.setMap(map); });
+          say(Math.round(route.durationMillis / 60000), Math.round(route.distanceMeters / 1000));
+        }).catch(legacy);
+      } else {
+        legacy();
+      }
     }).catch(function () {
       mapEl.classList.add('is-off');
       mapEl.textContent = 'Map not available right now.';

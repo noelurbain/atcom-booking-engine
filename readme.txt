@@ -1,5 +1,12 @@
 === ATCOM Booking Engine ===
-Version: 0.7.2 (checkout, part 1: search and results)
+Version: 0.7.3 (checkout, part 1: search and results)
+
+New in 0.7.3:
+- Cancún Hotel Zone gets a full outline (Playa Linda bridge to Punta Nizuc, including Punta Cancún), replacing
+  the rough first one, unless it was redrawn by hand.
+- The airport box no longer keeps "Pick your airport from the list" after you type again.
+- The trip map draws the road route with Google's Routes API (new Google projects), falling back to the older
+  Directions API, then to a straight line.
 
 New in 0.7.2: Dashboard → "What travelers asked for and we don't sell yet": airports typed in the search box
 that we don't have, addresses outside every zone (with a map link), and zones nobody has priced, each with
