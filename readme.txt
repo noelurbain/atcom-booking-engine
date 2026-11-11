@@ -1,5 +1,20 @@
 === ATCOM Booking Engine ===
-Version: 0.8.1 (checkout, part 2: details, payment, confirmation)
+Version: 0.9.0 (checkout, part 3: emails, webhook, Manage booking)
+
+New in 0.9.0:
+- Emails: traveler confirmation (trip, service code, meeting steps, provider phone and WhatsApp, free
+  cancellation date, link to the booking); new booking for the provider (with what they get paid) and a copy
+  for our team; changes and cancellations to both sides. Provider emails go to "invite_test_to" while it is set.
+- Every hour: "your transfer isn't booked yet" (once, 1 to 24 h after an unpaid start), "your pickup is
+  tomorrow" (per ride, with meeting steps), and "how was your ride?" a day after the last ride.
+- Stripe webhook at /wp-json/atc/v1/stripe/webhook (payment_intent.succeeded confirms a booking even if the
+  traveler closed the page; charge.refunded in Stripe cancels it). Needs ATC_STRIPE_TEST_WEBHOOK_SECRET.
+- Manage booking: /manage-booking/ sends the booking link to the email on it (number + email). On the booking
+  page: change flights, times, return pickup, luggage, notes; cancel with a full Stripe refund until 24 h
+  before pickup; rate the provider after the ride (stars show from 3 reviews).
+- The booking's private key is kept sealed (encrypted with the site's salt) so emails can link to it.
+
+Also in 0.8.1 (checkout, part 2: details, payment, confirmation)
 
 New in 0.8.1:
 - Mobile number: every country (242), searchable by name or code, with flags; the most used first.

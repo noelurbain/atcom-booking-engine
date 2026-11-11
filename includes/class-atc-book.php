@@ -19,6 +19,7 @@ final class ATC_Book {
 		add_rewrite_rule( '^search/?$', 'index.php?atc_book=search', 'top' );
 		add_rewrite_rule( '^checkout/?$', 'index.php?atc_book=checkout', 'top' );
 		add_rewrite_rule( '^checkout/pay/?$', 'index.php?atc_book=pay', 'top' );
+		add_rewrite_rule( '^manage-booking/?$', 'index.php?atc_book=manage', 'top' );
 		add_rewrite_rule( '^reservation/([A-Za-z0-9]+)/?$', 'index.php?atc_book=reservation&atc_number=$matches[1]', 'top' );
 	}
 
@@ -36,6 +37,7 @@ final class ATC_Book {
 				'airports' => esc_url_raw( rest_url( 'atc/v1/airports/search' ) ),
 				'mapsKey'  => ATC_Settings::maps_browser_key(),
 				'pages'    => esc_url_raw( rest_url( 'wp/v2/pages' ) ),
+				'api'      => esc_url_raw( rest_url( 'atc/v1/' ) ),
 			)
 		);
 	}
@@ -129,6 +131,15 @@ final class ATC_Book {
 			self::page( $view, $b, $key );
 		}
 		// phpcs:enable
+		if ( 'manage' === $view ) {
+			self::assets();
+			add_filter( 'pre_get_document_title', static fn() => 'Manage booking · Airport Transportation' );
+			add_filter( 'body_class', static fn( $c ) => array_merge( $c, array( 'ab-page' ) ) );
+			get_header();
+			echo self::manage_find(); // phpcs:ignore -- escaped inside.
+			get_footer();
+			exit;
+		}
 		self::assets();
 		$q   = ATC_Search::parse( $_GET ); // phpcs:ignore WordPress.Security.NonceVerification -- a public search.
 		$res = ATC_Search::run( $q );
@@ -731,6 +742,7 @@ final class ATC_Book {
 		?>
 		<section class="ab-wrap ab-main ab-confirm">
 			<div class="ab-col">
+				<?php echo self::done_notice(); // phpcs:ignore -- escaped inside. ?>
 				<?php if ( $cancelled ) : ?>
 					<div class="ab-band is-off">
 						<h1 class="ab-h1">This booking is cancelled.</h1>
@@ -787,6 +799,8 @@ final class ATC_Book {
 					<?php endforeach; ?>
 				</section>
 
+				<?php echo self::rate_card( $b, $key ); // phpcs:ignore -- escaped inside. ?>
+
 				<section class="ab-card ab-pad" aria-labelledby="ab-h-trip">
 					<h2 id="ab-h-trip">Trip details</h2>
 					<?php
@@ -804,6 +818,8 @@ final class ATC_Book {
 					}
 					?>
 				</section>
+
+				<?php echo self::manage_card( $b, $key ); // phpcs:ignore -- escaped inside. ?>
 			</div>
 			<aside class="ab-side">
 				<?php if ( $can_free && ! $cancelled ) : ?>
@@ -821,6 +837,141 @@ final class ATC_Book {
 					<span>Keep this page: its link opens your booking any time</span>
 				</div>
 			</aside>
+		</section>
+		<?php
+		return (string) ob_get_clean();
+	}
+
+	/** Notices after a change, a cancellation or a rating (?done=...). */
+	private static function done_notice(): string {
+		$done = isset( $_GET['done'] ) ? sanitize_key( wp_unslash( $_GET['done'] ) ) : ''; // phpcs:ignore
+		$msg  = array(
+			'updated'   => 'Your changes are saved. We sent the new details to you and to your provider.',
+			'cancelled' => 'Your booking is cancelled and the refund is on its way to your card. We sent you an email.',
+			'rated'     => 'Thanks for rating your ride. It helps other travelers choose.',
+		)[ $done ] ?? '';
+		return $msg ? '<div class="ab-alert is-ok" role="status">' . esc_html( $msg ) . '</div>' : '';
+	}
+
+	/** Change details and cancel, while the free-cancellation time has not passed. */
+	private static function manage_card( array $b, string $key ): string {
+		if ( 'confirmed' !== $b['status'] ) {
+			return '';
+		}
+		$change = ATC_Manage::can_change( $b );
+		$cancel = ATC_Manage::can_cancel( $b );
+		$free   = (int) ATC_Settings::get( 'free_cancel_hours' );
+		$tz     = (string) ( $b['snap']['timezone'] ?? 'UTC' );
+		$d      = (array) ( $b['snap']['details'] ?? array() );
+		$arr    = $b['legs'][0] ?? array();
+		$ret    = $b['legs'][1] ?? array();
+		$v      = static fn( $k, $def = '' ) => (string) ( $d[ $k ] ?? $def );
+		$cfg    = array( 'number' => $b['number'], 'key' => $key, 'back' => ATC_Checkout::reservation_url( $b['number'], $key ) );
+		ob_start();
+		?>
+		<section class="ab-card ab-pad ab-managecard" id="manage" aria-labelledby="ab-h-manage" data-ab-manage="<?php echo esc_attr( wp_json_encode( $cfg ) ); ?>">
+			<h2 id="ab-h-manage">Manage your booking</h2>
+			<?php if ( ! $change && ! $cancel ) : ?>
+				<p class="ab-muted">Changes and cancellations close <?php echo (int) $free; ?> hours before pickup, so this booking can no longer be changed online. For anything on the day, contact your provider.</p>
+			<?php else : ?>
+				<p class="ab-muted">You can change your flight, times and details<?php echo $cancel ? ', or cancel with a full refund,' : ''; ?> until <?php echo (int) $free; ?> hours before pickup. Your provider gets the changes by email.</p>
+				<div class="ab-actions">
+					<?php if ( $change ) : ?><button type="button" class="ab-btn is-dark" data-ab-open="change" aria-expanded="false" aria-controls="ab-change">Change flight or details</button><?php endif; ?>
+					<?php if ( $cancel ) : ?><button type="button" class="ab-btn is-line" data-ab-open="cancel" aria-expanded="false" aria-controls="ab-cancel">Cancel booking</button><?php endif; ?>
+				</div>
+				<?php if ( $change ) : ?>
+				<form class="ab-form" id="ab-change" hidden novalidate data-ab-change>
+					<?php if ( ATC_Manage::open_leg( $arr ) ) : ?>
+						<h3 class="ab-h3">Arrival</h3>
+						<div class="ab-grid">
+							<div class="ab-field"><label for="m-airline">Airline</label><input id="m-airline" name="airline" value="<?php echo esc_attr( (string) $arr['flight_airline'] ); ?>"></div>
+							<div class="ab-field"><label for="m-flight">Flight number</label><input id="m-flight" name="flight" value="<?php echo esc_attr( (string) $arr['flight_number'] ); ?>" placeholder="Leave empty if you don’t have it yet"></div>
+							<div class="ab-field"><label for="m-ldate">Landing date</label><input id="m-ldate" name="landing_date" type="date" required value="<?php echo esc_attr( self::local( $arr['pickup_at'], $tz, 'Y-m-d' ) ); ?>"></div>
+							<div class="ab-field"><label for="m-ltime">Landing time</label><input id="m-ltime" name="landing_time" type="time" required value="<?php echo esc_attr( self::local( $arr['pickup_at'], $tz, 'H:i' ) ); ?>"></div>
+						</div>
+					<?php endif; ?>
+					<?php if ( $ret && ATC_Manage::open_leg( $ret ) ) : ?>
+						<h3 class="ab-h3">Return</h3>
+						<div class="ab-field"><label for="m-rfrom">Hotel pickup address</label><input id="m-rfrom" name="return_from" value="<?php echo esc_attr( (string) $ret['from_place'] ); ?>"></div>
+						<div class="ab-grid">
+							<div class="ab-field"><label for="m-rairline">Departure airline</label><input id="m-rairline" name="return_airline" value="<?php echo esc_attr( (string) $ret['flight_airline'] ); ?>"></div>
+							<div class="ab-field"><label for="m-rflight">Departure flight number</label><input id="m-rflight" name="return_flight" value="<?php echo esc_attr( (string) $ret['flight_number'] ); ?>"></div>
+							<div class="ab-field"><label for="m-rdate">Departure date</label><input id="m-rdate" name="return_date" type="date" required value="<?php echo esc_attr( self::local( $ret['pickup_at'], $tz, 'Y-m-d' ) ); ?>"></div>
+							<div class="ab-field"><label for="m-rft">Flight departure time</label><input id="m-rft" name="return_flight_time" type="time" value="<?php echo esc_attr( $ret['flight_time'] ? self::local( $ret['flight_time'], $tz, 'H:i' ) : '' ); ?>"></div>
+							<div class="ab-field"><label for="m-rpick">Hotel pickup time</label><input id="m-rpick" name="return_pickup" type="time" required value="<?php echo esc_attr( self::local( $ret['pickup_at'], $tz, 'H:i' ) ); ?>"></div>
+						</div>
+					<?php endif; ?>
+					<h3 class="ab-h3">Details</h3>
+					<div class="ab-grid">
+						<div class="ab-field"><label for="m-bags">Suitcases</label><input id="m-bags" name="suitcases" type="number" min="0" max="60" value="<?php echo (int) ( $arr['suitcases'] ?? 0 ); ?>"></div>
+						<div class="ab-field"><label for="m-carry">Carry-ons</label><input id="m-carry" name="carry_ons" type="number" min="0" max="60" value="<?php echo (int) ( $arr['carry_ons'] ?? 0 ); ?>"></div>
+						<div class="ab-field"><label for="m-hname">Name of the hotel reservation (optional)</label><input id="m-hname" name="hotel_name" value="<?php echo esc_attr( $v( 'hotel_name' ) ); ?>"></div>
+					</div>
+					<div class="ab-field"><label for="m-notes">Notes for your driver</label><textarea id="m-notes" name="notes" rows="3" maxlength="1000"><?php echo esc_textarea( $v( 'notes' ) ); ?></textarea></div>
+					<p class="ab-muted">To change the passengers, the vehicle or the address, cancel and book again: the price may differ.</p>
+					<div class="ab-alert" role="alert" hidden data-ab-error></div>
+					<div class="ab-actions"><button type="submit" class="ab-btn is-accent">Save changes</button></div>
+				</form>
+				<?php endif; ?>
+				<?php if ( $cancel ) : ?>
+				<div class="ab-cancelbox" id="ab-cancel" hidden data-ab-cancel>
+					<p><strong>Cancel and get <?php echo esc_html( self::money( (int) $b['total_cents'] ) ); ?> back on your card?</strong><br><span class="ab-muted">This can’t be undone. Banks usually show the refund within 5 to 10 days.</span></p>
+					<div class="ab-alert" role="alert" hidden data-ab-error></div>
+					<div class="ab-actions"><button type="button" class="ab-btn is-danger" data-ab-cancelgo>Yes, cancel my booking</button><button type="button" class="ab-btn is-line" data-ab-open="cancel">Keep my booking</button></div>
+				</div>
+				<?php endif; ?>
+			<?php endif; ?>
+		</section>
+		<?php
+		return (string) ob_get_clean();
+	}
+
+	/** After the ride: rate the provider (once). */
+	private static function rate_card( array $b, string $key ): string {
+		if ( ! ATC_Manage::can_review( $b ) ) {
+			return '';
+		}
+		$pre  = isset( $_GET['rate'] ) ? max( 0, min( 5, (int) $_GET['rate'] ) ) : 0; // phpcs:ignore
+		$cfg  = array( 'number' => $b['number'], 'key' => $key, 'back' => ATC_Checkout::reservation_url( $b['number'], $key ) );
+		$name = (string) ( $b['snap']['provider'] ?? 'your provider' );
+		ob_start();
+		?>
+		<section class="ab-card ab-pad ab-ratecard" id="rate" aria-labelledby="ab-h-rate">
+			<h2 id="ab-h-rate">How was your ride with <?php echo esc_html( $name ); ?>?</h2>
+			<form class="ab-form" data-ab-rate="<?php echo esc_attr( wp_json_encode( $cfg ) ); ?>" novalidate>
+				<fieldset class="ab-stars-in"><legend class="screen-reader-text">Your rating</legend>
+					<?php for ( $i = 5; $i >= 1; $i-- ) : ?>
+						<input type="radio" name="rating" id="r<?php echo (int) $i; ?>" value="<?php echo (int) $i; ?>" <?php checked( $pre, $i ); ?>><label for="r<?php echo (int) $i; ?>" title="<?php echo (int) $i; ?> of 5"><span aria-hidden="true">★</span><span class="screen-reader-text"><?php echo (int) $i; ?> stars</span></label>
+					<?php endfor; ?>
+				</fieldset>
+				<div class="ab-field"><label for="r-comment">Anything to add? (optional)</label><textarea id="r-comment" name="comment" rows="3" maxlength="1000"></textarea></div>
+				<div class="ab-alert" role="alert" hidden data-ab-error></div>
+				<div class="ab-actions"><button type="submit" class="ab-btn is-accent">Send rating</button></div>
+			</form>
+		</section>
+		<?php
+		return (string) ob_get_clean();
+	}
+
+	/** /manage-booking: find a booking by number and email; the link goes to that email. */
+	private static function manage_find(): string {
+		ob_start();
+		?>
+		<section class="ab-wrap ab-main">
+			<div class="ab-col" style="max-width:640px">
+				<h1 class="ab-h1">Manage booking</h1>
+				<p class="ab-muted">See, change or cancel your booking. Type your reservation number and the email you booked with: we send you a link to it.</p>
+				<form class="ab-form ab-card ab-pad" data-ab-find novalidate>
+					<div class="ab-grid">
+						<div class="ab-field"><label for="f-number">Reservation number</label><input id="f-number" name="number" required autocomplete="off" placeholder="e.g. ATK7Q2MX" style="text-transform:uppercase"></div>
+						<div class="ab-field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" required autocomplete="email"></div>
+					</div>
+					<div class="ab-alert" role="alert" hidden data-ab-error></div>
+					<div class="ab-alert is-ok" role="status" hidden data-ab-sent>If that reservation and email match, the link is on its way. Check your inbox (and spam) in a minute.</div>
+					<div class="ab-actions"><button type="submit" class="ab-btn is-accent">Send me the link</button></div>
+					<p class="ab-muted" style="font-size:13px">Your reservation number is in your confirmation email.</p>
+				</form>
+			</div>
 		</section>
 		<?php
 		return (string) ob_get_clean();

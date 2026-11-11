@@ -67,6 +67,37 @@ final class ATC_REST {
 				},
 			)
 		);
+		self::register_manage();
+	}
+
+	public static function register_manage(): void {
+		register_rest_route(
+			self::NS,
+			'/stripe/webhook',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => static fn( WP_REST_Request $r ) => self::out( ATC_Checkout::webhook( (string) $r->get_body(), (string) $r->get_header( 'stripe-signature' ) ) ),
+			)
+		);
+		$open = static function ( string $bucket, callable $fn ) {
+			return static function ( WP_REST_Request $r ) use ( $bucket, $fn ) {
+				if ( ! ATC_Partner::rate_ok( $bucket, 30 ) ) {
+					return new WP_Error( 'atc_slow', 'Too many attempts. Please wait a few minutes.', array( 'status' => 429 ) );
+				}
+				$p = (array) $r->get_json_params();
+				return self::out( $fn( $p, (string) ( $p['number'] ?? '' ), (string) ( $p['key'] ?? '' ) ) );
+			};
+		};
+		$routes = array(
+			'/booking/update' => $open( 'booking_update', static fn( $p, $n, $k ) => ATC_Manage::update( $n, $k, $p ) ),
+			'/booking/cancel' => $open( 'booking_cancel', static fn( $p, $n, $k ) => ATC_Manage::cancel( $n, $k ) ),
+			'/booking/review' => $open( 'booking_review', static fn( $p, $n, $k ) => ATC_Manage::review( $n, $k, (int) ( $p['rating'] ?? 0 ), (string) ( $p['comment'] ?? '' ) ) ),
+			'/booking/find'   => $open( 'booking_find', static fn( $p, $n, $k ) => ATC_Manage::lookup( $n, (string) ( $p['email'] ?? '' ) ) ),
+		);
+		foreach ( $routes as $path => $cb ) {
+			register_rest_route( self::NS, $path, array( 'methods' => 'POST', 'permission_callback' => '__return_true', 'callback' => $cb ) );
+		}
 	}
 
 	private static function out( $res ) {

@@ -513,4 +513,78 @@
     document.addEventListener('mousedown', function (e) { if (!pop.hidden && !wrap.contains(e.target)) close(false); });
     paint();
   }
+
+  /* ---------- Manage booking: change, cancel, rate, find ---------- */
+  function formData(form) {
+    var o = {};
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (!el.name || el.disabled) return;
+      if (el.type === 'radio') { if (el.checked) o[el.name] = el.value; return; }
+      o[el.name] = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value;
+    });
+    return o;
+  }
+  function backTo(url, done, hash) {
+    var u = new URL(url, location.href); u.searchParams.set('done', done);
+    window.location.href = u.toString() + (hash || '');
+  }
+  var man = document.querySelector('[data-ab-manage]');
+  if (man) {
+    var mc = JSON.parse(man.getAttribute('data-ab-manage'));
+    man.querySelectorAll('[data-ab-open]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var which = b.getAttribute('data-ab-open');
+        var panel = man.querySelector(which === 'change' ? '[data-ab-change]' : '[data-ab-cancel]');
+        var other = man.querySelector(which === 'change' ? '[data-ab-cancel]' : '[data-ab-change]');
+        panel.hidden = !panel.hidden;
+        if (other) other.hidden = true;
+        man.querySelectorAll('[data-ab-open]').forEach(function (x) { x.setAttribute('aria-expanded', man.querySelector(x.getAttribute('data-ab-open') === 'change' ? '[data-ab-change]' : '[data-ab-cancel]').hidden ? 'false' : 'true'); });
+        if (!panel.hidden) { var f = panel.querySelector('input, button'); if (f) f.focus(); }
+      });
+    });
+    var chg = man.querySelector('[data-ab-change]');
+    if (chg) chg.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var err = chg.querySelector('[data-ab-error]'); showError(err, '');
+      var bad = Array.prototype.find.call(chg.elements, function (el) { return el.willValidate && !el.checkValidity(); });
+      if (bad) { bad.reportValidity(); return; }
+      var btn = chg.querySelector('[type=submit]'); btn.disabled = true;
+      var body = formData(chg); body.number = mc.number; body.key = mc.key;
+      post(C.api + 'booking/update', body).then(function (d) {
+        if (!d.changed || !d.changed.length) { btn.disabled = false; showError(err, 'Nothing changed.'); return; }
+        backTo(mc.back, 'updated');
+      }).catch(function (x) { btn.disabled = false; showError(err, x.message); });
+    });
+    var go = man.querySelector('[data-ab-cancelgo]');
+    if (go) go.addEventListener('click', function () {
+      var box = man.querySelector('[data-ab-cancel]'), err = box.querySelector('[data-ab-error]');
+      showError(err, ''); go.disabled = true; go.textContent = 'Cancelling…';
+      post(C.api + 'booking/cancel', { number: mc.number, key: mc.key }).then(function () { backTo(mc.back, 'cancelled'); })
+        .catch(function (x) { go.disabled = false; go.textContent = 'Yes, cancel my booking'; showError(err, x.message); });
+    });
+  }
+  var rate = document.querySelector('[data-ab-rate]');
+  if (rate) {
+    var rc = JSON.parse(rate.getAttribute('data-ab-rate'));
+    if (location.hash === '#rate') rate.scrollIntoView({ block: 'center' });
+    rate.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var err = rate.querySelector('[data-ab-error]'), body = formData(rate);
+      if (!body.rating) { showError(err, 'Tap the stars to choose a rating.'); return; }
+      body.number = rc.number; body.key = rc.key;
+      var btn = rate.querySelector('[type=submit]'); btn.disabled = true;
+      post(C.api + 'booking/review', body).then(function () { backTo(rc.back, 'rated'); }).catch(function (x) { btn.disabled = false; showError(err, x.message); });
+    });
+  }
+  var find = document.querySelector('[data-ab-find]');
+  if (find) find.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var err = find.querySelector('[data-ab-error]'), sent = find.querySelector('[data-ab-sent]');
+    showError(err, ''); sent.hidden = true;
+    var bad = Array.prototype.find.call(find.elements, function (el) { return el.willValidate && !el.checkValidity(); });
+    if (bad) { bad.reportValidity(); return; }
+    var btn = find.querySelector('[type=submit]'); btn.disabled = true;
+    post(C.api + 'booking/find', { number: find.elements.number.value.trim(), email: find.elements.email.value.trim() })
+      .then(function () { sent.hidden = false; }).catch(function (x) { showError(err, x.message); }).then(function () { btn.disabled = false; });
+  });
 })();

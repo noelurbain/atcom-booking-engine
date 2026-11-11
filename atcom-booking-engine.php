@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.8.1
+ * Version:           0.9.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.8.1' );
-define( 'ATC_DB_VERSION', '13' );
+define( 'ATC_VERSION', '0.9.0' );
+define( 'ATC_DB_VERSION', '14' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ATC_URL', plugin_dir_url( __FILE__ ) );
@@ -37,6 +37,8 @@ require_once ATC_DIR . 'includes/class-atc-bookings.php';
 require_once ATC_DIR . 'includes/class-atc-search.php';
 require_once ATC_DIR . 'includes/class-atc-meeting.php';
 require_once ATC_DIR . 'includes/class-atc-checkout.php';
+require_once ATC_DIR . 'includes/class-atc-manage.php';
+require_once ATC_DIR . 'includes/class-atc-mail.php';
 require_once ATC_DIR . 'includes/class-atc-book.php';
 require_once ATC_DIR . 'includes/class-atc-rest-portal.php';
 require_once ATC_DIR . 'includes/class-atc-portal.php';
@@ -55,6 +57,7 @@ add_action( 'rest_api_init', array( 'ATC_REST_Portal', 'register_routes' ) );
 ATC_Control::init();
 ATC_Portal::init();
 ATC_Book::init();
+ATC_Mail::init();
 
 /** Fields of the provider sign-up form, used by the theme's /partners/provider/ page. */
 function atc_provider_signup_fields(): string {

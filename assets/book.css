@@ -260,3 +260,16 @@
 .ab-ccpop li[aria-selected=true]{background:#FFF4E5}
 .ab-ccname{flex:1}
 .ab-ccsep{padding:8px 10px 4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+
+/* manage, rate */
+.ab-alert.is-ok{background:#E8F4EC;color:#1E6B3A}
+.ab-btn.is-danger{background:#B42318;color:#fff}
+.ab-managecard .ab-h3{margin:12px 0 0;font-size:16px}
+.ab-cancelbox{background:#FDECEC;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.ab-cancelbox p{margin:0}
+.ab-ratecard{border:2px solid var(--accent)}
+.ab-stars-in{border:0;margin:0;padding:0;display:inline-flex;flex-direction:row-reverse;justify-content:flex-end;gap:4px}
+.ab-stars-in{position:relative}.ab-stars-in input{position:absolute;left:0;top:0;opacity:0;width:1px;height:1px;pointer-events:none}
+.ab-stars-in label{font-size:40px;line-height:1;color:#D6D1C7;cursor:pointer;padding:2px}
+.ab-stars-in input:checked~label,.ab-stars-in label:hover,.ab-stars-in label:hover~label{color:#E08A00}
+.ab-stars-in input:focus-visible+label{outline:2px solid #E07A1F;outline-offset:2px;border-radius:6px}

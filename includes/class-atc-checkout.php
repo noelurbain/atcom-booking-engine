@@ -56,18 +56,65 @@ final class ATC_Checkout {
 
 	/** A booking by number and private key, or null. Our team can open any booking. */
 	public static function load( string $number, string $key ): ?array {
+		$b = self::find( $number );
+		if ( ! $b ) {
+			return null;
+		}
+		$ok = '' !== $key && ! empty( $b['snap']['key_hash'] ) && hash_equals( (string) $b['snap']['key_hash'], self::key_hash( $key ) );
+		if ( ! $ok && ! current_user_can( 'atc_manage' ) && ! ( $b['user_id'] && (int) $b['user_id'] === get_current_user_id() ) ) {
+			return null;
+		}
+		return $b;
+	}
+
+	/** A booking with its snapshot and legs, without any access check (server side only: emails, webhook, cron). */
+	public static function find( string $number = '', int $id = 0, string $payment_intent = '' ): ?array {
 		global $wpdb;
-		$b = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . self::t( 'bookings' ) . ' WHERE number = %s', strtoupper( preg_replace( '/[^A-Za-z0-9]/', '', $number ) ) ), ARRAY_A );
+		$t = self::t( 'bookings' );
+		if ( $id ) {
+			$b = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE id = %d", $id ), ARRAY_A ); // phpcs:ignore
+		} elseif ( '' !== $payment_intent ) {
+			$b = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE stripe_payment_intent = %s", $payment_intent ), ARRAY_A ); // phpcs:ignore
+		} else {
+			$b = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE number = %s", strtoupper( preg_replace( '/[^A-Za-z0-9]/', '', $number ) ) ), ARRAY_A ); // phpcs:ignore
+		}
 		if ( ! $b ) {
 			return null;
 		}
 		$b['snap'] = json_decode( (string) $b['snapshot'], true ) ?: array();
-		$ok        = '' !== $key && ! empty( $b['snap']['key_hash'] ) && hash_equals( (string) $b['snap']['key_hash'], self::key_hash( $key ) );
-		if ( ! $ok && ! current_user_can( 'atc_manage' ) && ! ( $b['user_id'] && (int) $b['user_id'] === get_current_user_id() ) ) {
-			return null;
-		}
 		$b['legs'] = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::t( 'booking_legs' ) . ' WHERE booking_id = %d ORDER BY id', (int) $b['id'] ), ARRAY_A );
 		return $b;
+	}
+
+	/* The private key is also kept sealed (encrypted with the site's salt), so our emails can link to the booking. */
+	private static function seal_key(): string {
+		return hash( 'sha256', wp_salt( 'secure_auth' ), true );
+	}
+
+	public static function seal( string $key ): string {
+		$iv = random_bytes( 16 );
+		$ct = openssl_encrypt( $key, 'aes-256-cbc', self::seal_key(), OPENSSL_RAW_DATA, $iv );
+		return false === $ct ? '' : base64_encode( $iv . $ct ); // phpcs:ignore
+	}
+
+	/** The booking's private key from its sealed copy, or '' (older bookings: a new key is made and saved). */
+	public static function key_of( array $b ): string {
+		$raw = base64_decode( (string) ( $b['snap']['key_enc'] ?? '' ), true ); // phpcs:ignore
+		if ( $raw && strlen( $raw ) > 16 ) {
+			$key = openssl_decrypt( substr( $raw, 16 ), 'aes-256-cbc', self::seal_key(), OPENSSL_RAW_DATA, substr( $raw, 0, 16 ) );
+			if ( is_string( $key ) && '' !== $key && hash_equals( (string) ( $b['snap']['key_hash'] ?? '' ), self::key_hash( $key ) ) ) {
+				return $key;
+			}
+		}
+		$key                     = wp_generate_password( 24, false );
+		$b['snap']['key_hash']   = self::key_hash( $key );
+		$b['snap']['key_enc']    = self::seal( $key );
+		self::save_snapshot( (int) $b['id'], $b['snap'] );
+		return $key;
+	}
+
+	public static function snapshot( int $id, array $snap ): void {
+		self::save_snapshot( $id, $snap );
 	}
 
 	private static function save_snapshot( int $id, array $snap ): void {
@@ -147,6 +194,7 @@ final class ATC_Checkout {
 		}
 		$snap = array(
 			'key_hash' => self::key_hash( $key ),
+			'key_enc'  => self::seal( $key ),
 			'search'   => $q,
 			'site'     => wp_parse_url( home_url(), PHP_URL_HOST ),
 			'iata'     => $s['airport']['iata'],
@@ -514,5 +562,52 @@ final class ATC_Checkout {
 		$wpdb->insert( $l, array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'platform', 'amount_cents' => (int) $b['total_cents'] - $prov, 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'note' => 'Before Stripe fees', 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		ATC_Install::log( 'booking', (int) $b['id'], 'paid', array( 'amount' => (int) $pi['amount_received'], 'payment_intent' => $pi['id'] ) );
 		do_action( 'atc_booking_confirmed', (int) $b['id'] );
+	}
+
+	/* ---------- Stripe webhook ---------- */
+
+	/**
+	 * Stripe tells us about payments even when the traveler closes the page before coming back:
+	 * payment_intent.succeeded confirms the booking; charge.refunded (a refund made in Stripe) cancels it.
+	 */
+	public static function webhook( string $payload, string $signature ) {
+		$secret = ATC_Settings::webhook_secret();
+		if ( '' === $secret ) {
+			return new WP_Error( 'atc_webhook', 'Webhook secret not set.', array( 'status' => 503 ) );
+		}
+		$parts = array();
+		foreach ( explode( ',', $signature ) as $kv ) {
+			$kv = explode( '=', trim( $kv ), 2 );
+			if ( 2 === count( $kv ) ) {
+				$parts[ $kv[0] ][] = $kv[1];
+			}
+		}
+		$ts = (int) ( $parts['t'][0] ?? 0 );
+		$ok = false;
+		foreach ( (array) ( $parts['v1'] ?? array() ) as $sig ) {
+			if ( hash_equals( hash_hmac( 'sha256', $ts . '.' . $payload, $secret ), $sig ) ) {
+				$ok = true;
+			}
+		}
+		if ( ! $ok || abs( time() - $ts ) > 600 ) {
+			return new WP_Error( 'atc_webhook', 'Bad signature.', array( 'status' => 400 ) );
+		}
+		$event = json_decode( $payload, true );
+		$obj   = $event['data']['object'] ?? array();
+		switch ( $event['type'] ?? '' ) {
+			case 'payment_intent.succeeded':
+				$b = self::find( '', 0, (string) ( $obj['id'] ?? '' ) );
+				if ( $b && 'held' === $b['status'] ) {
+					self::sync_payment( $b );
+				}
+				break;
+			case 'charge.refunded':
+				$b = self::find( '', 0, (string) ( $obj['payment_intent'] ?? '' ) );
+				if ( $b && 'confirmed' === $b['status'] && ! empty( $obj['refunded'] ) ) {
+					ATC_Manage::cancelled( $b, 'Refunded in Stripe' );
+				}
+				break;
+		}
+		return array( 'received' => true );
 	}
 }

@@ -24,6 +24,7 @@ final class ATC_Install {
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( 'atc_every_15_minutes' );
 		wp_clear_scheduled_hook( 'atc_daily' );
+		wp_clear_scheduled_hook( 'atc_hourly' );
 	}
 
 	public static function maybe_upgrade(): void {
