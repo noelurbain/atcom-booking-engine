@@ -176,8 +176,8 @@ final class ATC_Portal {
 <header class="atc-top">
 	<div class="atc-wrap atc-top-row">
 		<a class="atc-brand" href="<?php echo esc_url( home_url( '/' ) ); ?>">
-			<svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><path d="M3 17 L38 3 L28 38 L21 23 Z" fill="#FBA53E"></path></svg>
-			<span><strong><?php echo esc_html( $subtitle ); ?></strong><small>Airport Transportation</small></span>
+			<?php echo ATC_Control::logo(); // phpcs:ignore -- built by the theme. ?>
+			<span><strong><?php echo esc_html( $subtitle ); ?></strong></span>
 		</a>
 		<?php if ( is_user_logged_in() ) : ?>
 			<a class="atc-user" href="<?php echo esc_url( wp_nonce_url( home_url( '/portal/logout/' ), 'atc_logout' ) ); ?>">Sign out</a>

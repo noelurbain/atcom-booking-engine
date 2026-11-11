@@ -188,3 +188,6 @@ ol.timeline{margin:0;padding:0;list-style:none;display:flex;flex-direction:colum
 ol.timeline li{display:grid;grid-template-columns:150px 1fr;gap:12px}
 @media (max-width:560px){.kv{grid-template-columns:minmax(0,1fr)}ol.timeline li{grid-template-columns:minmax(0,1fr);gap:2px}.bk-side{max-width:none}}
 .nowrap{white-space:nowrap}
+.atc-logo-wrap{display:flex;padding-right:14px;border-right:1px solid rgba(255,255,255,.18)}
+.atc-logo-wrap svg{width:122px;height:40px}
+@media (max-width:560px){.atc-logo-wrap svg{width:98px;height:32px}.atc-brand small{display:none}}

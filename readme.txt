@@ -1,5 +1,7 @@
 === ATCOM Booking Engine ===
-Version: 0.7.4 (checkout, part 1: search and results)
+Version: 0.7.5 (checkout, part 1: search and results)
+
+New in 0.7.5: the real logo (from the theme) in the control panel and partner portal top bars.
 
 Also in 0.7.4: our vehicle photos (assets/vehicles/<slug>.webp, 1600x1000) on the results page and on the
 provider's Vehicles page; 6 limousine categories (Lincoln, Chrysler 300, Escalade, Suburban and Hummer H2 stretch

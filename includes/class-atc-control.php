@@ -16,6 +16,14 @@ final class ATC_Control {
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_render' ), 1 );
 	}
 
+	/** The site's logo (light words, for our dark top bars), or the orange mark if the theme has none. */
+	public static function logo(): string {
+		if ( function_exists( 'atc_logo' ) ) {
+			return '<span class="atc-logo-wrap">' . atc_logo( true ) . '</span>';
+		}
+		return '<svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><path d="M3 17 L38 3 L28 38 L21 23 Z" fill="#FBA53E"></path></svg>';
+	}
+
 	/** "Control panel" in the WordPress toolbar, for our team, on every wp-admin and site page. */
 	public static function admin_bar( WP_Admin_Bar $bar ): void {
 		if ( ! current_user_can( 'atc_manage' ) ) {
@@ -93,8 +101,8 @@ final class ATC_Control {
 <header class="atc-top">
 	<div class="atc-wrap atc-top-row">
 		<a class="atc-brand" href="<?php echo esc_url( home_url( '/control/' ) ); ?>">
-			<svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><path d="M3 17 L38 3 L28 38 L21 23 Z" fill="#FBA53E"></path></svg>
-			<span><strong>Control panel</strong><small>Airport Transportation · all sites</small></span>
+			<?php echo self::logo(); // phpcs:ignore -- built by the theme. ?>
+			<span><strong>Control panel</strong><small>All sites</small></span>
 		</a>
 		<form class="atc-search" role="search" action="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" method="get">
 			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
