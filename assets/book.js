@@ -246,6 +246,10 @@
     var f = function (n) { return det.elements[n]; };
     var starting = null;
 
+    // Country code: a searchable list built from the select (which stays the form field).
+    var ccSel = det.querySelector('select[name=phone_code]');
+    if (ccSel) countryPicker(ccSel);
+
     // Steppers for suitcases and carry-ons.
     det.querySelectorAll('[data-ab-step]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -391,5 +395,122 @@
         payBtn.textContent = label; canPay();
       });
     });
+  }
+
+  /* ---------- Policies in a pop-up, so the traveler stays on the payment page ---------- */
+  var dlg = null, lastLink = null, cache = {};
+  function policyDialog() {
+    if (dlg) return dlg;
+    dlg = document.createElement('dialog');
+    dlg.className = 'ab-dialog';
+    dlg.setAttribute('aria-labelledby', 'ab-dlg-title');
+    dlg.innerHTML = '<div class="ab-dlghead"><h2 id="ab-dlg-title"></h2><button type="button" class="ab-dlgx" aria-label="Close">✕</button></div><div class="ab-dlgbody" tabindex="0"></div><div class="ab-dlgfoot"><a target="_blank" rel="noopener">Open in a new tab ↗</a><button type="button" class="ab-btn is-dark">Close</button></div>';
+    dlg.querySelectorAll('.ab-dlgx, .ab-dlgfoot button').forEach(function (b) { b.addEventListener('click', function () { dlg.close(); }); });
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    dlg.addEventListener('close', function () { if (lastLink) lastLink.focus(); });
+    document.body.appendChild(dlg);
+    return dlg;
+  }
+  document.querySelectorAll('[data-ab-policy]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      if (!C.pages || !window.HTMLDialogElement || e.metaKey || e.ctrlKey || e.shiftKey) return; // new tab as usual
+      e.preventDefault();
+      lastLink = a;
+      var d = policyDialog(), slug = a.getAttribute('data-ab-policy');
+      var title = d.querySelector('h2'), body = d.querySelector('.ab-dlgbody');
+      title.textContent = a.textContent.charAt(0).toUpperCase() + a.textContent.slice(1);
+      d.querySelector('.ab-dlgfoot a').href = a.href;
+      body.textContent = 'Loading…';
+      d.showModal();
+      var p = cache[slug] || (cache[slug] = fetch(C.pages + (C.pages.indexOf('?') > -1 ? '&' : '?') + 'slug=' + encodeURIComponent(slug) + '&_fields=title,content').then(function (r) { return r.json(); }));
+      p.then(function (list) {
+        var page = list && list[0];
+        if (!page) throw new Error('none');
+        title.innerHTML = page.title.rendered; // our own page title
+        body.innerHTML = page.content.rendered; // our own page, written by our team
+        body.scrollTop = 0;
+      }).catch(function () {
+        delete cache[slug];
+        body.textContent = 'This page could not load here. ';
+        var l = document.createElement('a'); l.href = a.href; l.target = '_blank'; l.rel = 'noopener'; l.textContent = 'Open it in a new tab.';
+        body.appendChild(l);
+      });
+    });
+  });
+
+  /* ---------- Searchable country code ---------- */
+  function flag(iso) {
+    return iso && iso.length === 2 ? String.fromCodePoint(0x1F1E6 + iso.charCodeAt(0) - 65, 0x1F1E6 + iso.charCodeAt(1) - 65) : '';
+  }
+  function fold(t) { return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function countryPicker(sel) {
+    var rows = [];
+    Array.prototype.forEach.call(sel.options, function (o) {
+      var iso = o.value.split('|')[1] || '', code = o.value.split('|')[0];
+      var top = o.parentNode && o.parentNode.label === 'Most used';
+      var name = o.textContent.replace(/\s*\+\d+$/, '');
+      rows.push({ value: o.value, iso: iso, code: code, name: name, top: top, key: fold(name + ' ' + code + ' ' + code.replace('+', '') + ' ' + iso) });
+    });
+    var wrap = document.createElement('div'); wrap.className = 'ab-cc';
+    var uid = 'abcc' + Math.floor(Math.random() * 1e6);
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'ab-ccbtn'; btn.setAttribute('aria-haspopup', 'dialog'); btn.setAttribute('aria-expanded', 'false');
+    var pop = document.createElement('div'); pop.className = 'ab-ccpop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Country code');
+    var q = document.createElement('input'); q.type = 'search'; q.placeholder = 'Search a country or code'; q.setAttribute('aria-label', 'Search a country or code'); q.setAttribute('role', 'combobox'); q.setAttribute('aria-autocomplete', 'list'); q.setAttribute('aria-expanded', 'true'); q.setAttribute('aria-controls', uid); q.autocomplete = 'off';
+    var ul = document.createElement('ul'); ul.id = uid; ul.setAttribute('role', 'listbox'); ul.setAttribute('aria-label', 'Countries');
+    pop.appendChild(q); pop.appendChild(ul);
+    sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(btn); wrap.appendChild(pop); wrap.appendChild(sel);
+    sel.hidden = true; sel.tabIndex = -1;
+    var shown = [], active = -1;
+    function paint() {
+      var r = rows.find(function (x) { return x.value === sel.value; }) || rows[0];
+      btn.innerHTML = '';
+      var f = document.createElement('span'); f.className = 'ab-ccflag'; f.setAttribute('aria-hidden', 'true'); f.textContent = flag(r.iso);
+      var c = document.createElement('span'); c.textContent = r.code;
+      var v = document.createElement('span'); v.setAttribute('aria-hidden', 'true'); v.className = 'ab-ccv'; v.textContent = '▾';
+      btn.appendChild(f); btn.appendChild(c); btn.appendChild(v);
+      btn.setAttribute('aria-label', 'Country code: ' + r.name + ' ' + r.code + '. Change');
+    }
+    function list() {
+      var t = fold(q.value.trim());
+      var dup = {};
+      shown = t ? rows.filter(function (r) { if (dup[r.value] || r.key.indexOf(t) < 0) return false; dup[r.value] = true; return true; }) : rows;
+      // Names that start with what was typed come first.
+      if (t) shown.sort(function (a, b) { return (fold(a.name).indexOf(t) === 0 ? 0 : 1) - (fold(b.name).indexOf(t) === 0 ? 0 : 1); });
+      ul.innerHTML = ''; active = -1;
+      var lastTop = null;
+      shown.forEach(function (r, i) {
+        if (!t && lastTop === true && !r.top) { var sep = document.createElement('li'); sep.className = 'ab-ccsep'; sep.setAttribute('role', 'presentation'); sep.textContent = 'All countries'; ul.appendChild(sep); }
+        lastTop = r.top;
+        var li = document.createElement('li'); li.id = uid + '-' + i; li.setAttribute('role', 'option'); li.setAttribute('aria-selected', r.value === sel.value ? 'true' : 'false');
+        var f = document.createElement('span'); f.className = 'ab-ccflag'; f.setAttribute('aria-hidden', 'true'); f.textContent = flag(r.iso);
+        var n = document.createElement('span'); n.className = 'ab-ccname'; n.textContent = r.name;
+        var c = document.createElement('span'); c.className = 'ab-muted'; c.textContent = r.code;
+        li.appendChild(f); li.appendChild(n); li.appendChild(c);
+        li.addEventListener('mousedown', function (e) { e.preventDefault(); pick(r); });
+        ul.appendChild(li);
+      });
+      if (!shown.length) { var none = document.createElement('li'); none.className = 'ab-ccsep'; none.textContent = 'No country matches.'; ul.appendChild(none); }
+    }
+    function mark(i) {
+      var opts = ul.querySelectorAll('[role=option]'); if (!opts.length) return;
+      active = (i + opts.length) % opts.length;
+      opts.forEach(function (o, k) { o.classList.toggle('is-active', k === active); });
+      opts[active].scrollIntoView({ block: 'nearest' });
+      q.setAttribute('aria-activedescendant', opts[active].id);
+    }
+    function open() { pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); q.value = ''; list(); q.focus(); var on = ul.querySelector('[aria-selected=true]'); if (on) on.scrollIntoView({ block: 'center' }); }
+    function close(back) { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); q.removeAttribute('aria-activedescendant'); if (back) btn.focus(); }
+    function pick(r) { sel.value = r.value; sel.dispatchEvent(new Event('change', { bubbles: true })); paint(); close(true); }
+    btn.addEventListener('click', function () { if (pop.hidden) open(); else close(true); });
+    q.addEventListener('input', list);
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); mark(active + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mark(active - 1); }
+      else if (e.key === 'Enter') { e.preventDefault(); var r = shown[active > -1 ? active : 0]; if (r && (active > -1 || q.value.trim())) pick(r); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(true); }
+      else if (e.key === 'Tab') { close(false); }
+    });
+    document.addEventListener('mousedown', function (e) { if (!pop.hidden && !wrap.contains(e.target)) close(false); });
+    paint();
   }
 })();

@@ -94,6 +94,7 @@
     if (parts[0] === 'providers') return viewProviders();
     if (parts[0] === 'import') return viewImport();
     if (parts[0] === 'zones') return viewZones();
+    if (parts[0] === 'meeting') return viewMeeting();
     if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
     if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
@@ -400,6 +401,38 @@
       document.head.appendChild(s);
     });
     return state.mapReady;
+  }
+
+  /* ---------- Meeting your driver ---------- */
+
+  function viewMeeting() {
+    clear(app);
+    var boot = state.boot;
+    if (!boot) { add(app, h('p', { class: 'atc-muted', text: 'Loading…' })); return; }
+    if (!state.airportId && boot.airports.length) state.airportId = boot.airports[0].id;
+    var sel = h('select', { 'aria-label': 'Airport', onchange: function () { state.airportId = parseInt(this.value, 10); viewMeeting(); } },
+      boot.airports.map(function (a) { return h('option', { value: a.id, selected: a.id == state.airportId, text: a.iata ? a.city + ' (' + a.iata + ')' : a.name }); }));
+    var body = h('div', { class: 'atc-main', style: 'gap:18px' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, [
+      h('div', { class: 'atc-head' },
+        h('div', null, h('h1', { text: 'Meeting your driver' }), h('p', { class: 'atc-muted', text: 'What travelers see on their confirmation: how to find their driver at this airport. A provider can write their own for their bookings; otherwise travelers see ours.' })),
+        h('div', { class: 'atc-actions' }, h('label', { class: 'atc-inline' }, 'Airport', sel))),
+      body
+    ]);
+    api('GET', '/control/meeting?airport_id=' + state.airportId).then(function (d) {
+      clear(body);
+      add(body, h('section', { class: 'card pad' },
+        h('h2', { text: 'Our steps for this airport' }),
+        h('p', { class: 'small atc-muted', text: d.ours.length ? 'Shown to every traveler whose provider has not written their own.' : 'Nothing written yet: travelers see the general steps below until you save.' }),
+        window.ATCMeeting.editor({
+          sets: d.ours, startFrom: d.fallback, saveLabel: 'Save for this airport',
+          onSave: function (sets) { return api('POST', '/control/meeting', { airport_id: state.airportId, sets: sets }).then(function (r) { toast('Saved. Travelers see these steps from now on.'); return r; }).catch(function (e) { fail(e); throw e; }); }
+        })));
+      add(body, h('section', { class: 'card pad' },
+        h('h2', { text: 'Providers with their own steps' }),
+        d.providers.length ? d.providers.map(function (p) { return h('div', null, h('h3', { text: p.name }), window.ATCMeeting.preview(p.sets)); })
+          : h('p', { class: 'small atc-muted', text: 'None yet at this airport.' })));
+    }).catch(fail);
   }
 
   /* ---------- Zones and hotels ---------- */

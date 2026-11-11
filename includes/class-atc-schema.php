@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting',
 		);
 	}
 
@@ -410,6 +410,20 @@ final class ATC_Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY kind_airport_term (kind,airport_id,term),
   KEY last_at (last_at)
+) $c;";
+
+		// How travelers meet their driver at an airport: ours (party_id 0) or a provider's own, per terminal ('' = all).
+		$sql[] = "CREATE TABLE {$p}meeting (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  airport_id bigint(20) unsigned NOT NULL,
+  party_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  terminal varchar(60) NOT NULL DEFAULT '',
+  sort int(11) NOT NULL DEFAULT 0,
+  steps longtext NOT NULL,
+  updated_by bigint(20) unsigned NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY airport_party (airport_id,party_id)
 ) $c;";
 
 		// Traveler ratings of a provider after a completed trip (1-5). Stars show from 3 published reviews.

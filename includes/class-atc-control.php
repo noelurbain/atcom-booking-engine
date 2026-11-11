@@ -118,6 +118,7 @@ final class ATC_Control {
 		<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
 		<span class="off">Prices <i class="soon">soon</i></span>
 		<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
+		<a href="<?php echo esc_url( home_url( '/control/meeting/' ) ); ?>" data-view="meeting">Meeting your driver</a>
 		<span class="off">Payouts <i class="soon">soon</i></span>
 		<span class="off">Tickets <i class="soon">soon</i></span>
 		<a href="https://app.crisp.chat/" target="_blank" rel="noopener">Crisp inbox ↗</a>
@@ -134,6 +135,7 @@ final class ATC_Control {
 <div id="atc-toast" role="status" aria-live="polite"></div>
 <script>window.ATC = <?php echo wp_json_encode( $config ); ?>;</script>
 <script src="<?php echo esc_url( ATC_URL . 'assets/prices.js?v=' . rawurlencode( ATC_VERSION ) ); ?>"></script>
+<script src="<?php echo esc_url( ATC_URL . 'assets/meeting.js?v=' . rawurlencode( ATC_VERSION ) ); ?>"></script>
 <script src="<?php echo esc_url( $js ); ?>"></script>
 </body>
 </html>

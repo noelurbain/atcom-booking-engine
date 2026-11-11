@@ -188,6 +188,19 @@ final class ATC_REST_Portal {
 			return in_array( $want, $ids, true ) ? $want : (int) ( $ids[0] ?? 0 );
 		};
 		self::route(
+			'/meeting',
+			array(
+				'GET'  => static function ( WP_REST_Request $r ) use ( $airport ) {
+					$aid = $airport( $r );
+					return rest_ensure_response( array( 'airports' => ATC_Prices::airports_for( self::pid() ), 'airport_id' => $aid, 'mine' => ATC_Meeting::sets( $aid, self::pid() ), 'ours' => ATC_Meeting::for_booking( $aid, 0 )['sets'] ) );
+				},
+				'POST' => static function ( WP_REST_Request $r ) use ( $airport ) {
+					$res = ATC_Meeting::save( $airport( $r ), self::pid(), (array) ( self::body( $r )['sets'] ?? array() ) );
+					return self::out( $res );
+				},
+			)
+		);
+		self::route(
 			'/prices',
 			array(
 				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Prices::grid( self::pid(), $airport( $r ) ) ),

@@ -35,6 +35,7 @@ final class ATC_Book {
 			array(
 				'airports' => esc_url_raw( rest_url( 'atc/v1/airports/search' ) ),
 				'mapsKey'  => ATC_Settings::maps_browser_key(),
+				'pages'    => esc_url_raw( rest_url( 'wp/v2/pages' ) ),
 			)
 		);
 	}
@@ -678,7 +679,7 @@ final class ATC_Book {
 						echo $row( 'Lead traveler', esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . $b['email'] . ' · ' . $b['phone'] ), $edit ); // phpcs:ignore
 						echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $arr['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $arr['carry_ons'] ?? 0 ) . ' carry-ons' ), $edit ); // phpcs:ignore
 						?>
-						<label class="ab-check"><input type="checkbox" name="agree" required data-ab-agree> <span>I agree to the <a href="<?php echo esc_url( home_url( '/reservation-policies/' ) ); ?>" target="_blank" rel="noopener">reservation policies</a> and the <a href="<?php echo esc_url( get_privacy_policy_url() ?: home_url( '/privacy-policy/' ) ); ?>" target="_blank" rel="noopener">privacy policy</a>.</span></label>
+						<label class="ab-check"><input type="checkbox" name="agree" required data-ab-agree> <span>I agree to the <a href="<?php echo esc_url( home_url( '/reservation-policies/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="reservation-policies">reservation policies</a> and the <a href="<?php echo esc_url( home_url( '/privacy-policy/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="privacy-policy">privacy policy</a>.</span></label>
 						<div class="ab-alert" role="alert" hidden data-ab-error></div>
 						<button type="submit" class="ab-btn is-accent is-block ab-paybtn" data-ab-submit disabled>Pay <?php echo esc_html( self::money( (int) $b['total_cents'] ) ); ?> and book</button>
 						<p class="ab-muted ab-center">You get your confirmation by email right away.</p>
@@ -717,72 +718,107 @@ final class ATC_Book {
 		endif;
 		$cancelled = 'cancelled' === $b['status'];
 		$row       = static fn( $k, $v ) => '<div class="ab-rev"><span class="ab-k">' . esc_html( $k ) . '</span><span>' . $v . '</span></div>';
+		$aid       = (int) ( $snap['airport_id'] ?? 0 );
+		if ( ! $aid && ! empty( $snap['iata'] ) ) {
+			$found = ATC_Search::find_airport( (string) $snap['iata'] );
+			$aid   = $found ? (int) $found['id'] : 0;
+		}
+		$meet      = ATC_Meeting::for_booking( $aid, (int) ( $arr['party_id'] ?? 0 ) );
+		$where     = ( $snap['iata'] ?? '' ) ?: ( $snap['airport'] ?? '' );
+		$land      = $arr['flight_time'] ?? $first;
+		$until     = $first ? gmdate( 'Y-m-d H:i:s', strtotime( $first . ' UTC' ) - $free * HOUR_IN_SECONDS ) : null;
+		$can_free  = $until && strtotime( $until . ' UTC' ) > time();
 		?>
 		<section class="ab-wrap ab-main ab-confirm">
 			<div class="ab-col">
-				<div class="ab-hero">
-					<?php if ( $cancelled ) : ?>
+				<?php if ( $cancelled ) : ?>
+					<div class="ab-band is-off">
 						<h1 class="ab-h1">This booking is cancelled.</h1>
 						<p>Reservation <strong><?php echo esc_html( $b['number'] ); ?></strong> was cancelled.</p>
-					<?php else : ?>
-						<span class="ab-okmark" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></span>
-						<h1 class="ab-h1">You’re booked.</h1>
-						<p>Reservation <strong><?php echo esc_html( $b['number'] ); ?></strong> is confirmed. We sent the details to <strong><?php echo esc_html( $b['email'] ); ?></strong>.</p>
+					</div>
+				<?php else : ?>
+					<div class="ab-band">
+						<div class="ab-bandtop">
+							<span class="ab-okmark" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></span>
+							<div>
+								<span class="ab-pill">Confirmed</span>
+								<h1 class="ab-h1">You’re booked.</h1>
+							</div>
+						</div>
+						<p>Reservation <strong><?php echo esc_html( $b['number'] ); ?></strong> is confirmed. Your booking details go to <strong><?php echo esc_html( $b['email'] ); ?></strong>.</p>
 						<div class="ab-actions">
 							<a class="ab-btn is-line" href="<?php echo esc_url( add_query_arg( array( 'k' => $key, 'ics' => 1 ), home_url( '/reservation/' . $b['number'] . '/' ) ) ); ?>">Add to calendar</a>
 							<button type="button" class="ab-btn is-line" data-ab-print>Print voucher</button>
 						</div>
-					<?php endif; ?>
-				</div>
-
-				<?php if ( ! $cancelled ) : ?>
-				<section class="ab-card ab-pad ab-voucher" aria-labelledby="ab-h-v">
-					<h2 id="ab-h-v">Show this to your driver</h2>
-					<div class="ab-vrow">
-						<span><small class="ab-k">Reservation</small><strong class="ab-big"><?php echo esc_html( $b['number'] ); ?></strong><span class="ab-muted"><?php echo esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . ( (int) $b['adults'] + (int) $b['children'] ) . ' passengers · ' . ( $snap['vehicle'] ?? '' ) ); ?></span></span>
-						<span><small class="ab-k">Service code</small><strong class="ab-big ab-code"><?php echo esc_html( $b['service_code'] ); ?></strong><span class="ab-muted">Give it to your driver when the ride is done.</span></span>
 					</div>
-				</section>
+
+					<div class="ab-facts">
+						<div class="ab-fact is-key"><small class="ab-k"><?php echo $ret ? 'Arrival pickup' : 'Pickup'; ?></small><strong><?php echo esc_html( self::local( $land, $tz, 'D j M' ) ); ?></strong><span><?php echo esc_html( self::local( $land, $tz, 'H:i' ) ); ?> · on landing at <?php echo esc_html( $where ); ?></span></div>
+						<?php if ( $ret ) : ?>
+							<div class="ab-fact is-key"><small class="ab-k">Return pickup</small><strong><?php echo esc_html( self::local( $ret['pickup_at'], $tz, 'D j M' ) ); ?></strong><span><?php echo esc_html( self::local( $ret['pickup_at'], $tz, 'H:i' ) ); ?> · at your hotel</span></div>
+						<?php endif; ?>
+						<div class="ab-fact"><small class="ab-k">Vehicle</small><strong><?php echo esc_html( (string) ( $snap['vehicle'] ?? '' ) ); ?></strong><span>Private · <?php echo (int) $b['adults'] + (int) $b['children']; ?> passengers</span></div>
+						<div class="ab-fact"><small class="ab-k">Total paid</small><strong><?php echo esc_html( self::money( (int) $b['total_cents'] ) ); ?></strong><span><?php echo ! empty( $snap['card']['last4'] ) ? esc_html( ucfirst( (string) $snap['card']['brand'] ) . ' •••• ' . $snap['card']['last4'] ) : 'Paid'; ?></span></div>
+					</div>
+
+					<section class="ab-card ab-pad ab-voucher" aria-labelledby="ab-h-v">
+						<h2 id="ab-h-v">Show this to your driver</h2>
+						<div class="ab-vrow">
+							<span><small class="ab-k">Reservation</small><strong class="ab-big"><?php echo esc_html( $b['number'] ); ?></strong><span class="ab-muted"><?php echo esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . ( (int) $b['adults'] + (int) $b['children'] ) . ' passengers · ' . ( $snap['vehicle'] ?? '' ) ); ?></span></span>
+							<span class="ab-codebox"><small class="ab-k">Service code</small><strong class="ab-big ab-code"><?php echo esc_html( $b['service_code'] ); ?></strong><span>Give it to your driver when the ride is done.</span></span>
+						</div>
+					</section>
 				<?php endif; ?>
+
+				<section class="ab-card ab-pad ab-meetcard" aria-labelledby="ab-h-meet">
+					<h2 id="ab-h-meet">Meeting your driver at <?php echo esc_html( $where ); ?></h2>
+					<?php if ( count( $meet['sets'] ) > 1 ) : ?>
+						<p class="ab-muted">Your terminal is on your boarding pass or your airline’s app.</p>
+					<?php endif; ?>
+					<?php foreach ( $meet['sets'] as $set ) : ?>
+						<div class="ab-meetset">
+							<?php if ( '' !== $set['terminal'] ) : ?><h3><?php echo esc_html( $set['terminal'] ); ?></h3><?php endif; ?>
+							<ol class="ab-meet">
+								<?php foreach ( $set['steps'] as $st ) : ?>
+									<li><strong><?php echo esc_html( $st['title'] ); ?></strong><?php echo '' !== $st['text'] ? '<span>' . esc_html( $st['text'] ) . '</span>' : ''; ?></li>
+								<?php endforeach; ?>
+							</ol>
+						</div>
+					<?php endforeach; ?>
+				</section>
 
 				<section class="ab-card ab-pad" aria-labelledby="ab-h-trip">
 					<h2 id="ab-h-trip">Trip details</h2>
 					<?php
 					echo $row( 'Route', esc_html( ( $snap['iata'] ?? '' ) . ' ' . ( $snap['airport'] ?? '' ) . ' → ' . ( $arr['to_place'] ?? '' ) ) ); // phpcs:ignore
-					echo $row( 'Arrival', esc_html( self::local( $arr['flight_time'] ?? $first, $tz ) . ( ! empty( $arr['flight_number'] ) ? ' · ' . trim( $arr['flight_airline'] . ' ' . $arr['flight_number'] ) : ' · flight to be added in Manage booking' ) ) ); // phpcs:ignore
+					echo $row( 'Arrival', '<strong>' . esc_html( self::local( $land, $tz ) ) . '</strong>' . esc_html( ! empty( $arr['flight_number'] ) ? ' · ' . trim( $arr['flight_airline'] . ' ' . $arr['flight_number'] ) : ' · flight to be added in Manage booking' ) ); // phpcs:ignore
 					if ( $ret ) {
-						echo $row( 'Return', esc_html( 'Pickup ' . self::local( $ret['pickup_at'], $tz ) . ' at ' . $ret['from_place'] . ( ! empty( $ret['flight_number'] ) ? ' · ' . trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) : '' ) ) ); // phpcs:ignore
+						echo $row( 'Return', '<strong>Pickup ' . esc_html( self::local( $ret['pickup_at'], $tz ) ) . '</strong>' . esc_html( ' at ' . $ret['from_place'] . ( ! empty( $ret['flight_number'] ) ? ' · ' . trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) : '' ) ) ); // phpcs:ignore
 					}
-					echo $row( 'Vehicle', esc_html( ( $snap['vehicle'] ?? '' ) . ' · private' ) ); // phpcs:ignore
 					echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $arr['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $arr['carry_ons'] ?? 0 ) . ' carry-ons' ) ); // phpcs:ignore
-					if ( ! empty( $d['notes'] ) ) {
-						echo $row( 'Notes', esc_html( $d['notes'] ) ); // phpcs:ignore
+					if ( ! empty( $d['hotel_name'] ) ) {
+						echo $row( 'Hotel booking', esc_html( 'Under ' . $d['hotel_name'] ) ); // phpcs:ignore
 					}
-					echo $row( 'Total paid', esc_html( self::money( (int) $b['total_cents'] ) ) . ( ! empty( $snap['card']['last4'] ) ? ' · ' . esc_html( ucfirst( (string) $snap['card']['brand'] ) ) . ' •••• ' . esc_html( $snap['card']['last4'] ) : '' ) ); // phpcs:ignore
+					if ( ! empty( $d['notes'] ) ) {
+						echo $row( 'Notes for the driver', esc_html( $d['notes'] ) ); // phpcs:ignore
+					}
 					?>
-				</section>
-
-				<section class="ab-card ab-pad" aria-labelledby="ab-h-meet">
-					<h2 id="ab-h-meet">Meeting your driver at <?php echo esc_html( ( $snap['iata'] ?? '' ) ?: ( $snap['airport'] ?? '' ) ); ?></h2>
-					<ol class="ab-meet">
-						<li><strong>Clear immigration and customs</strong><span>Collect your bags. Your driver follows your flight, so there’s no rush.</span></li>
-						<li><strong>Walk all the way out of the terminal</strong><span>Ignore offers inside the building. Your driver waits outside arrivals.</span></li>
-						<li><strong>Look for your name</strong><span>Your driver holds a sign with your name.</span></li>
-					</ol>
 				</section>
 			</div>
 			<aside class="ab-side">
+				<?php if ( $can_free && ! $cancelled ) : ?>
+					<div class="ab-freecancel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg><span><strong>Free cancellation</strong> until <?php echo esc_html( self::local( $until, $tz ) ); ?></span></div>
+				<?php endif; ?>
 				<?php if ( $prov ) : ?>
-				<section class="ab-card ab-pad">
+				<section class="ab-card ab-pad ab-provcard">
 					<h2>Your provider</h2>
 					<p><strong><?php echo esc_html( $prov['name'] ); ?></strong><br><span class="ab-muted">Operates your transfer</span><?php echo ( (int) $prov['rating_count'] >= ATC_Search::MIN_REVIEWS && null !== $prov['rating_avg'] ) ? '<br>' . self::stars( (float) $prov['rating_avg'], (int) $prov['rating_count'] ) : ''; // phpcs:ignore ?></p>
-					<p class="ab-muted">Your provider’s phone and WhatsApp come in your confirmation email. To change your flight, hotel or time, use Manage booking so the change reaches them in writing.</p>
+					<p class="ab-muted">To change your flight, hotel or time, use Manage booking so the change reaches them in writing.</p>
 				</section>
 				<?php endif; ?>
 				<div class="ab-trust">
-					<?php if ( $first && ! $cancelled ) : ?><span>Free cancellation until <?php echo esc_html( self::local( gmdate( 'Y-m-d H:i:s', strtotime( $first . ' UTC' ) - $free * HOUR_IN_SECONDS ), $tz ) ); ?></span><?php endif; ?>
 					<span>Flight changed? Update it in Manage booking</span>
-					<span>Receipt sent to <?php echo esc_html( $b['email'] ); ?></span>
+					<span>Keep this page: its link opens your booking any time</span>
 				</div>
 			</aside>
 		</section>

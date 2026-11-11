@@ -72,6 +72,19 @@ final class ATC_REST_Control {
 				},
 			)
 		);
+		self::route(
+			'/meeting',
+			array(
+				'GET'  => static function ( WP_REST_Request $r ) {
+					$aid = (int) $r['airport_id'];
+					return rest_ensure_response( array( 'ours' => ATC_Meeting::sets( $aid, 0 ), 'fallback' => ATC_Meeting::fallback(), 'providers' => ATC_Meeting::providers( $aid ) ) );
+				},
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return self::out( ATC_Meeting::save( (int) ( $b['airport_id'] ?? 0 ), 0, (array) ( $b['sets'] ?? array() ) ) );
+				},
+			)
+		);
 		self::route( '/dashboard', array( 'GET' => static fn() => rest_ensure_response( ATC_Dashboard::data() ) ) );
 
 		self::route(

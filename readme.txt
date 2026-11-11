@@ -1,7 +1,16 @@
 === ATCOM Booking Engine ===
-Version: 0.8.0 (checkout, part 2: details, payment, confirmation)
+Version: 0.8.1 (checkout, part 2: details, payment, confirmation)
 
-New in 0.8.0:
+New in 0.8.1:
+- Mobile number: every country (242), searchable by name or code, with flags; the most used first.
+- Reservation policies and privacy policy open in a pop-up on the payment page (with "Open in a new tab").
+- Confirmation page with more color: green Confirmed band, pickup tiles, the service code in orange,
+  free cancellation in green.
+- Meeting your driver: our steps per airport (Control → Meeting your driver) and each provider's own steps per
+  airport (Portal → Meeting travelers), both optionally split by terminal. Travelers see the provider's steps,
+  else ours, else general ones.
+
+Also in 0.8.0:
 - Select on the results page goes straight to step 2 (Flight and details).
 - Step 2: contact (name, email, mobile with country code, WhatsApp), arrival flight (or "I don't have my flight
   yet"), drop-off with the name of the hotel reservation, return (hotel pickup, departure flight, suggested pickup

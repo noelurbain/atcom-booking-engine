@@ -150,6 +150,7 @@ final class ATC_Checkout {
 			'search'   => $q,
 			'site'     => wp_parse_url( home_url(), PHP_URL_HOST ),
 			'iata'     => $s['airport']['iata'],
+			'airport_id' => (int) $s['airport']['id'],
 			'timezone' => $s['airport']['timezone'],
 			'airport'  => $s['airport']['name'],
 			'to'       => $s['destination']['label'],

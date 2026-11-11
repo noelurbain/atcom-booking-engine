@@ -64,6 +64,7 @@
     ['vehicles', 'Vehicles', 'vehicles'],
     ['coverage', 'Zones you serve', 'coverage'],
     ['prices', 'Prices', null],
+    ['meeting', 'Meeting travelers', null],
     ['documents', 'Documents', 'documents'],
     ['payout', 'Payout details', 'payout'],
     ['agreement', 'Agreement', 'agreement'],
@@ -99,12 +100,40 @@
     nav();
     var p = path();
     clear(app);
-    ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices,
+    ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting,
        documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount }[p] || viewSetup)();
   }
 
   function head(title, sub) {
     return h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: title }), sub ? h('p', { class: 'atc-muted', text: sub }) : null));
+  }
+
+  /* ---------- Meeting travelers ---------- */
+
+  function viewMeeting(airportId) {
+    clear(app);
+    add(app, head('Meeting travelers', 'How your travelers find your driver at the airport. It shows on their confirmation. If you leave it, they see our general steps for the airport.'));
+    var body = h('div', { style: 'display:flex;flex-direction:column;gap:18px' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, body);
+    api('GET', '/meeting' + (airportId ? '?airport_id=' + airportId : '')).then(function (d) {
+      clear(body);
+      if (!d.airports.length) { add(body, h('p', { class: 'atc-muted', text: 'Add a vehicle at an airport first.' })); return; }
+      if (d.airports.length > 1) {
+        add(body, field('Airport', h('select', { onchange: function () { viewMeeting(parseInt(this.value, 10)); } },
+          d.airports.map(function (a) { return h('option', { value: a.id, selected: a.id === d.airport_id, text: a.label }); }))));
+      }
+      var own = d.mine.length > 0;
+      add(body, h('section', { class: 'card pad' },
+        h('h2', { text: own ? 'Your steps' : 'Write your own steps' }),
+        h('p', { class: 'small atc-muted', text: own ? 'Your travelers at this airport see these steps.' : 'Your travelers see our steps below for now. Start from them and change what is different for you: where your driver waits, what the sign looks like, which exit to use.' }),
+        window.ATCMeeting.editor({
+          sets: d.mine, startFrom: d.ours, saveLabel: 'Save my steps',
+          removeLabel: 'Use the airport’s steps instead',
+          onRemove: own ? function () { api('POST', '/meeting', { airport_id: d.airport_id, sets: [] }).then(function () { toast('Your travelers now see the airport’s steps.'); viewMeeting(d.airport_id); }).catch(fail); } : null,
+          onSave: function (sets) { return api('POST', '/meeting', { airport_id: d.airport_id, sets: sets }).then(function (r) { toast('Saved. Your travelers see these steps.'); return r; }).catch(function (e) { fail(e); throw e; }); }
+        })));
+      if (own) add(body, h('section', { class: 'card pad' }, h('h2', { text: 'The airport’s steps (ours)' }), window.ATCMeeting.preview(d.ours)));
+    }).catch(fail);
   }
 
   /* ---------- Setup (home) ---------- */
