@@ -36,7 +36,8 @@ $slug = static function ( string $raw ) {
 };
 check( 'Sedan', $slug( 'Sedan' ), 'standard-sedan' );
 check( 'Mercedes E class', $slug( 'Mercedes E-Class' ), 'executive-sedan' );
-check( 'Suburban', $slug( 'Chevrolet Suburban' ), 'standard-suv' );
+check( 'Suburban', $slug( 'Chevrolet Suburban' ), 'premium-suv' );
+check( 'Generic SUV', $slug( 'SUV 4 pax' ), 'standard-suv' );
 check( 'Escalade', $slug( 'Cadillac Escalade' ), 'luxury-suv' );
 check( 'Premium SUV', $slug( 'SUV Premium' ), 'premium-suv' );
 check( 'Toyota Hiace', $slug( 'Toyota Hiace (10 pax)' ), 'minibus' );

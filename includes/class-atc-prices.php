@@ -268,10 +268,11 @@ final class ATC_Prices {
 		} elseif ( $has( 'minivan|mini van|van|mpv|sienna|odyssey|alphard|vito|v class|v class|caravan|carnival|staria' ) ) {
 			$slug = 'minivan';
 		} elseif ( $has( 'suv' ) || $has( 'suburban|tahoe|yukon|escalade|navigator|expedition|range rover|x5|gls|q7' ) ) {
-			if ( $has( 'premium' ) ) {
-				$slug = 'premium-suv';
-			} elseif ( $has( 'luxury|lux|vip|escalade|navigator|range rover|black|executive|exec' ) ) {
+			// Luxury SUV = the top class (Escalade, Navigator); Premium SUV = Suburban, Tahoe, Yukon class.
+			if ( $has( 'luxury|lux|vip|escalade|navigator|range rover|gls|x7|black' ) ) {
 				$slug = 'luxury-suv';
+			} elseif ( $has( 'premium|suburban|tahoe|yukon|expedition|executive|exec' ) ) {
+				$slug = 'premium-suv';
 			} else {
 				$slug = 'standard-suv';
 			}

@@ -1,5 +1,10 @@
 === ATCOM Booking Engine ===
-Version: 0.7.3 (checkout, part 1: search and results)
+Version: 0.7.4 (checkout, part 1: search and results)
+
+New in 0.7.4: Luxury SUV is the top SUV class (Escalade, Navigator) and Premium SUV the one below (Suburban,
+Tahoe, Yukon); Premium now lists before Luxury. Providers who priced Premium above Luxury at an airport have
+their two SUV categories traded, prices included (Cancun Airport Transportation, Dual Amara and Liberty Destiny
+at SIN, Los Cabos Airport Transportation, Nextlevel at CPH). Price-list matching follows the same classes.
 
 New in 0.7.3:
 - Cancún Hotel Zone gets a full outline (Playa Linda bridge to Punta Nizuc, including Punta Cancún), replacing

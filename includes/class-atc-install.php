@@ -45,6 +45,9 @@ final class ATC_Install {
 				global $wpdb;
 				$wpdb->query( $wpdb->prepare( 'UPDATE ' . ATC_Schema::table( 'zones' ) . " SET polygon = %s WHERE slug = 'cancun-hotel-zone' AND polygon = %s", self::HOTEL_ZONE, self::HOTEL_ZONE_OLD ) ); // phpcs:ignore
 			}
+			if ( version_compare( $from, '10', '<' ) ) {
+				self::luxury_above_premium();
+			}
 			self::seed();
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
@@ -64,8 +67,9 @@ final class ATC_Install {
 			array( 'executive-sedan', 'Executive Sedan', 2, 2, 10 ),
 			array( 'standard-sedan', 'Standard Sedan', 2, 2, 20 ),
 			array( 'standard-suv', 'Standard SUV', 4, 4, 25 ),
-			array( 'luxury-suv', 'Luxury SUV', 5, 5, 30 ),
-			array( 'premium-suv', 'Premium SUV', 5, 5, 40 ),
+			// Luxury is the top SUV class (Escalade, Navigator); Premium sits below it (Suburban, Tahoe, Yukon).
+			array( 'premium-suv', 'Premium SUV', 5, 5, 30 ),
+			array( 'luxury-suv', 'Luxury SUV', 5, 5, 40 ),
 			array( 'minivan', 'Minivan', 6, 6, 50 ),
 			array( 'minibus', 'Minibus', 12, 12, 60 ),
 			array( 'mini-coach', 'Mini Coach', 25, 25, 70 ),
@@ -73,6 +77,52 @@ final class ATC_Install {
 			array( 'coach', 'Coach', 45, 45, 90 ),
 			array( 'large-coach', 'Large Coach', 55, 55, 100 ),
 		);
+	}
+
+	/**
+	 * Luxury SUV becomes the top SUV class, Premium SUV the one below. The old site had it the other way,
+	 * and some providers priced Premium above Luxury (Cancun Airport Transportation among them). For each
+	 * provider and airport where Premium costs more than Luxury, their two SUV categories trade places,
+	 * prices and all, so each vehicle lands in the right class. Providers who priced Luxury higher, or both
+	 * the same, already match and are left alone.
+	 */
+	private static function luxury_above_premium(): void {
+		global $wpdb;
+		$t   = ATC_Schema::table( 'vehicle_types' );
+		$s   = ATC_Schema::table( 'services' );
+		$p   = ATC_Schema::table( 'prices' );
+		$lux = (int) $wpdb->get_var( "SELECT id FROM {$t} WHERE slug = 'luxury-suv'" ); // phpcs:ignore
+		$pre = (int) $wpdb->get_var( "SELECT id FROM {$t} WHERE slug = 'premium-suv'" ); // phpcs:ignore
+		if ( ! $lux || ! $pre ) {
+			return;
+		}
+		$wpdb->update( $t, array( 'sort' => 30 ), array( 'id' => $pre ) );
+		$wpdb->update( $t, array( 'sort' => 40 ), array( 'id' => $lux ) );
+		$pairs = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT sl.id lux_id, sp.id pre_id, sl.party_id, sl.airport_id,
+					(SELECT AVG(retail_cents) FROM {$p} WHERE service_id = sl.id AND direction = 'one_way') lux_avg,
+					(SELECT AVG(retail_cents) FROM {$p} WHERE service_id = sp.id AND direction = 'one_way') pre_avg
+				FROM {$s} sl JOIN {$s} sp ON sp.party_id = sl.party_id AND sp.airport_id = sl.airport_id AND sp.vehicle_type_id = %d
+				WHERE sl.vehicle_type_id = %d",
+				$pre,
+				$lux
+			),
+			ARRAY_A
+		); // phpcs:ignore
+		$swapped = array();
+		foreach ( $pairs as $r ) {
+			if ( null === $r['lux_avg'] || null === $r['pre_avg'] || (float) $r['pre_avg'] <= (float) $r['lux_avg'] ) {
+				continue;
+			}
+			// Trade categories through a free id so the (provider, airport, category) key never clashes.
+			$wpdb->update( $s, array( 'vehicle_type_id' => 0 ), array( 'id' => (int) $r['lux_id'] ) );
+			$wpdb->update( $s, array( 'vehicle_type_id' => $lux ), array( 'id' => (int) $r['pre_id'] ) );
+			$wpdb->update( $s, array( 'vehicle_type_id' => $pre ), array( 'id' => (int) $r['lux_id'] ) );
+			$wpdb->query( $wpdb->prepare( 'UPDATE ' . ATC_Schema::table( 'aliases' ) . " SET target_id = IF(target_id = %d, %d, %d) WHERE party_id = %d AND kind = 'vehicle' AND target_id IN (%d, %d)", $lux, $pre, $lux, (int) $r['party_id'], $lux, $pre ) ); // phpcs:ignore
+			$swapped[] = array( (int) $r['party_id'], (int) $r['airport_id'] );
+		}
+		self::log( 'vehicle_types', $lux, 'luxury_above_premium', array( 'swapped' => $swapped ) );
 	}
 
 	public static function seed(): void {
