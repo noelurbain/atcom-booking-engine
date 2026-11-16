@@ -344,7 +344,7 @@ final class ATC_Book {
 							<div class="ab-price">
 								<small><?php echo $round ? 'Round trip, total' : 'One way, total'; ?></small>
 								<strong><?php echo esc_html( self::money( $o['retail'] ) ); ?></strong>
-								<a class="ab-btn <?php echo 0 === $i ? 'is-accent' : 'is-dark'; ?>" href="<?php echo esc_url( $next ); ?>" data-ab-select>Select</a>
+								<a class="ab-btn is-accent" href="<?php echo esc_url( $next ); ?>" data-ab-select>Select</a>
 							</div>
 						</article>
 						<?php

@@ -1,7 +1,10 @@
 === ATCOM Booking Engine ===
-Version: 0.10.1 (provider bookings)
+Version: 0.10.2 (provider bookings)
 
-New in 0.10.1: hotel and address suggestions reach 600 km from the airport.
+New in 0.10.2: Control → Meeting your driver loads and saves again (it called a wrong address); every Select
+button on the results page is the same orange.
+
+Also in 0.10.1: hotel and address suggestions reach 600 km from the airport.
 
 Also in 0.10.0:
 - Portal → Bookings: every ride the provider operates, filtered by To confirm, Next 24 h, Upcoming, Past and

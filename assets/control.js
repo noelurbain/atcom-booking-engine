@@ -419,14 +419,14 @@
         h('div', { class: 'atc-actions' }, h('label', { class: 'atc-inline' }, 'Airport', sel))),
       body
     ]);
-    api('GET', '/control/meeting?airport_id=' + state.airportId).then(function (d) {
+    api('GET', '/meeting?airport_id=' + state.airportId).then(function (d) {
       clear(body);
       add(body, h('section', { class: 'card pad' },
         h('h2', { text: 'Our steps for this airport' }),
         h('p', { class: 'small atc-muted', text: d.ours.length ? 'Shown to every traveler whose provider has not written their own.' : 'Nothing written yet: travelers see the general steps below until you save.' }),
         window.ATCMeeting.editor({
           sets: d.ours, startFrom: d.fallback, saveLabel: 'Save for this airport',
-          onSave: function (sets) { return api('POST', '/control/meeting', { airport_id: state.airportId, sets: sets }).then(function (r) { toast('Saved. Travelers see these steps from now on.'); return r; }).catch(function (e) { fail(e); throw e; }); }
+          onSave: function (sets) { return api('POST', '/meeting', { airport_id: state.airportId, sets: sets }).then(function (r) { toast('Saved. Travelers see these steps from now on.'); return r; }).catch(function (e) { fail(e); throw e; }); }
         })));
       add(body, h('section', { class: 'card pad' },
         h('h2', { text: 'Providers with their own steps' }),
