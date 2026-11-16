@@ -195,7 +195,11 @@ final class ATC_Manage {
 			if ( is_wp_error( $r ) ) {
 				return new WP_Error( 'atc_refund', 'We could not refund the payment just now. Nothing was cancelled; please try again in a few minutes.', array( 'status' => 502 ) );
 			}
-			$refund = (int) ( $r['amount'] ?? 0 );
+			$refund                = (int) ( $r['amount'] ?? 0 );
+			$b['snap']['refunded'] = (int) ( $b['snap']['refunded'] ?? 0 ) + $refund;
+			ATC_Checkout::snapshot( (int) $b['id'], $b['snap'] );
+			global $wpdb;
+			$wpdb->insert( self::t( 'ledger' ), array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'refund', 'amount_cents' => -$refund, 'currency' => 'USD', 'status' => 'paid', 'note' => 'Cancelled by the traveler', 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		}
 		self::cancelled( $b, 'Cancelled by the traveler', $refund );
 		return array( 'cancelled' => true, 'refund' => $refund );

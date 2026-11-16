@@ -62,6 +62,34 @@ final class ATC_REST_Control {
 			'/bookings/(?P<number>[A-Za-z0-9]+)/notes',
 			array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Bookings::add_note( (string) $r['number'], (string) ( self::body( $r )['text'] ?? '' ) ) ) )
 		);
+		// Team actions on a booking.
+		$bk = static fn( string $action, callable $fn ) => self::route( '/bookings/(?P<number>[A-Za-z0-9]+)/' . $action, array( 'POST' => static fn( WP_REST_Request $r ) => self::out( $fn( (string) $r['number'], self::body( $r ) ) ) ) );
+		$bk( 'reassign', static fn( $n, $b ) => ATC_Ops::reassign( $n, (int) ( $b['leg'] ?? 0 ), (int) ( $b['service_id'] ?? 0 ), (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['tell'] ) ) );
+		$bk( 'noshow', static fn( $n, $b ) => ATC_Ops::no_show_decision( $n, (int) ( $b['leg'] ?? 0 ), ! empty( $b['pay'] ), (string) ( $b['note'] ?? '' ) ) );
+		$bk( 'unlock', static fn( $n, $b ) => ATC_Ops::unlock_code( $n ) );
+		$bk( 'refund', static fn( $n, $b ) => ATC_Ops::refund( $n, (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['cancel'] ), mb_substr( sanitize_text_field( (string) ( $b['reason'] ?? '' ) ), 0, 200 ) ) );
+		$bk( 'resend', static fn( $n, $b ) => ATC_Ops::resend( $n ) );
+
+		// Payouts.
+		self::route( '/payouts', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Payouts::run( (string) $r['period'] ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Payouts::approve( (string) ( self::body( $r )['period'] ?? '' ) ) ) ) );
+		self::route( '/payouts/(?P<id>\\d+)/paid', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Payouts::mark_paid( (int) $r['id'], (string) ( self::body( $r )['reference'] ?? '' ) ) ) ) );
+		self::route( '/payouts/(?P<id>\\d+)/lines', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Payouts::lines( (int) $r['id'] ) ) ) );
+		self::route(
+			'/payouts/list',
+			array(
+				'GET' => static function ( WP_REST_Request $r ) {
+					if ( ! current_user_can( 'atc_settings' ) ) {
+						return new WP_Error( 'atc_forbidden', 'Only admins can download bank details.', array( 'status' => 403 ) );
+					}
+					return rest_ensure_response( ATC_Payouts::payment_list( (string) $r['period'] ) );
+				},
+			)
+		);
+
+		// Airports.
+		self::route( '/airports', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Airports::list( (string) $r['q'] ) ) ) );
+		self::route( '/airports/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Airports::save( (int) $r['id'], self::body( $r ) ) ) ) );
+
 		self::route(
 			'/demand/(?P<id>\\d+)',
 			array(

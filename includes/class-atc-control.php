@@ -118,8 +118,9 @@ final class ATC_Control {
 		<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
 		<span class="off">Prices <i class="soon">soon</i></span>
 		<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
+		<a href="<?php echo esc_url( home_url( '/control/airports/' ) ); ?>" data-view="airports">Airports</a>
 		<a href="<?php echo esc_url( home_url( '/control/meeting/' ) ); ?>" data-view="meeting">Meeting your driver</a>
-		<span class="off">Payouts <i class="soon">soon</i></span>
+		<a href="<?php echo esc_url( home_url( '/control/payouts/' ) ); ?>" data-view="payouts">Payouts</a>
 		<span class="off">Tickets <i class="soon">soon</i></span>
 		<a href="https://app.crisp.chat/" target="_blank" rel="noopener">Crisp inbox ↗</a>
 		<?php if ( current_user_can( 'atc_settings' ) ) : ?>

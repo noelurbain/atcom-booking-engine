@@ -95,6 +95,8 @@
     if (parts[0] === 'import') return viewImport();
     if (parts[0] === 'zones') return viewZones();
     if (parts[0] === 'meeting') return viewMeeting();
+    if (parts[0] === 'payouts') return viewPayouts();
+    if (parts[0] === 'airports') return viewAirports();
     if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
     if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
@@ -160,6 +162,84 @@
     return h('div', null, h('div', { class: 'small atc-muted strong', text: label }), h('div', { class: 'strong kv-v' }, value === null || value === undefined || value === '' ? '–' : value));
   }
 
+  /* Team actions on a booking: resend, refund or cancel, service code. */
+  function bookingActions(b, number, draw) {
+    var a = b.actions || {};
+    var box = h('div', { class: 'bk-actions' });
+    var panel = h('div', { class: 'card pad', hidden: true, style: 'gap:10px;margin-top:10px' });
+    var resend = a.can_resend ? h('button', { type: 'button', class: 'btn', text: 'Resend confirmation', onclick: function () {
+      resend.disabled = true;
+      api('POST', '/bookings/' + number + '/resend').then(function (nb) { toast('Confirmation sent again to ' + nb.traveler.email + '.'); }).catch(fail).then(function () { resend.disabled = false; });
+    } }) : null;
+    var refundBtn = a.refund_left > 0 || a.can_cancel ? h('button', { type: 'button', class: 'btn', text: 'Refund or cancel', onclick: function () { panel.hidden = !panel.hidden; } }) : null;
+    if (refundBtn) {
+      var amt = h('input', { type: 'number', min: 0, step: '0.01', max: (a.refund_left / 100).toFixed(2), value: (a.refund_left / 100).toFixed(2), style: 'max-width:160px' });
+      var cancel = h('input', { type: 'checkbox', checked: true });
+      var reason = h('input', { type: 'text', placeholder: 'Reason (the traveler does not see it)' });
+      var go = h('button', { type: 'button', class: 'btn danger', text: 'Refund' });
+      function label() { var v = +amt.value || 0; go.textContent = (cancel.checked ? 'Cancel booking' + (v ? ' and refund ' : '') : 'Refund ') + (v ? cash(Math.round(v * 100)) : ''); }
+      amt.addEventListener('input', label); cancel.addEventListener('change', label); label();
+      go.addEventListener('click', function () {
+        go.disabled = true;
+        api('POST', '/bookings/' + number + '/refund', { amount: amt.value, cancel: cancel.checked ? 1 : 0, reason: reason.value }).then(function (nb) { toast(cancel.checked ? 'Booking cancelled. Traveler and provider emailed.' : 'Refund sent. The traveler got an email.'); draw(nb); }).catch(function (e) { go.disabled = false; fail(e); });
+      });
+      add(panel, [
+        h('strong', { text: 'Refund or cancel' }),
+        h('span', { class: 'small atc-muted', text: a.refund_left > 0 ? 'Up to ' + cash(a.refund_left) + ' can go back to the traveler’s card (Stripe).' : 'Nothing left to refund through Stripe.' }),
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Refund (USD)' }), amt), h('label', { class: 'field' }, h('span', { text: 'Reason' }), reason)),
+        a.can_cancel ? h('label', { class: 'atc-inline' }, cancel, ' Also cancel the booking (rides and provider pay are cancelled; traveler and provider are emailed)') : null,
+        h('div', null, go)
+      ]);
+      if (!a.can_cancel) { cancel.checked = false; label(); }
+    }
+    var code = a.service_code ? h('span', { class: 'small atc-muted', text: 'Service code ' + a.service_code + (a.code_tries ? ' · ' + a.code_tries + ' wrong tries' : '') }) : null;
+    var unlock = a.code_locked ? h('button', { type: 'button', class: 'btn', text: 'Unlock service code', onclick: function () {
+      unlock.disabled = true; api('POST', '/bookings/' + number + '/unlock').then(function (nb) { toast('Unlocked: the provider can try the code again.'); draw(nb); }).catch(fail);
+    } }) : null;
+    add(box, [h('div', { class: 'atc-actions' }, resend, refundBtn, unlock, code), panel]);
+    return box;
+  }
+
+  function reassignBox(l, number, draw) {
+    var wrap = h('div');
+    var open = h('button', { type: 'button', class: l.status === 'released' ? 'btn dark' : 'link', text: l.status === 'released' ? 'Give this ride to another provider' : 'Change provider', onclick: function () { form.hidden = !form.hidden; } });
+    var sel = h('select', null, h('option', { value: '', text: l.candidates.length ? 'Choose a provider' : 'No provider covers this zone' }), l.candidates.map(function (c) {
+      return h('option', { value: c.service_id, 'data-amount': c.suggested === null ? '' : (c.suggested / 100).toFixed(2), text: c.label + (c.suggested === null ? ' · no price for this zone' : ' · gets ' + cash(c.suggested)) + (c.current ? ' (now)' : '') });
+    }));
+    var amt = h('input', { type: 'number', min: 0, step: '0.01', placeholder: '0.00', style: 'max-width:140px' });
+    sel.addEventListener('change', function () { var o = sel.options[sel.selectedIndex]; if (o && o.getAttribute('data-amount')) amt.value = o.getAttribute('data-amount'); });
+    var tell = h('input', { type: 'checkbox', checked: true });
+    var save = h('button', { type: 'button', class: 'btn dark', text: 'Give the ride', onclick: function () {
+      if (!sel.value) { toast('Choose a provider first.', true); return; }
+      save.disabled = true;
+      api('POST', '/bookings/' + number + '/reassign', { leg: l.id, service_id: sel.value, amount: amt.value, tell: tell.checked ? 1 : 0 }).then(function (nb) { toast('Done. The new provider got the booking by email.'); draw(nb); }).catch(function (e) { save.disabled = false; fail(e); });
+    } });
+    var form = h('div', { class: 'card pad', hidden: true, style: 'gap:10px' },
+      h('strong', { text: 'Give this ride to' }),
+      h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Provider and vehicle' }), sel), h('label', { class: 'field' }, h('span', { text: 'They get (USD)' }), amt)),
+      h('label', { class: 'atc-inline' }, tell, ' Tell the traveler (email with the new provider)'),
+      h('span', { class: 'small atc-muted', text: 'The current provider is told the ride is no longer theirs. The traveler’s price does not change; our share adjusts.' }),
+      h('div', null, save));
+    if (l.status === 'released') add(wrap, h('p', { class: 'chip red', text: 'Handed back by the provider: needs a new one' }));
+    add(wrap, [h('div', null, open), form]);
+    return wrap;
+  }
+
+  function noShowBox(l, number, draw) {
+    var note = h('input', { type: 'text', placeholder: 'Why (optional, for our records)' });
+    function decide(pay) {
+      return function (e) {
+        e.target.disabled = true;
+        api('POST', '/bookings/' + number + '/noshow', { leg: l.id, pay: pay ? 1 : 0, note: note.value }).then(function (nb) { toast(pay ? 'Accepted: the provider is paid.' : 'Rejected: the provider is not paid for this ride.'); draw(nb); }).catch(function (x) { e.target.disabled = false; fail(x); });
+      };
+    }
+    return h('div', { class: 'card warn pad', style: 'gap:8px' },
+      h('strong', { text: 'No-show reported by the provider' }),
+      h('span', { class: 'small atc-muted', text: 'Read their note in “What happened”. Accepting pays them; rejecting does not. To refund the traveler, use Refund or cancel.' }),
+      note,
+      h('div', { class: 'atc-actions' }, h('button', { type: 'button', class: 'btn dark', text: 'Accept: pay the provider', onclick: decide(true) }), h('button', { type: 'button', class: 'btn', text: 'Reject: don’t pay', onclick: decide(false) })));
+  }
+
   function viewBooking(number) {
     clear(app);
     add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
@@ -177,7 +257,7 @@
           h('div', null,
             h('div', { class: 'atc-actions' }, h('h1', { text: b.number }), h('span', { class: 'chip ' + b.tone, text: b.status }), b.legacy ? h('span', { class: 'chip grey', text: 'From the old site' }) : null),
             h('p', { class: 'atc-muted', text: [b.traveler.name || null, 'booked ' + b.booked, b.source.site || null, (b.lang || '').toUpperCase()].filter(Boolean).join(' · ') })),
-          h('p', { class: 'small atc-muted', text: b.legacy ? 'This trip is run from the old site: change the provider, the trip or refunds there.' : 'Changing the provider, editing the trip, refunds and resending the voucher come with checkout.' })),
+          b.legacy ? h('p', { class: 'small atc-muted', text: 'This trip is run from the old site: change the provider, the trip or refunds there.' }) : bookingActions(b, number, draw)),
         h('div', { class: 'pe-split' },
           h('div', { class: 'pe-left' },
             b.legs.map(function (l, i) {
@@ -190,7 +270,9 @@
                   kv('Vehicle and party', [l.vehicle, (b.pax.adults + b.pax.children) + ' passengers', l.bags ? l.bags + ' bags' : null].filter(Boolean).join(' · ')),
                   kv('Provider', l.party_id ? h('a', { href: C.base + 'providers/' + l.party_id + '/', 'data-go': 'providers/' + l.party_id, text: l.provider }) : h('span', { class: 'chip red', text: 'Nobody yet' })),
                   kv('Flight', l.flight || null)),
-                l.notes ? h('p', { class: 'note', text: 'Note from the traveler: ' + l.notes }) : null);
+                l.notes ? h('p', { class: 'note', text: 'Note from the traveler: ' + l.notes }) : null,
+                l.noshow_open ? noShowBox(l, number, draw) : null,
+                l.can_reassign ? reassignBox(l, number, draw) : null);
             }),
             h('section', { class: 'card pad' },
               h('h2', { text: 'Traveler' }),
@@ -401,6 +483,115 @@
       document.head.appendChild(s);
     });
     return state.mapReady;
+  }
+
+  /* ---------- Payouts ---------- */
+
+  var payoutPeriod = '';
+  function viewPayouts() {
+    clear(app);
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/payouts' + (payoutPeriod ? '?period=' + payoutPeriod : '')).then(function draw(d) {
+      clear(app);
+      payoutPeriod = d.period;
+      var sel = h('select', { 'aria-label': 'Month', onchange: function () { payoutPeriod = this.value; viewPayouts(); } }, d.periods.map(function (p) { return h('option', { value: p.value, selected: p.value === d.period, text: p.label }); }));
+      var approve = h('button', { type: 'button', class: 'btn dark', text: 'Approve run', disabled: !d.can_approve, onclick: function () {
+        approve.disabled = true;
+        api('POST', '/payouts', { period: d.period }).then(function (nd) { toast('Approved. Download the payment list and pay.'); draw(nd); }).catch(function (e) { approve.disabled = false; fail(e); });
+      } });
+      var csv = h('button', { type: 'button', class: 'btn', text: 'Download payment list (CSV)', onclick: function () {
+        api('GET', '/payouts/list?period=' + d.period).then(function (rows) {
+          if (!rows.length) { toast('Nothing approved and unpaid for this month.', true); return; }
+          var cols = ['payout', 'provider', 'method', 'holder', 'bank', 'account', 'email', 'amount', 'currency', 'concept'];
+          var q = function (v) { v = String(v === null || v === undefined ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+          var text = [cols.join(',')].concat(rows.map(function (r) { return cols.map(function (c) { return q(r[c]); }).join(','); })).join('\n');
+          var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' })); a.download = 'payouts-' + d.period + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+        }).catch(fail);
+      } });
+      var t = d.totals;
+      add(app, [
+        h('div', { class: 'atc-head' },
+          h('div', null, h('h1', { text: 'Payout run · ' + d.pay_date }), h('p', { class: 'atc-muted', text: 'Rides completed up to ' + d.label + '. Balances under ' + cash(d.minimum) + ' roll over to the next month.' })),
+          h('div', { class: 'atc-actions' }, h('label', { class: 'atc-inline' }, 'Month', sel), csv, approve)),
+        h('ol', { class: 'steps-mini' }, h('li', null, h('strong', { text: '1 · Review and approve' })), h('li', null, h('strong', { text: '2 · Pay from the list (bank or Wise)' })), h('li', null, h('strong', { text: '3 · Mark paid: the provider gets a statement' }))),
+        h('div', { class: 'stats' },
+          h('div', { class: 'stat' }, h('span', { text: 'To pay' }), h('strong', { text: cash(t.pay) })),
+          h('div', { class: 'stat' }, h('span', { text: 'Paid' }), h('strong', { text: cash(t.paid) })),
+          h('div', { class: 'stat' }, h('span', { text: 'Held (no-shows to decide)' }), h('strong', { text: cash(t.held) })),
+          h('div', { class: 'stat' }, h('span', { text: 'Rolled over' }), h('strong', { text: cash(t.rolled) }))),
+        h('section', { class: 'card' }, d.rows.length ? h('div', { class: 'scroll' }, h('table', null,
+          h('thead', null, h('tr', null, ['Provider', 'Country', 'Method', 'Rides', 'Held', 'To pay', 'Status', ''].map(function (x) { return h('th', { scope: 'col', text: x }); }))),
+          h('tbody', null, d.rows.map(function (r) {
+            var ref = h('input', { type: 'text', placeholder: 'Bank reference', style: 'max-width:150px' });
+            var paid = r.payout_id && r.status !== 'Paid' ? h('div', { class: 'atc-actions', style: 'flex-wrap:nowrap' }, ref, h('button', { type: 'button', class: 'btn', text: 'Mark paid', onclick: function (e) {
+              e.target.disabled = true;
+              api('POST', '/payouts/' + r.payout_id + '/paid', { reference: ref.value }).then(function (nd) { toast('Marked paid. Statement emailed.'); draw(nd); }).catch(function (x) { e.target.disabled = false; fail(x); });
+            } })) : (r.reference ? h('span', { class: 'small atc-muted', text: r.paid_at + ' · ' + r.reference }) : null);
+            var lines = r.payout_id ? h('button', { type: 'button', class: 'link', text: 'Rides', onclick: function () {
+              api('GET', '/payouts/' + r.payout_id + '/lines').then(function (ls) {
+                var tr = h('tr', null, h('td', { colspan: 8 }, h('table', { class: 'bare' }, h('tbody', null, ls.map(function (x) { return h('tr', null, h('th', { scope: 'row', text: x.date + ' · ' + x.number + ' · ' + x.direction + (x.how ? ' · ' + x.how : '') }), h('td', { text: cash(x.amount) })); })))));
+                row.parentNode.insertBefore(tr, row.nextSibling); lines.remove();
+              }).catch(fail);
+            } }) : null;
+            var row = h('tr', null,
+              h('td', null, h('a', { class: 'strong', href: C.base + 'providers/' + r.party_id + '/', 'data-go': 'providers/' + r.party_id, text: r.name }), lines ? h('div', null, lines) : null),
+              h('td', { text: r.country || '–' }), h('td', { text: r.method || '–' }), h('td', { text: String(r.trips) }),
+              h('td', { text: r.held ? cash(r.held) : '–' }), h('td', { class: 'strong', text: cash(r.to_pay) }),
+              h('td', null, h('span', { class: 'chip ' + r.tone, text: r.status })), h('td', null, paid));
+            return row;
+          })))) : h('p', { class: 'atc-muted', style: 'padding:18px', text: 'No completed rides to pay for this month yet.' })),
+        h('p', { class: 'small atc-muted', text: 'Stripe Connect can only pay accounts in the US, UK, EEA, Canada and Switzerland, so Mexican providers are paid from the payment list. Only admins can download it: it has full account numbers.' })
+      ]);
+    }).catch(fail);
+  }
+
+  /* ---------- Airports ---------- */
+
+  function viewAirports() {
+    clear(app);
+    var search = h('input', { type: 'search', placeholder: 'Find by code, name, city or country', 'aria-label': 'Find an airport', style: 'max-width:320px' });
+    var body = h('section', { class: 'card' }, h('p', { class: 'atc-muted', style: 'padding:18px', text: 'Loading…' }));
+    add(app, [h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Airports' }), h('p', { class: 'atc-muted', text: 'Airports added from Google come without a code. Fix the code, city or time zone here: pickup times and emails use the time zone.' })), search), body]);
+    var tzs = [], timer;
+    function load() {
+      api('GET', '/airports?q=' + encodeURIComponent(search.value.trim())).then(function (d) {
+        tzs = d.timezones; clear(body);
+        if (!d.airports.length) { add(body, h('p', { class: 'atc-muted', style: 'padding:18px', text: 'No airport matches.' })); return; }
+        add(body, h('div', { class: 'scroll' }, h('table', null,
+          h('thead', null, h('tr', null, ['Code', 'Airport', 'City', 'Country', 'Time zone', 'Zones', 'Providers', ''].map(function (x) { return h('th', { scope: 'col', text: x }); }))),
+          h('tbody', null, d.airports.map(row)))));
+      }).catch(fail);
+    }
+    function row(a) {
+      var tr = h('tr', null,
+        h('td', null, a.iata ? h('strong', { text: a.iata }) : h('span', { class: 'chip red', text: 'No code' })),
+        h('td', { text: a.name }), h('td', { text: a.city }), h('td', { text: a.country }), h('td', { text: a.timezone }),
+        h('td', { text: String(a.zones) }), h('td', { text: String(a.providers) }),
+        h('td', null, h('button', { type: 'button', class: 'btn', text: 'Edit', onclick: function () { tr.replaceWith(editor(a, tr)); } })));
+      return tr;
+    }
+    function editor(a, old) {
+      var f = {
+        iata: h('input', { type: 'text', value: a.iata || '', maxlength: 3, style: 'max-width:80px;text-transform:uppercase' }),
+        name: h('input', { type: 'text', value: a.name }), city: h('input', { type: 'text', value: a.city }),
+        country: h('input', { type: 'text', value: a.country, maxlength: 2, style: 'max-width:60px;text-transform:uppercase' }),
+        timezone: h('select', null, tzs.map(function (z) { return h('option', { value: z, selected: z === a.timezone, text: z }); })),
+        lat: h('input', { type: 'number', step: 'any', value: a.lat === null ? '' : a.lat }), lng: h('input', { type: 'number', step: 'any', value: a.lng === null ? '' : a.lng }),
+        status: h('select', null, h('option', { value: 'active', selected: a.status !== 'hidden', text: 'Active' }), h('option', { value: 'hidden', selected: a.status === 'hidden', text: 'Hidden from travelers' }))
+      };
+      var tr = h('tr', null, h('td', { colspan: 8 }, h('div', { class: 'card pad', style: 'gap:10px' },
+        h('div', { class: 'grid3' }, field('IATA code', f.iata), field('Name', f.name), field('City', f.city), field('Country (2 letters)', f.country), field('Time zone', f.timezone), field('Shown to travelers', f.status), field('Latitude', f.lat), field('Longitude', f.lng)),
+        h('div', { class: 'atc-actions' },
+          h('button', { type: 'button', class: 'btn dark', text: 'Save', onclick: function (e) {
+            e.target.disabled = true;
+            var body = {}; Object.keys(f).forEach(function (k) { body[k] = f[k].value; });
+            api('POST', '/airports/' + a.id, body).then(function (na) { toast('Airport saved.'); tr.replaceWith(row(na.id ? na : a)); }).catch(function (x) { e.target.disabled = false; fail(x); });
+          } }),
+          h('button', { type: 'button', class: 'btn', text: 'Cancel', onclick: function () { tr.replaceWith(old); } })))));
+      return tr;
+    }
+    search.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(load, 250); });
+    load();
   }
 
   /* ---------- Meeting your driver ---------- */

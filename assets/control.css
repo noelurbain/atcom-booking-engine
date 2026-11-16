@@ -191,3 +191,10 @@ ol.timeline li{display:grid;grid-template-columns:150px 1fr;gap:12px}
 .atc-logo-wrap{display:flex;padding-right:14px;border-right:1px solid rgba(255,255,255,.18)}
 .atc-logo-wrap svg{width:122px;height:40px}
 @media (max-width:560px){.atc-logo-wrap svg{width:98px;height:32px}.atc-brand small{display:none}}
+
+/* booking actions, payouts, airports */
+.atc-main [hidden]{display:none !important}
+.bk-actions{flex:1 1 100%}
+.steps-mini{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;font-size:13px}
+.steps-mini li{background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px}
+.atc-inline input[type=checkbox]{width:18px;height:18px;accent-color:var(--ink)}

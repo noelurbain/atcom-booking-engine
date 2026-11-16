@@ -215,7 +215,7 @@ final class ATC_Mail {
 	/* ---------- The emails ---------- */
 
 	/** Paid: the traveler's confirmation, the provider's new booking, a copy for us. */
-	public static function booking_confirmed( int $booking_id ): void {
+	public static function booking_confirmed( int $booking_id, bool $traveler_only = false ): void {
 		$b = ATC_Checkout::find( '', $booking_id );
 		if ( ! $b ) {
 			return;
@@ -235,6 +235,9 @@ final class ATC_Mail {
 			. ( $free ? self::box( '<strong style="color:#1E6B3A">Free cancellation</strong> until ' . self::e( $free ) . ' (local time), in Manage booking.', '#E8F4EC', '#CFE6D7' ) : '' );
 		self::send( $b['email'], 'Booking confirmed: ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' ' . self::local( $b['legs'][0]['pickup_at'] ?? null, (string) ( $s['timezone'] ?? 'UTC' ), 'D j M' ), self::wrap( 'You’re booked.', $body, 'View or change your booking', $url, 'Reservation ' . $b['number'] . ' is confirmed.' ), array( 'booking_id' => $booking_id, 'kind' => 'confirmation' ) );
 
+		if ( $traveler_only ) {
+			return;
+		}
 		self::provider_new( $b );
 		self::team( 'New booking ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' · ' . ATC_Book::money( (int) $b['total_cents'] ), self::wrap( 'New booking ' . $b['number'], self::p( self::e( $s['provider'] ?? '' ) . ' · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
@@ -285,6 +288,46 @@ final class ATC_Mail {
 			self::send( self::provider_to( $p ), 'Booking cancelled: ' . $b['number'], self::wrap( 'Booking ' . $b['number'] . ' is cancelled', self::p( 'The traveler cancelled. Please don’t send a driver.' ) . self::table( self::trip_rows( $b, true ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_cancelled' ) );
 		}
 		self::team( 'Cancelled ' . $b['number'], self::wrap( 'Cancelled ' . $b['number'], self::p( 'Refund ' . self::e( ATC_Book::money( $refund_cents ) ) ) . self::table( self::trip_rows( $b, true ) ) ) );
+	}
+
+	/** A provider no longer does a ride (our team gave it to someone else). */
+	public static function provider_removed( array $b, int $party_id ): void {
+		$p = ATC_Catalog::party( $party_id );
+		if ( ! $p ) {
+			return;
+		}
+		self::send( self::provider_to( $p ), 'Booking ' . $b['number'] . ' is no longer yours', self::wrap( 'Booking ' . $b['number'] . ' moved', self::p( 'Our team gave this ride to another provider. Please don’t send a driver. Nothing to do on your side.' ) . self::table( self::trip_rows( $b ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_removed' ) );
+	}
+
+	/** The traveler's ride is now run by another provider. */
+	public static function traveler_provider_changed( array $b ): void {
+		$key = ATC_Checkout::key_of( $b );
+		self::send( $b['email'], 'Your transfer ' . $b['number'] . ': new provider', self::wrap( 'You have a new provider', self::p( 'Hi ' . self::e( $b['first_name'] ) . ', another local provider now runs your transfer. Everything else stays the same, including your price and service code.' ) . self::provider_html( $b ) . self::table( self::trip_rows( $b ) ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
+	}
+
+	/** Part of the payment refunded, booking still on. */
+	public static function refund_only( array $b, int $amount ): void {
+		if ( $amount <= 0 ) {
+			return;
+		}
+		$key = ATC_Checkout::key_of( $b );
+		self::send( $b['email'], 'Refund on booking ' . $b['number'], self::wrap( 'We refunded ' . ATC_Book::money( $amount ), self::p( 'Hi ' . self::e( $b['first_name'] ) . ', we refunded <strong>' . self::e( ATC_Book::money( $amount ) ) . '</strong> to the card you paid with. Banks usually show it within 5 to 10 days. Your booking stays as it is.' ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'refund' ) );
+	}
+
+	/** Payout sent: the statement for the provider. */
+	public static function payout_statement( int $party_id, string $month, int $amount, string $reference, array $lines ): void {
+		$p = ATC_Catalog::party( $party_id );
+		if ( ! $p ) {
+			return;
+		}
+		$rows = array();
+		foreach ( $lines as $l ) {
+			$rows[] = array( $l['date'] . ' · ' . $l['number'], $l['direction'] . ( $l['how'] ? ' · ' . $l['how'] : '' ) . ' · ' . ATC_Book::money( $l['amount'] ) );
+		}
+		$body = self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', we sent your payout for rides completed up to ' . self::e( $month ) . '.' )
+			. self::box( '<strong style="font-size:20px">' . self::e( ATC_Book::money( $amount ) ) . '</strong><br>Reference: ' . self::e( $reference ), '#E8F4EC', '#CFE6D7' )
+			. self::table( $rows );
+		self::send( self::provider_to( $p ), 'Payout sent: ' . ATC_Book::money( $amount ) . ' · ' . $month, self::wrap( 'Your payout for ' . $month, $body, 'Open the portal', home_url( '/portal/' ) ), array( 'kind' => 'payout' ) );
 	}
 
 	/** For our team: something on a booking needs a look. */

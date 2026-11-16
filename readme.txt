@@ -1,7 +1,20 @@
 === ATCOM Booking Engine ===
-Version: 0.10.2 (provider bookings)
+Version: 0.11.0 (team actions, payouts, airports)
 
-New in 0.10.2: Control → Meeting your driver loads and saves again (it called a wrong address); every Select
+New in 0.11.0:
+- Control → booking: Resend confirmation (traveler only); Refund or cancel (any amount up to what is left,
+  through Stripe; ticking cancel also cancels rides and provider pay and emails traveler and provider);
+  Unlock service code after too many wrong tries; per ride, Change provider (providers at that airport, their
+  price for the zone suggested, the old provider and optionally the traveler are emailed; a handed-back ride
+  shows "needs a new one"); per no-show, Accept (provider paid) or Reject. Ride events show in "What happened".
+- Control → Payouts: the run for a month (default last month, paid on the payout day): per provider rides,
+  held no-shows, to pay, method; under the minimum rolls over; no payout details flagged. Approve run ties
+  the lines to a payout; Download payment list (admins only, full bank/Wise details); Mark paid with the bank
+  reference emails the provider a statement with every ride.
+- Control → Airports: search and edit code, name, city, country, time zone, position, shown or hidden.
+- Refunds are recorded on the booking and in the money lines, including the traveler's own cancellations.
+
+Also in 0.10.2: Control → Meeting your driver loads and saves again (it called a wrong address); every Select
 button on the results page is the same orange.
 
 Also in 0.10.1: hotel and address suggestions reach 600 km from the airport.

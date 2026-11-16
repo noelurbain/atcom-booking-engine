@@ -160,7 +160,9 @@ final class ATC_Bookings {
 		$tz      = '';
 		$out_leg = array();
 		$prov    = 0;
+		$full    = ATC_Checkout::find( '', (int) $b['id'] );
 		foreach ( $legs as $l ) {
+			$open_ride = empty( $snap['legacy'] ) && 'confirmed' === $b['status'] && in_array( $l['status'], array( 'new', 'accepted', 'released' ), true );
 			$tz        = $tz ?: ( (string) $l['timezone'] ?: (string) ( $snap['timezone'] ?? 'UTC' ) );
 			$prov     += (int) $l['provider_cents'];
 			$out_leg[] = array(
@@ -180,6 +182,11 @@ final class ATC_Bookings {
 				'status'    => $l['status'],
 				'retail'    => (int) $l['retail_cents'],
 				'paid_out'  => (int) $l['provider_cents'],
+				'id'            => (int) $l['id'],
+				'completed_how' => (string) $l['completed_how'],
+				'can_reassign'  => $open_ride,
+				'candidates'    => $open_ride && $full ? ATC_Ops::candidates( $full, $l ) : array(),
+				'noshow_open'   => 'no_show' === $l['status'] && 'no_show' === $l['completed_how'],
 			);
 		}
 		$legacy = ! empty( $snap['legacy'] );
@@ -199,12 +206,12 @@ final class ATC_Bookings {
 				$data = json_decode( (string) $e['data'], true ) ?: array();
 				return array(
 					'when' => self::local( $e['created_at'], 'UTC', 'j M Y, H:i' ) . ' UTC',
-					'what' => 'note' === $e['action'] ? (string) ( $data['text'] ?? '' ) : ucfirst( str_replace( '_', ' ', $e['action'] ) ),
+					'what' => 'note' === $e['action'] ? (string) ( $data['text'] ?? '' ) : ( 'leg' === $e['object_type'] ? 'Ride: ' : '' ) . ucfirst( str_replace( '_', ' ', $e['action'] ) ) . ( ! empty( $data['note'] ) && 'note' !== $e['action'] ? ' · “' . $data['note'] . '”' : '' ) . ( ! empty( $data['reason'] ) ? ' · “' . $data['reason'] . '”' : '' ),
 					'who'  => $u ? $u->display_name : 'system',
 					'note' => 'note' === $e['action'],
 				);
 			},
-			$wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::t( 'events' ) . " WHERE object_type = 'booking' AND object_id = %d ORDER BY id DESC LIMIT 50", (int) $b['id'] ), ARRAY_A )
+			$wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::t( 'events' ) . " WHERE (object_type = 'booking' AND object_id = %d) OR (object_type = 'leg' AND object_id IN (SELECT id FROM " . self::t( 'booking_legs' ) . ' WHERE booking_id = %d)) ORDER BY id DESC LIMIT 80', (int) $b['id'], (int) $b['id'] ), ARRAY_A )
 		);
 		$events[] = array( 'when' => self::local( $b['created_at'], 'UTC', 'j M Y, H:i' ) . ' UTC', 'what' => $legacy ? 'Booked on the old site' : 'Booked', 'who' => $b['channel'], 'note' => false );
 
@@ -240,6 +247,14 @@ final class ATC_Bookings {
 				'area'      => (string) ( $snap['area'] ?? '' ),
 			),
 			'events'   => $events,
+			'actions'  => array(
+				'refund_left'  => $paid && ! $legacy && $b['stripe_payment_intent'] ? $total - (int) ( $snap['refunded'] ?? 0 ) : 0,
+				'can_cancel'   => 'confirmed' === $b['status'] && ! $legacy,
+				'can_resend'   => $paid && ! $legacy,
+				'code_tries'   => (int) $b['service_code_attempts'],
+				'code_locked'  => (int) $b['service_code_attempts'] >= (int) ATC_Settings::get( 'service_code_attempts' ),
+				'service_code' => $legacy ? '' : (string) $b['service_code'],
+			),
 		);
 	}
 
