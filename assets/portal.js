@@ -60,6 +60,7 @@
 
   var VIEWS = [
     ['', 'Setup', null],
+    ['bookings', 'Bookings', null],
     ['company', 'Company', 'company'],
     ['vehicles', 'Vehicles', 'vehicles'],
     ['coverage', 'Zones you serve', 'coverage'],
@@ -88,8 +89,9 @@
     var cur = path();
     VIEWS.forEach(function (v) {
       var st = v[2] && me.steps[v[2]];
-      add(side, h('a', { href: C.base + v[0] + (v[0] ? '/' : ''), 'data-go': v[0], class: cur === v[0] ? 'on' : '' },
+      add(side, h('a', { href: C.base + v[0] + (v[0] ? '/' : ''), 'data-go': v[0], class: cur === v[0] || (v[0] && cur.indexOf(v[0] + '/') === 0) ? 'on' : '' },
         h('span', { text: v[1] }),
+        v[0] === 'bookings' && me.to_confirm ? h('i', { class: 'count', text: String(me.to_confirm), 'aria-label': me.to_confirm + ' to confirm' }) : null,
         st ? h('i', { class: 'dot ' + st.state, title: st.label, 'aria-label': st.label }) : null,
         null));
     });
@@ -100,12 +102,183 @@
     nav();
     var p = path();
     clear(app);
-    ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting,
+    if (p.indexOf('bookings/') === 0) return viewTrip(p.split('/')[1]);
+    ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
        documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount }[p] || viewSetup)();
   }
 
   function head(title, sub) {
     return h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: title }), sub ? h('p', { class: 'atc-muted', text: sub }) : null));
+  }
+
+  /* ---------- Bookings ---------- */
+
+  function money(c) { return 'USD ' + (c / 100).toFixed(c % 100 ? 2 : 0); }
+  function kv(label, value) {
+    return h('div', null, h('div', { class: 'small atc-muted strong', text: label }), h('div', { class: 'strong kv-v' }, value === null || value === undefined || value === '' ? '–' : value));
+  }
+  var tripFilter = 'upcoming';
+
+  function viewTrips() {
+    add(app, head('Bookings', 'Every ride you operate. Confirm each new booking within 2 hours. Times are the airport’s local time.'));
+    var pills = h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Show' });
+    var csv = h('button', { type: 'button', class: 'btn', text: 'Download CSV' });
+    var body = h('div', null, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, [h('div', { class: 'atc-actions', style: 'justify-content:space-between' }, pills, csv), h('section', { class: 'card' }, body)]);
+    function load() {
+      api('GET', '/bookings?filter=' + tripFilter).then(function (d) {
+        tripFilter = d.filter;
+        clear(pills);
+        d.filters.forEach(function (f) {
+          add(pills, h('button', { type: 'button', class: 'pe-pill' + (f.key === d.filter ? ' on' : ''), 'aria-pressed': f.key === d.filter ? 'true' : 'false', onclick: function () { tripFilter = f.key; load(); } },
+            f.label + ' ', h('span', { class: 'small', text: '(' + f.count + ')' })));
+        });
+        clear(body);
+        if (!d.rows.length) { add(body, h('p', { class: 'atc-muted pad-x', style: 'padding:18px', text: 'No bookings in this view.' })); return; }
+        add(body, h('div', { class: 'scroll' }, h('table', null,
+          h('thead', null, h('tr', null, ['Pickup', 'Reservation', 'Flight', 'Route', 'Vehicle', 'Passengers', 'Status', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+          h('tbody', null, d.rows.map(function (r) {
+            var ack = r.needs_ack ? h('button', { type: 'button', class: 'btn dark', text: 'Confirm', onclick: function (e) {
+              e.target.disabled = true;
+              api('POST', '/bookings/' + r.number + '/ack').then(function () { toast('Confirmed. The traveler is counting on you.'); refreshMe(); load(); }).catch(function (x) { e.target.disabled = false; fail(x); });
+            } }) : null;
+            return h('tr', null,
+              h('td', null, h('div', { class: 'strong', text: r.time }), h('div', { class: 'small atc-muted', text: r.day })),
+              h('td', null, h('a', { class: 'strong', href: C.base + 'bookings/' + r.number + '/', 'data-go': 'bookings/' + r.number, text: r.number }), h('div', { class: 'small atc-muted', text: r.direction })),
+              h('td', { text: r.flight || '–' }),
+              h('td', null, h('div', { text: r.from }), h('div', { class: 'small atc-muted', text: '→ ' + r.to })),
+              h('td', { text: r.vehicle }),
+              h('td', { text: r.pax + (r.bags ? ' · ' + r.bags + ' bags' : '') }),
+              h('td', null, h('span', { class: 'chip ' + r.tone, text: r.status })),
+              h('td', null, h('div', { class: 'atc-actions', style: 'flex-wrap:nowrap' }, ack, h('a', { class: 'btn', href: C.base + 'bookings/' + r.number + '/', 'data-go': 'bookings/' + r.number, text: 'Open' }))));
+          })))));
+      }).catch(fail);
+    }
+    csv.addEventListener('click', function () {
+      csv.disabled = true;
+      api('GET', '/bookings?all=1&filter=' + tripFilter).then(function (d) {
+        var cols = [['date', 'Date'], ['time', 'Time'], ['number', 'Reservation'], ['direction', 'Direction'], ['flight', 'Flight'], ['from', 'From'], ['to', 'To'], ['vehicle', 'Vehicle'], ['pax', 'Passengers'], ['bags', 'Suitcases'], ['traveler', 'Traveler'], ['status', 'Status'], ['amount', 'You get paid (USD)']];
+        var q = function (v) { v = String(v === null || v === undefined ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+        var lines = [cols.map(function (c) { return c[1]; }).join(',')].concat(d.rows.map(function (r) {
+          return cols.map(function (c) { return q(c[0] === 'amount' ? (r.amount / 100).toFixed(2) : r[c[0]]); }).join(',');
+        }));
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' }));
+        a.download = 'bookings-' + tripFilter + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+      }).catch(fail).then(function () { csv.disabled = false; });
+    });
+    load();
+  }
+
+  function refreshMe() { api('GET', '/me').then(function (d) { me = d; nav(); }).catch(function () {}); }
+
+  function viewTrip(number) {
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/bookings/' + encodeURIComponent(number)).then(function draw(b) {
+      clear(app);
+      var t = b.traveler;
+      var digits = (t.phone || '').replace(/\D/g, '');
+      add(app, [
+        h('a', { class: 'back', href: C.base + 'bookings/', 'data-go': 'bookings', text: '← Bookings' }),
+        h('div', { class: 'atc-head' }, h('div', null,
+          h('div', { class: 'atc-actions' }, h('h1', { text: b.number }), b.rides.length === 1 ? h('span', { class: 'chip ' + b.rides[0].tone, text: b.rides[0].status }) : null),
+          h('p', { class: 'atc-muted', text: 'Received ' + b.received }))),
+      ]);
+      var cols = h('div', { class: 'pe-split' });
+      var left = h('div', { class: 'pe-left' }), right = h('div', { class: 'bk-side' });
+      add(cols, [left, right]); add(app, cols);
+
+      b.rides.forEach(function (r) {
+        var leg = r.leg;
+        function act(path, body, msg) { return api('POST', '/legs/' + leg + '/' + path, body || {}).then(function (nb) { if (msg) toast(msg); refreshMe(); if (nb && nb.rides) draw(nb); else viewTrip(number); }); }
+        var card = h('section', { class: 'card pad' });
+        add(card, [
+          h('div', { class: 'atc-actions', style: 'justify-content:space-between' },
+            h('h2', { text: r.direction + ' · ' + r.when }),
+            h('span', { class: 'chip ' + r.tone, text: r.status })),
+          h('p', { class: 'atc-muted', style: 'margin:0', text: r.vehicle + ', private · You get paid ' + money(r.amount) + ' (traveler paid ' + money(r.retail) + ')' })
+        ]);
+        // 1. Confirm.
+        if (r.leg_status === 'new' && b.status === 'confirmed') {
+          add(card, h('div', { class: 'card warn pad', style: 'gap:8px' },
+            h('strong', { text: 'New booking: please confirm you got it' }),
+            h('span', { class: 'small atc-muted', text: 'Received ' + b.received + '. We remind you after 2 hours and alert our team.' }),
+            h('div', null, h('button', { type: 'button', class: 'btn dark', text: 'Confirm booking', onclick: function (e) { e.target.disabled = true; act('ack', {}, 'Confirmed.').catch(function (x) { e.target.disabled = false; fail(x); }); } }))));
+        } else if (r.acknowledged) {
+          add(card, h('p', { class: 'small atc-muted', style: 'margin:0', text: 'Confirmed ' + r.acknowledged + '.' }));
+        }
+        // 2. Service code.
+        if (r.leg_status === 'completed') {
+          add(card, h('div', { class: 'card ok pad', style: 'gap:4px' }, h('strong', { text: r.completed_how === 'code' ? 'Trip completed with the service code' : r.completed_how === 'auto' ? 'Trip completed (no code, 24 h after pickup)' : 'Trip marked completed without code' }),
+            h('span', { class: 'small atc-muted', text: 'Recorded ' + r.completed + '. ' + money(r.amount) + ' goes into your next payout.' })));
+        } else if (r.leg_status === 'no_show') {
+          add(card, h('div', { class: 'card warn pad' }, h('strong', { text: 'No-show reported ' + r.completed }), h('span', { class: 'small atc-muted', text: 'Our team checks it before the payout.' })));
+        } else if (r.can_code) {
+          var codeIn = h('input', { type: 'text', inputmode: 'text', autocomplete: 'off', maxlength: 8, placeholder: 'Code', 'aria-label': 'Service code', style: 'max-width:140px;text-transform:uppercase;font-size:18px;font-weight:800;letter-spacing:.1em' });
+          var codeErr = h('p', { class: 'small err', role: 'alert', hidden: true });
+          var codeBtn = h('button', { type: 'submit', class: 'btn dark', text: 'Check code' });
+          add(card, h('form', { class: 'card pad', style: 'gap:10px', onsubmit: function (e) {
+            e.preventDefault(); codeErr.hidden = true; codeBtn.disabled = true;
+            act('code', { code: codeIn.value }, 'Trip completed.').catch(function (x) { codeErr.textContent = x.message; codeErr.hidden = false; codeBtn.disabled = false; codeIn.select(); });
+          } },
+            h('strong', { text: 'Service code' }),
+            h('span', { class: 'small atc-muted', text: 'At pickup, ask the traveler for the code on their voucher and type it here. It completes the trip and is your proof that the service was given. ' + b.tries + ' tries left.' }),
+            h('div', { class: 'atc-actions' }, codeIn, codeBtn), codeErr,
+            r.can_noshow ? h('div', { class: 'atc-actions' },
+              h('button', { type: 'button', class: 'btn', text: 'Mark completed without code', onclick: function (e) { e.target.disabled = true; act('complete', {}, 'Marked completed.').catch(function (x) { e.target.disabled = false; fail(x); }); } })) : null,
+            h('span', { class: 'small atc-muted', text: 'No code? The trip completes on its own 24 hours after pickup unless you report a no-show.' })));
+        } else if (r.leg_status === 'new' || r.leg_status === 'accepted') {
+          add(card, h('p', { class: 'small atc-muted', style: 'margin:0', text: 'The service code box opens 12 hours before pickup.' }));
+        }
+        // 3. No-show and hand back.
+        if (r.can_noshow) {
+          var note = h('textarea', { rows: 3, placeholder: 'How long the driver waited, where, and whether you reached the traveler' });
+          var nsBox = h('div', { class: 'card pad', hidden: true, style: 'gap:8px' }, h('strong', { text: 'Report a no-show' }), note,
+            h('div', null, h('button', { type: 'button', class: 'btn danger', text: 'Report no-show', onclick: function (e) { e.target.disabled = true; act('noshow', { note: note.value }, 'No-show reported. Our team will check it.').catch(function (x) { e.target.disabled = false; fail(x); }); } })));
+          add(card, [h('div', null, h('button', { type: 'button', class: 'link danger', text: 'Traveler didn’t show up', onclick: function () { nsBox.hidden = !nsBox.hidden; } })), nsBox]);
+        }
+        if (r.can_release) {
+          var why = h('textarea', { rows: 2, placeholder: 'Why (optional): no vehicle free, date clash…' });
+          var relBox = h('div', { class: 'card pad', hidden: true, style: 'gap:8px' }, h('strong', { text: 'Hand back this ride?' }), h('span', { class: 'small atc-muted', text: 'Our team gives it to another provider. You won’t be paid for it. Too many hand-backs lower your place in results.' }), why,
+            h('div', null, h('button', { type: 'button', class: 'btn danger', text: 'Hand back', onclick: function (e) { e.target.disabled = true; api('POST', '/legs/' + leg + '/release', { reason: why.value }).then(function () { toast('Handed back. Our team will reassign it.'); refreshMe(); go('bookings'); }).catch(function (x) { e.target.disabled = false; fail(x); }); } })));
+          add(card, [h('div', null, h('button', { type: 'button', class: 'link', text: 'Hand back this ride', onclick: function () { relBox.hidden = !relBox.hidden; } })), relBox]);
+        }
+        // Trip facts.
+        add(card, h('div', { class: 'kv' },
+          kv('Flight', [r.flight, r.flight_time ? (r.direction === 'Arrival' ? 'lands ' : 'departs ') + r.flight_time : null].filter(Boolean).join(' · ')),
+          kv('Pickup', r.from), kv('Drop-off', r.to),
+          kv('Passengers', t.adults + (t.adults === 1 ? ' adult' : ' adults') + (t.children ? ', ' + t.children + (t.children === 1 ? ' child' : ' children') : '')),
+          kv('Luggage', r.bags + ' suitcases, ' + r.carry_ons + ' carry-ons'),
+          b.hotel_name ? kv('Hotel booking under', b.hotel_name) : null));
+        // Driver and vehicle.
+        if (r.leg_status === 'new' || r.leg_status === 'accepted') {
+          var dSel = h('select', { 'aria-label': 'Driver' }, h('option', { value: '', text: 'Choose a driver' }), b.drivers.map(function (d) { return h('option', { value: d.id, selected: d.id === r.driver_id, text: d.name + (d.languages ? ' · ' + d.languages : '') }); }));
+          var vSel = h('select', { 'aria-label': 'Vehicle' }, h('option', { value: '', text: 'Choose a vehicle' }), b.vehicles.map(function (v) { return h('option', { value: v.id, selected: v.id === r.vehicle_id, text: v.make_model + (v.year ? ' ' + v.year : '') + (v.plate ? ' · ' + v.plate : '') }); }));
+          var dn = h('input', { type: 'text', placeholder: 'Name' }), dp = h('input', { type: 'tel', placeholder: 'Mobile' }), dl = h('input', { type: 'text', placeholder: 'Languages, e.g. Spanish, English' });
+          var addBox = h('div', { class: 'grid2', hidden: true }, dn, dp, dl, h('button', { type: 'button', class: 'btn', text: 'Add driver', onclick: function () {
+            api('POST', '/drivers', { name: dn.value, phone: dp.value, languages: dl.value }).then(function (res) {
+              clear(dSel); add(dSel, [h('option', { value: '', text: 'Choose a driver' })].concat(res.drivers.map(function (d) { return h('option', { value: d.id, selected: d.id === res.id, text: d.name + (d.languages ? ' · ' + d.languages : '') }); })));
+              addBox.hidden = true; toast('Driver added.');
+            }).catch(fail);
+          } }));
+          add(card, h('div', { class: 'card pad', style: 'gap:10px' }, h('strong', { text: 'Driver and vehicle' }),
+            h('div', { class: 'grid2' }, field('Driver', dSel), field('Vehicle', vSel)),
+            h('div', { class: 'atc-actions' },
+              h('button', { type: 'button', class: 'btn dark', text: 'Save', onclick: function (e) { e.target.disabled = true; act('assign', { driver_id: dSel.value, vehicle_id: vSel.value }, 'Saved.').catch(function (x) { e.target.disabled = false; fail(x); }); } }),
+              h('button', { type: 'button', class: 'link', text: '+ Add a driver', onclick: function () { addBox.hidden = !addBox.hidden; } })),
+            addBox));
+        }
+        add(left, card);
+      });
+
+      add(right, h('section', { class: 'card pad' },
+        h('h2', { text: 'Traveler' }),
+        h('div', { class: 'kv', style: 'grid-template-columns:1fr' }, kv('Name', t.name), kv('Mobile', t.phone + (t.whatsapp ? ' · WhatsApp' : ''))),
+        digits ? h('div', { class: 'atc-actions' },
+          h('a', { class: 'btn', href: 'tel:+' + digits, text: 'Call' }),
+          t.whatsapp ? h('a', { class: 'btn', href: 'https://wa.me/' + digits, target: '_blank', rel: 'noopener', text: 'WhatsApp' }) : null) : null));
+      if (b.notes) add(right, h('section', { class: 'card pad' }, h('h2', { text: 'Note from the traveler' }), h('p', { class: 'prewrap', style: 'margin:0', text: b.notes })));
+    }).catch(function (e) { clear(app); add(app, [h('a', { class: 'back', href: C.base + 'bookings/', 'data-go': 'bookings', text: '← Bookings' }), h('p', { class: 'chip red', text: e.message })]); });
   }
 
   /* ---------- Meeting travelers ---------- */

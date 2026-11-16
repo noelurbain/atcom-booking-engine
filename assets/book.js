@@ -105,7 +105,8 @@
     var from = form.querySelector('[data-ab-airport]');
     var fromCode = form.querySelector('input[name=airport]');
     var center = (form.getAttribute('data-center') || '').split(',');
-    var country = form.getAttribute('data-country') || '';
+    if (center.length !== 2 || center[0] === '' || isNaN(+center[0])) center = [];
+    var RADIUS_KM = 200; // How far from the airport hotels and addresses are suggested.
     suggest(from, from.parentNode.querySelector('.ab-list'), function (v) {
       return fetch(C.airports + (C.airports.indexOf('?') > -1 ? '&' : '?') + 'local=1&q=' + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (d) {
         return { rows: (d.results || []).map(function (a) { return { label: a.label, sub: a.sub, id: a.id, iata: a.iata, lat: a.lat, lng: a.lng, cc: a.cc }; }), note: (d.results || []).length ? '' : 'We don’t serve that airport yet.' };
@@ -114,11 +115,22 @@
       from.value = a.label; fromCode.value = a.iata || a.id; from.setCustomValidity('');
       // Hotels and addresses are then looked up around this airport only.
       center = a.lat !== null && a.lat !== undefined ? [a.lat, a.lng] : [];
-      country = a.cc || '';
       to.value = ''; lat.value = ''; lng.value = ''; pid.value = '';
     });
     // Typing again clears any old warning; the results page finds a typed airport anyway.
-    from.addEventListener('input', function () { fromCode.value = ''; from.setCustomValidity(''); });
+    from.addEventListener('input', function () { fromCode.value = ''; center = []; from.setCustomValidity(''); });
+
+    // An airport typed (or filled in by the browser) but not picked: take our best match for it.
+    function airportCenter() {
+      if (center.length === 2) return Promise.resolve(center);
+      var v = from.value.trim();
+      if (v.length < 2) return Promise.resolve(null);
+      return fetch(C.airports + (C.airports.indexOf('?') > -1 ? '&' : '?') + 'local=1&q=' + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (d) {
+        var a = (d.results || []).find(function (x) { return x.lat !== null && x.lat !== undefined; });
+        if (a) center = [a.lat, a.lng];
+        return a ? center : null;
+      }).catch(function () { return null; });
+    }
 
     // Destination: Google places near the airport; typing without picking still works (looked up on the next page).
     var to = form.querySelector('[data-ab-to]');
@@ -126,20 +138,22 @@
     var token = null;
     to.addEventListener('input', function () { lat.value = ''; lng.value = ''; pid.value = ''; });
     suggest(to, to.parentNode.querySelector('.ab-list'), function (v) {
-      return loadMaps().then(function () { return google.maps.importLibrary('places'); }).then(function (lib) {
-        if (!token) token = new lib.AutocompleteSessionToken();
-        var req = { input: v, sessionToken: token };
-        // Only places within about 220 km of the airport (Cancún reaches Tulum and Holbox).
-        if (center.length === 2 && center[0] !== '' && !isNaN(+center[0])) {
-          var la = +center[0], lo = +center[1], dLng = 2 / Math.max(0.2, Math.cos(la * Math.PI / 180));
-          req.locationRestriction = { north: la + 2, south: la - 2, east: lo + dLng, west: lo - dLng };
-        }
-        if (country) req.includedRegionCodes = [country];
-        return lib.AutocompleteSuggestion.fetchAutocompleteSuggestions(req).then(function (r) {
-          return { rows: (r.suggestions || []).filter(function (s) { return s.placePrediction; }).slice(0, 6).map(function (s) {
-            var p = s.placePrediction;
-            return { label: p.mainText ? p.mainText.text : p.text.text, sub: p.secondaryText ? p.secondaryText.text : '', pred: p };
-          }), note: 'Can’t find it? Type the full address.' };
+      return airportCenter().then(function (c) {
+        if (!c) return { rows: [], note: 'Choose your airport first, so we can find places near it.' };
+        return loadMaps().then(function () { return google.maps.importLibrary('places'); }).then(function (lib) {
+          if (!token) token = new lib.AutocompleteSessionToken();
+          // Places by distance from the airport, whatever the country (border airports, islands).
+          var la = +c[0], lo = +c[1], dLat = RADIUS_KM / 111, dLng = dLat / Math.max(0.2, Math.cos(la * Math.PI / 180));
+          var req = { input: v, sessionToken: token, origin: { lat: la, lng: lo }, locationRestriction: { north: la + dLat, south: la - dLat, east: lo + dLng, west: lo - dLng } };
+          return lib.AutocompleteSuggestion.fetchAutocompleteSuggestions(req).then(function (r) {
+            return { rows: (r.suggestions || []).filter(function (s) {
+              var p = s.placePrediction;
+              return p && (typeof p.distanceMeters !== 'number' || p.distanceMeters <= RADIUS_KM * 1000);
+            }).slice(0, 6).map(function (s) {
+              var p = s.placePrediction;
+              return { label: p.mainText ? p.mainText.text : p.text.text, sub: p.secondaryText ? p.secondaryText.text : '', pred: p };
+            }), note: 'Can’t find it? Type the full address.' };
+          });
         });
       });
     }, function (r) {

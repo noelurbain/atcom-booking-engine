@@ -226,7 +226,7 @@ final class ATC_Manage {
 	/** Can rate once the first ride's pickup time has passed. */
 	public static function can_review( array $b ): bool {
 		$first = $b['legs'][0]['pickup_at'] ?? null;
-		return 'confirmed' === $b['status'] && $first && strtotime( $first . ' UTC' ) < time() && ! self::reviewed( (int) $b['id'] );
+		return in_array( $b['status'], array( 'confirmed', 'completed' ), true ) && $first && strtotime( $first . ' UTC' ) < time() && ! self::reviewed( (int) $b['id'] );
 	}
 
 	public static function review( string $number, string $key, int $rating, string $comment ) {

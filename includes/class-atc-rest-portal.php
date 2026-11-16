@@ -72,7 +72,13 @@ final class ATC_REST_Portal {
 			'steps'         => ATC_Partner::steps( $pid ),
 			'account'       => ATC_Partner::account( get_current_user_id() ),
 			'prices'        => ATC_Catalog::price_table( $pid ),
+			'to_confirm'    => self::to_confirm( $pid ),
 		);
+	}
+
+	private static function to_confirm( int $pid ): int {
+		global $wpdb;
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(DISTINCT l.booking_id) FROM ' . ATC_Schema::table( 'booking_legs' ) . ' l JOIN ' . ATC_Schema::table( 'bookings' ) . " b ON b.id = l.booking_id WHERE l.party_id = %d AND l.status = 'new' AND b.status = 'confirmed'", $pid ) );
 	}
 
 	public static function register_routes(): void {
@@ -187,6 +193,19 @@ final class ATC_REST_Portal {
 			$ids  = wp_list_pluck( ATC_Prices::airports_for( self::pid() ), 'id' );
 			return in_array( $want, $ids, true ) ? $want : (int) ( $ids[0] ?? 0 );
 		};
+		// Bookings: the provider's rides.
+		self::route( '/bookings', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Trips::list( self::pid(), (string) $r['filter'], max( 1, (int) $r['page'] ), ! empty( $r['all'] ) ) ) ) );
+		self::route( '/bookings/(?P<number>[A-Za-z0-9]+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Trips::detail( self::pid(), (string) $r['number'] ) ) ) );
+		self::route( '/bookings/(?P<number>[A-Za-z0-9]+)/ack', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Trips::acknowledge_booking( self::pid(), (string) $r['number'] ) ) ) );
+		$leg = static fn( string $action, callable $fn ) => self::route( '/legs/(?P<id>\\d+)/' . $action, array( 'POST' => static fn( WP_REST_Request $r ) => self::out( $fn( (int) $r['id'], self::body( $r ) ) ) ) );
+		$leg( 'ack', static fn( $id, $b ) => ATC_Trips::acknowledge( self::pid(), $id ) );
+		$leg( 'assign', static fn( $id, $b ) => ATC_Trips::assign( self::pid(), $id, $b ) );
+		$leg( 'code', static fn( $id, $b ) => ATC_Trips::complete_with_code( self::pid(), $id, (string) ( $b['code'] ?? '' ) ) );
+		$leg( 'complete', static fn( $id, $b ) => ATC_Trips::complete_without_code( self::pid(), $id ) );
+		$leg( 'noshow', static fn( $id, $b ) => ATC_Trips::no_show( self::pid(), $id, (string) ( $b['note'] ?? '' ) ) );
+		$leg( 'release', static fn( $id, $b ) => ATC_Trips::release( self::pid(), $id, (string) ( $b['reason'] ?? '' ) ) );
+		self::route( '/drivers', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Trips::add_driver( self::pid(), self::body( $r ) ) ) ) );
+
 		self::route(
 			'/meeting',
 			array(

@@ -49,3 +49,9 @@ table.prices td{padding:10px 12px;border-top:1px solid #F0ECE5}
 .svc.vt .svc-body{padding:0 14px 14px}
 .svc.vt .grid3{grid-template-columns:minmax(0,1fr)}
 .vt-noimg{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;font-weight:600}
+
+/* Bookings */
+.atc-main [hidden]{display:none !important}
+p.err{color:var(--red);font-weight:700;margin:0}
+.atc-side a .count{margin-left:auto;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#E07A1F;color:#fff;font-style:normal;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.pe-pills{flex-wrap:wrap}

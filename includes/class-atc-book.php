@@ -834,7 +834,7 @@ final class ATC_Book {
 						<h2 id="ab-h-v">Show this to your driver</h2>
 						<div class="ab-vrow">
 							<span><small class="ab-k">Reservation</small><strong class="ab-big"><?php echo esc_html( $b['number'] ); ?></strong><span class="ab-muted"><?php echo esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . ( (int) $b['adults'] + (int) $b['children'] ) . ' passengers · ' . ( $snap['vehicle'] ?? '' ) ); ?></span></span>
-							<span class="ab-codebox"><small class="ab-k">Service code</small><strong class="ab-big ab-code"><?php echo esc_html( $b['service_code'] ); ?></strong><span>Give it to your driver when the ride is done.</span></span>
+							<span class="ab-codebox"><small class="ab-k">Service code</small><strong class="ab-big ab-code"><?php echo esc_html( $b['service_code'] ); ?></strong><span>Show it to your driver when you meet: it confirms your ride.</span></span>
 						</div>
 					</section>
 				<?php endif; ?>

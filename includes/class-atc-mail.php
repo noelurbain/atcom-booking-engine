@@ -229,7 +229,7 @@ final class ATC_Mail {
 
 		$body = self::p( 'Hi ' . self::e( $b['first_name'] ) . ', your private transfer is booked. Keep this email: it has everything you need on the day.' )
 			. self::table( array_merge( self::trip_rows( $b ), array( array( 'Total paid', ATC_Book::money( (int) $b['total_cents'] ) . $card ) ) ) )
-			. self::box( '<span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#5A3303">Service code</span><br><span style="font-size:28px;font-weight:800;letter-spacing:.08em;font-family:Menlo,Consolas,monospace">' . self::e( $b['service_code'] ) . '</span><br>Give it to your driver when the ride is done.', '#FBA53E', '#FBA53E' )
+			. self::box( '<span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#5A3303">Service code</span><br><span style="font-size:28px;font-weight:800;letter-spacing:.08em;font-family:Menlo,Consolas,monospace">' . self::e( $b['service_code'] ) . '</span><br>Show it to your driver when you meet: it confirms your ride.', '#FBA53E', '#FBA53E' )
 			. self::meeting_html( $b )
 			. self::provider_html( $b )
 			. ( $free ? self::box( '<strong style="color:#1E6B3A">Free cancellation</strong> until ' . self::e( $free ) . ' (local time), in Manage booking.', '#E8F4EC', '#CFE6D7' ) : '' );
@@ -255,9 +255,9 @@ final class ATC_Mail {
 		$s    = $b['snap'];
 		$body = self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', you have a new booking.' )
 			. self::table( array_merge( self::trip_rows( $b, true ), array( array( 'You get paid', ATC_Book::money( self::provider_amount( $b ) ) ) ) ) )
-			. self::box( 'The traveler gives your driver the <strong>service code</strong> at the end of the ride. You will enter it to mark the trip done.' )
-			. self::p( '<span style="color:#6D6D71">If anything here can’t work for you, reply to this email right away.</span>' );
-		self::send( self::provider_to( $p ), 'New booking ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' · ' . self::local( $b['legs'][0]['pickup_at'] ?? null, (string) ( $s['timezone'] ?? 'UTC' ), 'D j M, H:i' ), self::wrap( 'New booking ' . $b['number'], $body, 'Open the portal', home_url( '/portal/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_new', 'reply_to' => ATC_Settings::get( 'from_email' ) ) );
+			. self::box( 'Please <strong>confirm</strong> you got this booking in the portal. At pickup, your driver asks the traveler for the <strong>service code</strong> on their voucher and types it in the portal: that completes the trip.' )
+			. self::p( '<span style="color:#6D6D71">If anything here can’t work for you, hand the ride back in the portal or reply to this email right away.</span>' );
+		self::send( self::provider_to( $p ), 'New booking ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' · ' . self::local( $b['legs'][0]['pickup_at'] ?? null, (string) ( $s['timezone'] ?? 'UTC' ), 'D j M, H:i' ), self::wrap( 'New booking ' . $b['number'], $body, 'Confirm in the portal', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_new', 'reply_to' => ATC_Settings::get( 'from_email' ) ) );
 	}
 
 	/** The traveler changed something: both sides get the new details. */
@@ -271,7 +271,7 @@ final class ATC_Mail {
 		self::send( $b['email'], 'Booking updated: ' . $b['number'], self::wrap( 'Your booking is updated', self::p( 'We saved your changes and told your provider:' ) . $list . self::table( self::trip_rows( $b ) ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'changed' ) );
 		$p = self::provider_party( $b );
 		if ( $p ) {
-			self::send( self::provider_to( $p ), 'Booking changed: ' . $b['number'], self::wrap( 'Booking ' . $b['number'] . ' changed', self::p( 'The traveler changed:' ) . $list . self::table( self::trip_rows( $b, true ) ), 'Open the portal', home_url( '/portal/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
+			self::send( self::provider_to( $p ), 'Booking changed: ' . $b['number'], self::wrap( 'Booking ' . $b['number'] . ' changed', self::p( 'The traveler changed:' ) . $list . self::table( self::trip_rows( $b, true ) ), 'Open the booking', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
 		}
 	}
 
@@ -285,6 +285,23 @@ final class ATC_Mail {
 			self::send( self::provider_to( $p ), 'Booking cancelled: ' . $b['number'], self::wrap( 'Booking ' . $b['number'] . ' is cancelled', self::p( 'The traveler cancelled. Please don’t send a driver.' ) . self::table( self::trip_rows( $b, true ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_cancelled' ) );
 		}
 		self::team( 'Cancelled ' . $b['number'], self::wrap( 'Cancelled ' . $b['number'], self::p( 'Refund ' . self::e( ATC_Book::money( $refund_cents ) ) ) . self::table( self::trip_rows( $b, true ) ) ) );
+	}
+
+	/** For our team: something on a booking needs a look. */
+	public static function team_note( string $subject, string $intro, array $b, string $note ): void {
+		self::team( $subject, self::wrap( $subject, self::p( self::e( $intro ) ) . self::box( nl2br( self::e( $note ) ) ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+	}
+
+	/** The provider has not confirmed a new booking in time: remind them, copy our team. */
+	public static function provider_nudge( array $b ): void {
+		$p = self::provider_party( $b );
+		if ( ! $p ) {
+			return;
+		}
+		$url  = home_url( '/portal/bookings/' . $b['number'] . '/' );
+		$body = self::p( 'Please confirm you got booking <strong>' . self::e( $b['number'] ) . '</strong>. The traveler is counting on it.' ) . self::table( self::trip_rows( $b, true ) );
+		self::send( self::provider_to( $p ), 'Please confirm booking ' . $b['number'], self::wrap( 'Please confirm booking ' . $b['number'], $body, 'Confirm in the portal', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_nudge' ) );
+		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking. We reminded them; you may want to call.' ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	/** Manage booking: the link to a booking, sent to the email on it. */
@@ -342,7 +359,7 @@ final class ATC_Mail {
 		}
 
 		// How was it: a day after the last ride.
-		$rows = $wpdb->get_col( $wpdb->prepare( "SELECT b.id FROM {$t} b WHERE b.status = 'confirmed' AND (SELECT MAX(pickup_at) FROM {$l} WHERE booking_id = b.id) BETWEEN %s AND %s LIMIT 50", gmdate( 'Y-m-d H:i:s', $now - 3 * DAY_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS ) ) ); // phpcs:ignore
+		$rows = $wpdb->get_col( $wpdb->prepare( "SELECT b.id FROM {$t} b WHERE b.status IN ('confirmed','completed') AND (SELECT MAX(pickup_at) FROM {$l} WHERE booking_id = b.id) BETWEEN %s AND %s LIMIT 50", gmdate( 'Y-m-d H:i:s', $now - 3 * DAY_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS ) ) ); // phpcs:ignore
 		foreach ( $rows as $id ) {
 			$b = ATC_Checkout::find( '', (int) $id );
 			if ( ! $b || ! empty( $b['snap']['review_asked'] ) || ATC_Manage::reviewed( (int) $id ) ) {

@@ -1,7 +1,21 @@
 === ATCOM Booking Engine ===
-Version: 0.9.3 (checkout, part 3: emails, webhook, Manage booking)
+Version: 0.10.0 (provider bookings)
 
-New in 0.9.3: hotel to airport. A swap button between From and To turns the search around (one way;
+New in 0.10.0:
+- Portal → Bookings: every ride the provider operates, filtered by To confirm, Next 24 h, Upcoming, Past and
+  Cancelled, with a CSV download and a counter in the menu. Each booking: confirm it, choose driver and
+  vehicle (add drivers on the spot), type the traveler's service code to complete the ride (5 tries, then
+  locked), mark completed without code after pickup, report a no-show (with a note, our team is emailed), or
+  hand the ride back more than 2 hours before pickup (our team is emailed to reassign it). Traveler's phone,
+  WhatsApp and note.
+- Money: a completed ride moves the provider's amount to "earned" (next payout); a no-show waits for our team.
+- Every hour: providers who have not confirmed a booking after 2 hours get a reminder and our team a copy;
+  rides with no code and no no-show complete on their own 24 hours after pickup.
+- The traveler shows the service code to the driver at pickup (voucher and emails say so).
+- Hotel suggestions: by distance from the airport (200 km), any country; no airport chosen yet = a hint
+  instead of worldwide results.
+
+Also in 0.9.3: hotel to airport. A swap button between From and To turns the search around (one way;
 Round trip switches back to airport first). Labels become Pickup date / Pickup time. Step 2 asks for the
 pickup (hotel booking name), the flight (optional) and the hotel pickup time, suggested from the flight.
 The booking has one 'departure' ride; confirmation, emails, reminders and Manage booking follow it.
