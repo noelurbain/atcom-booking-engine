@@ -1,7 +1,9 @@
 === ATCOM Booking Engine ===
-Version: 0.10.0 (provider bookings)
+Version: 0.10.1 (provider bookings)
 
-New in 0.10.0:
+New in 0.10.1: hotel and address suggestions reach 600 km from the airport.
+
+Also in 0.10.0:
 - Portal → Bookings: every ride the provider operates, filtered by To confirm, Next 24 h, Upcoming, Past and
   Cancelled, with a CSV download and a counter in the menu. Each booking: confirm it, choose driver and
   vehicle (add drivers on the spot), type the traveler's service code to complete the ride (5 tries, then
@@ -12,7 +14,7 @@ New in 0.10.0:
 - Every hour: providers who have not confirmed a booking after 2 hours get a reminder and our team a copy;
   rides with no code and no no-show complete on their own 24 hours after pickup.
 - The traveler shows the service code to the driver at pickup (voucher and emails say so).
-- Hotel suggestions: by distance from the airport (200 km), any country; no airport chosen yet = a hint
+- Hotel suggestions: by distance from the airport (600 km since 0.10.1), any country; no airport chosen yet = a hint
   instead of worldwide results.
 
 Also in 0.9.3: hotel to airport. A swap button between From and To turns the search around (one way;

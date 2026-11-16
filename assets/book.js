@@ -106,7 +106,7 @@
     var fromCode = form.querySelector('input[name=airport]');
     var center = (form.getAttribute('data-center') || '').split(',');
     if (center.length !== 2 || center[0] === '' || isNaN(+center[0])) center = [];
-    var RADIUS_KM = 200; // How far from the airport hotels and addresses are suggested.
+    var RADIUS_KM = 600; // How far from the airport hotels and addresses are suggested.
     suggest(from, from.parentNode.querySelector('.ab-list'), function (v) {
       return fetch(C.airports + (C.airports.indexOf('?') > -1 ? '&' : '?') + 'local=1&q=' + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (d) {
         return { rows: (d.results || []).map(function (a) { return { label: a.label, sub: a.sub, id: a.id, iata: a.iata, lat: a.lat, lng: a.lng, cc: a.cc }; }), note: (d.results || []).length ? '' : 'We don’t serve that airport yet.' };
