@@ -1,5 +1,20 @@
 === ATCOM Booking Engine ===
-Version: 0.12.0 (extra payments, old-site import 2)
+Version: 0.13.0 (affiliates)
+
+New in 0.13.0:
+- Affiliates. ?ref=CODE on any page remembers the affiliate for 30 days (last click wins) and counts the click.
+  Paid bookings carry the affiliate (8% by default, own rate per affiliate) and the affiliate who invited them
+  (2%); commission lines go pending → earned when the trip completes → paid with the monthly payouts, follow
+  refunds and extra payments, and are cancelled with the booking. No commission on an affiliate's own trips.
+- Affiliate panel at /portal: overview (clicks, bookings, sales, commission), link maker, book for a client,
+  bookings, invitation link for other affiliates, payout details (PayPal, Wise or bank) and payouts, account.
+- Control → Affiliates: list with clicks, bookings and commission; approve (sends the panel invitation),
+  decline, pause, own commission rate. The theme's affiliate form now also saves a pending affiliate.
+- Book for a client (affiliates and our team): book on the site while signed in; the pay page can email the
+  payment link to the client. Control → Bookings has "New booking for a client".
+- Payouts include affiliates (minimum USD 100). Bookings show the affiliate, the referrer and who booked.
+- Stripe's fee is saved on each payment, for the money report.
+
 
 New in 0.12.0:
 - Extra payments. Changing a ride to a service that sells for more shows the difference, and the team either

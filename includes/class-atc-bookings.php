@@ -195,7 +195,13 @@ final class ATC_Bookings {
 		$money  = array( array( 'Traveler paid (Suggested retail price)', $paid ? ( ! empty( $snap['method'] ) ? 'with ' . ucfirst( (string) $snap['method'] ) : 'captured' ) : 'not paid', $paid ? $total : 0 ) );
 		if ( $paid ) {
 			$money[] = array( 'Provider (Amount you will get paid)', $legacy ? 'old site, ' . ( $total ? round( 100 * $prov / $total ) : 0 ) . '% · settled there' : 'pending until completed', $prov );
-			$money[] = array( 'Airport Transportation keeps', $legacy ? 'old site, 30% commission' : '', $total - $prov );
+			$aff_lines = $legacy ? array() : $wpdb->get_results( $wpdb->prepare( 'SELECT x.role, x.amount_cents, x.status, p.name FROM ' . self::t( 'ledger' ) . ' x LEFT JOIN ' . self::t( 'parties' ) . " p ON p.id = x.party_id WHERE x.booking_id = %d AND x.role IN ('affiliate','referrer') AND x.status <> 'cancelled'", (int) $b['id'] ), ARRAY_A );
+			$aff_sum   = 0;
+			foreach ( $aff_lines as $x ) {
+				$money[]  = array( ( 'affiliate' === $x['role'] ? 'Affiliate · ' : 'Referring affiliate · ' ) . $x['name'], $x['status'], (int) $x['amount_cents'] );
+				$aff_sum += (int) $x['amount_cents'];
+			}
+			$money[] = array( 'Airport Transportation keeps', $legacy ? 'old site, 30% commission' : 'before Stripe fees', $total - $prov - $aff_sum );
 		}
 		if ( ! empty( $snap['refunded'] ) ) {
 			$money[] = array( 'Refunded to the traveler', '', -(int) $snap['refunded'] );
@@ -244,6 +250,10 @@ final class ATC_Bookings {
 				'site'      => $legacy ? 'airporttransportation.com (old site)' : (string) ( $snap['site'] ?? '' ),
 				'affiliate' => $b['affiliate_id'] ? ( ATC_Catalog::party( (int) $b['affiliate_id'] )['name'] ?? '' ) : '',
 				'coupon'    => (string) $b['coupon_code'],
+				'affiliate_id' => (int) $b['affiliate_id'],
+				'referrer'  => $b['referrer_id'] ? ( ATC_Catalog::party( (int) $b['referrer_id'] )['name'] ?? '' ) : '',
+				'booked_by' => ! empty( $snap['booked_by'] ) ? ( 'team' === ( $snap['booked_by']['as'] ?? '' ) ? 'Our team' . ( ! empty( $snap['booked_by']['name'] ) ? ' (' . $snap['booked_by']['name'] . ')' : '' ) : 'The affiliate, for a client' ) : '',
+				'link_sent' => (string) ( $snap['link_sent'] ?? '' ),
 				'area'      => (string) ( $snap['area'] ?? '' ),
 			),
 			'events'   => $events,

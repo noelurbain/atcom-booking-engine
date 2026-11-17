@@ -556,7 +556,7 @@ final class ATC_Partner {
 
 	public static function save_payout( int $party_id, array $in ) {
 		global $wpdb;
-		$method   = in_array( $in['method'] ?? '', array( 'wise', 'bank' ), true ) ? $in['method'] : 'bank';
+		$method   = in_array( $in['method'] ?? '', array( 'wise', 'bank', 'paypal' ), true ) ? $in['method'] : 'bank';
 		$currency = in_array( $in['currency'] ?? '', array( 'MXN', 'USD' ), true ) ? $in['currency'] : 'MXN';
 		$holder   = trim( sanitize_text_field( $in['holder'] ?? '' ) );
 		$bank     = trim( sanitize_text_field( $in['bank'] ?? '' ) );
@@ -572,8 +572,8 @@ final class ATC_Partner {
 		if ( 'bank' === $method && strlen( $account ) < 6 ) {
 			return new WP_Error( 'atc_payout', 'Enter the account number.', array( 'status' => 400 ) );
 		}
-		if ( 'wise' === $method && ! is_email( $email ) ) {
-			return new WP_Error( 'atc_payout', 'Enter the email of your Wise account.', array( 'status' => 400 ) );
+		if ( in_array( $method, array( 'wise', 'paypal' ), true ) && ! is_email( $email ) ) {
+			return new WP_Error( 'atc_payout', 'Enter the email of your ' . ( 'paypal' === $method ? 'PayPal' : 'Wise' ) . ' account.', array( 'status' => 400 ) );
 		}
 		$wpdb->update(
 			self::t( 'parties' ),

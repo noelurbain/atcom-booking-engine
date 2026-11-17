@@ -38,6 +38,8 @@ final class ATC_Book {
 				'mapsKey'  => ATC_Settings::maps_browser_key(),
 				'pages'    => esc_url_raw( rest_url( 'wp/v2/pages' ) ),
 				'api'      => esc_url_raw( rest_url( 'atc/v1/' ) ),
+				// Signed in (an affiliate or our team booking for a client): the checkout calls carry the session.
+				'nonce'    => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
 			)
 		);
 	}
@@ -766,6 +768,17 @@ final class ATC_Book {
 						<p class="ab-muted ab-center">You get your confirmation by email right away.</p>
 					</section>
 				</form>
+				<?php if ( ATC_Affiliates::can_send_link( $b ) ) : ?>
+					<section class="ab-card ab-pad ab-sendlink" data-ab-sendlink data-number="<?php echo esc_attr( $b['number'] ); ?>" data-key="<?php echo esc_attr( $key ); ?>">
+						<h2>Booking for a client?</h2>
+						<p class="ab-muted">Instead of paying here, send the payment link to <strong><?php echo esc_html( $b['email'] ); ?></strong>. They check the details and pay by card; the booking is confirmed when they pay.</p>
+						<?php if ( ! empty( $b['snap']['link_sent'] ) ) : ?>
+							<p class="ab-muted">Last sent <?php echo esc_html( substr( (string) $b['snap']['link_sent'], 0, 16 ) ); ?> UTC.</p>
+						<?php endif; ?>
+						<div class="ab-alert" role="alert" hidden data-ab-error></div>
+						<button type="button" class="ab-btn" data-ab-send><?php echo empty( $b['snap']['link_sent'] ) ? 'Send the payment link to the client' : 'Send it again'; ?></button>
+					</section>
+				<?php endif; ?>
 				<?php endif; ?>
 			</div>
 			<aside class="ab-side">

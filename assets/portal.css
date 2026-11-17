@@ -55,3 +55,15 @@ table.prices td{padding:10px 12px;border-top:1px solid #F0ECE5}
 p.err{color:var(--red);font-weight:700;margin:0}
 .atc-side a .count{margin-left:auto;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#E07A1F;color:#fff;font-style:normal;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
 .pe-pills{flex-wrap:wrap}
+/* Affiliate panel */
+.copyrow{display:flex;gap:8px;flex-wrap:wrap}
+.copyrow input{flex:1 1 260px;min-width:0;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:120px;padding-top:6px}
+.bars span{flex:1;background:var(--accent,#F5B400);border-radius:3px 3px 0 0;min-height:2px}
+.steps-list{margin:0 0 6px;padding-left:20px;display:flex;flex-direction:column;gap:8px}
+.table-wrap{overflow-x:auto}
+td.num,th.num{text-align:right;white-space:nowrap}
+h2.section{margin:8px 0 0;font-size:18px}
+.card.warn.row{border:1px solid #FAD7A8;background:#FFF8EE}
+.atc-main table.bare td:first-child{text-align:left;font-weight:500;white-space:normal}
+.card.warn.row{flex-direction:row;justify-content:space-between}

@@ -96,10 +96,118 @@
     if (parts[0] === 'zones') return viewZones();
     if (parts[0] === 'meeting') return viewMeeting();
     if (parts[0] === 'payouts') return viewPayouts();
+    if (parts[0] === 'affiliates' && parts[1]) return viewAffiliate(parseInt(parts[1], 10));
+    if (parts[0] === 'affiliates') return viewAffiliates();
     if (parts[0] === 'airports') return viewAirports();
     if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
     if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
+  }
+
+  /* ---------- Affiliates ---------- */
+
+  function pctBp(bp) { return (bp / 100).toString().replace(/\.0+$/, '') + '%'; }
+  var affTone = { live: 'green', pending: 'orange', paused: 'orange', declined: 'grey' };
+  var affLabel = { live: 'Approved', pending: 'To review', paused: 'Paused', declined: 'Declined' };
+
+  function viewAffiliates() {
+    clear(app);
+    var params = new URLSearchParams(location.search);
+    var st = params.get('status') || '';
+    var tbody = h('tbody');
+    var pills = h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Show' });
+    var q = h('input', { type: 'search', placeholder: 'Find by name, email or code', 'aria-label': 'Find an affiliate' });
+    var all = [];
+    function drawPills() {
+      clear(pills);
+      [['', 'All'], ['pending', 'To review'], ['live', 'Approved'], ['paused', 'Paused'], ['declined', 'Declined']].forEach(function (o) {
+        add(pills, h('button', { type: 'button', class: 'pe-pill' + (st === o[0] ? ' on' : ''), 'aria-pressed': st === o[0] ? 'true' : 'false', text: o[1], onclick: function () { st = o[0]; drawPills(); draw(); } }));
+      });
+    }
+    function draw() {
+      clear(tbody);
+      var t = q.value.trim().toLowerCase();
+      var rows = all.filter(function (a) { return (!st || a.status === st) && (!t || (a.name + ' ' + a.email + ' ' + a.code + ' ' + a.contact).toLowerCase().indexOf(t) > -1); });
+      if (!rows.length) add(tbody, h('tr', null, h('td', { colspan: 7, class: 'atc-muted', text: 'No affiliates match.' })));
+      rows.forEach(function (a) {
+        add(tbody, h('tr', null,
+          h('td', null, h('a', { class: 'strong', href: C.base + 'affiliates/' + a.id + '/', 'data-go': 'affiliates/' + a.id, text: a.name }), h('div', { class: 'small atc-muted', text: [a.contact, a.email].filter(Boolean).join(' · ') })),
+          h('td', null, h('code', { text: a.code }), a.invited ? h('div', { class: 'small atc-muted', text: 'invited by an affiliate' }) : null),
+          h('td', { text: pctBp(a.rate) + (a.custom ? ' (own rate)' : '') }),
+          h('td', { text: String(a.clicks) }),
+          h('td', { text: String(a.bookings) }),
+          h('td', { class: 'strong nowrap', text: cash(a.earned) }),
+          h('td', null, h('span', { class: 'chip ' + (affTone[a.status] || 'grey'), text: affLabel[a.status] || a.status }), h('div', { class: 'small atc-muted', text: 'since ' + a.since }))));
+      });
+    }
+    q.addEventListener('input', draw);
+    add(app, [
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Affiliates' }), h('p', { class: 'atc-muted', text: 'Sites, agencies and creators who send us travelers. They earn their rate on completed bookings within 30 days of a click, and the affiliate who invited them earns the referral rate. Approving sends them the invitation to their panel.' }))),
+      h('div', { class: 'pe-bar' }, pills, q),
+      h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+        h('thead', null, h('tr', null, ['Affiliate', 'Code', 'Rate', 'Clicks', 'Bookings', 'Commission', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))), tbody)))
+    ]);
+    drawPills();
+    add(tbody, h('tr', null, h('td', { colspan: 7, class: 'atc-muted', text: 'Loading…' })));
+    api('GET', '/affiliates').then(function (r) { all = r; draw(); }).catch(fail);
+  }
+
+  function viewAffiliate(id) {
+    clear(app);
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/affiliates/' + id).then(function draw(a) {
+      clear(app);
+      if (a.warning) toast(a.warning, true);
+      function save(body, msg) { return api('POST', '/affiliates/' + id, body).then(function (n) { toast(msg || 'Saved.'); draw(n); }).catch(fail); }
+      var actions = h('div', { class: 'atc-actions' });
+      if (a.status === 'pending') add(actions, [
+        h('button', { class: 'btn dark', type: 'button', text: 'Approve and send the invitation', onclick: function (e) { e.target.disabled = true; save({ status: 'live' }, 'Approved. The invitation is on its way.'); } }),
+        h('button', { class: 'btn', type: 'button', text: 'Decline', onclick: function () { save({ status: 'declined' }, 'Declined.'); } })]);
+      if (a.status === 'live') add(actions, h('button', { class: 'btn', type: 'button', text: 'Pause', onclick: function () { save({ status: 'paused' }, 'Paused: their links still work, but bookings no longer earn commission.'); } }));
+      if (a.status === 'paused' || a.status === 'declined') add(actions, h('button', { class: 'btn dark', type: 'button', text: a.status === 'paused' ? 'Turn back on' : 'Approve after all', onclick: function () { save({ status: 'live' }, 'Approved.'); } }));
+      if (a.status === 'live' && a.portal.state !== 'active') add(actions, h('button', { class: 'link', type: 'button', text: a.portal.state === 'invited' ? 'Resend the invitation' : 'Send the invitation', onclick: function (e) {
+        e.target.disabled = true; api('POST', '/affiliates/' + id + '/invite').then(function (r) { toast('Sent to ' + r.sent_to + (r.test ? ' (test mode)' : '') + '.'); }).catch(fail);
+      } }));
+      var rate = h('input', { type: 'number', min: 0, max: 30, step: '0.5', value: a.custom ? a.rate / 100 : '', placeholder: (a.default / 100) + ' (default)', style: 'max-width:140px' });
+      var st = a.stats;
+      add(app, [
+        h('a', { class: 'back', href: C.base + 'affiliates/', 'data-go': 'affiliates', text: '← Affiliates' }),
+        h('section', { class: 'card pad' },
+          h('div', { class: 'atc-actions' }, h('h1', { text: a.name }), h('span', { class: 'chip ' + (affTone[a.status] || 'grey'), text: affLabel[a.status] || a.status }), h('code', { text: a.code })),
+          h('p', { class: 'atc-muted', text: [a.contact, a.email, a.phone, 'since ' + a.since].filter(Boolean).join(' · ') }),
+          a.website ? h('p', null, h('a', { href: a.website, target: '_blank', rel: 'noopener', text: a.website + ' ↗' })) : null,
+          a.about ? h('p', { class: 'note', text: a.about }) : null,
+          a.parent ? h('p', { class: 'small' }, 'Invited by ', h('a', { href: C.base + 'affiliates/' + a.parent.id + '/', 'data-go': 'affiliates/' + a.parent.id, text: a.parent.name })) : null,
+          actions),
+        h('div', { class: 'stats' },
+          h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Clicks this month' }), h('span', { class: 'big', text: String(st.clicks) })),
+          h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Bookings this month' }), h('span', { class: 'big', text: String(st.bookings) })),
+          h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Commission waiting' }), h('span', { class: 'big', text: cash(st.pending) })),
+          h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Earned, to pay' }), h('span', { class: 'big', text: cash(st.earned) })),
+          h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Paid' }), h('span', { class: 'big', text: cash(st.paid) }))),
+        h('div', { class: 'pe-split' },
+          h('div', { class: 'pe-left' },
+            h('section', { class: 'card pad' }, h('h2', { text: 'Bookings' }),
+              a.bookings.length ? h('div', { class: 'scroll' }, h('table', null,
+                h('thead', null, h('tr', null, ['Reference', 'Trip', 'Status', 'Total', 'Commission'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+                h('tbody', null, a.bookings.map(function (b) {
+                  return h('tr', null, h('td', null, bookingLink(b.number), h('div', { class: 'small atc-muted', text: 'booked ' + b.booked + (b.for_client ? ' · by them for a client' : '') + (b.referral ? ' · referral' : '') })),
+                    h('td', null, h('div', { text: b.where }), h('div', { class: 'small atc-muted', text: b.trip })), h('td', { text: b.status }), h('td', { class: 'nowrap', text: cash(b.total) }), h('td', { class: 'strong nowrap' }, cash(b.commission), h('div', { class: 'small atc-muted', text: b.cstatus })));
+                })))) : h('p', { class: 'atc-muted', text: 'No bookings yet.' })),
+            a.referred.length ? h('section', { class: 'card pad' }, h('h2', { text: 'Affiliates they invited' }), h('div', { class: 'rows' }, a.referred.map(function (r) {
+              return h('a', { class: 'row', href: C.base + 'affiliates/' + r.id + '/', 'data-go': 'affiliates/' + r.id }, h('span', { text: r.name }), h('span', { class: 'chip ' + (affTone[r.status] || 'grey'), text: affLabel[r.status] || r.status }));
+            }))) : null),
+          h('div', { class: 'bk-side' },
+            h('section', { class: 'card pad' }, h('h2', { text: 'Commission rate' }),
+              h('label', { class: 'field' }, h('span', { text: 'Rate (%), empty = default ' + pctBp(a.default) }), rate),
+              h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'button', text: 'Save rate', onclick: function () { save({ rate: rate.value }, 'Rate saved. It applies to new bookings.'); } }))),
+            h('section', { class: 'card pad' }, h('h2', { text: 'Link and panel' }),
+              a.link ? h('p', { class: 'small' }, h('code', { text: a.link })) : null,
+              h('p', { class: 'small atc-muted', text: { active: 'Using the panel', invited: 'Invited ' + (a.portal.invited_at || '').slice(0, 10) + ', no password yet', not_invited: 'Not invited yet' }[a.portal.state] })),
+            h('section', { class: 'card pad' }, h('h2', { text: 'Payout details' }),
+              h('p', { class: 'small', text: a.payout.set ? ({ paypal: 'PayPal', wise: 'Wise', bank: 'Bank' }[a.payout.method] || a.payout.method) + ' · ' + (a.payout.email || ((a.payout.bank ? a.payout.bank + ' · ' : '') + 'ending ' + a.payout.last4)) : 'Not added yet.' }))))
+      ]);
+    }).catch(fail);
   }
 
   /* ---------- Bookings ---------- */
@@ -124,7 +232,8 @@
     }
     add(app, [
       h('div', { class: 'atc-head' },
-        h('div', null, h('h1', { text: 'Bookings' }), h('p', { class: 'atc-muted', text: 'Every booking, newest first. Pick-up times in the airport\'s local time.' }))),
+        h('div', null, h('h1', { text: 'Bookings' }), h('p', { class: 'atc-muted', text: 'Every booking, newest first. Pick-up times in the airport\'s local time.' })),
+        h('a', { class: 'btn dark', href: C.home, target: '_blank', rel: 'noopener', title: 'Book on the site while signed in: at payment you can pay with the client\'s card or email them the payment link.', text: 'New booking for a client ↗' })),
       h('div', { class: 'pe-bar' }, pills, search),
       h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
         h('thead', null, h('tr', null, ['Reference', 'Pick-up', 'Route', 'Vehicle', 'Pax', 'Provider', 'Total', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
@@ -377,7 +486,10 @@
               h('div', { class: 'rows' },
                 h('div', null, h('span', { text: 'Site' }), h('strong', { text: b.source.site || '–' })),
                 h('div', null, h('span', { text: 'Channel' }), h('strong', { text: b.channel })),
-                h('div', null, h('span', { text: 'Affiliate' }), h('strong', { text: b.source.affiliate || 'none' })),
+                h('div', null, h('span', { text: 'Affiliate' }), b.source.affiliate_id ? h('a', { href: C.base + 'affiliates/' + b.source.affiliate_id + '/', 'data-go': 'affiliates/' + b.source.affiliate_id, text: b.source.affiliate }) : h('strong', { text: 'none' })),
+                b.source.referrer ? h('div', null, h('span', { text: 'Invited by' }), h('strong', { text: b.source.referrer })) : null,
+                b.source.booked_by ? h('div', null, h('span', { text: 'Booked by' }), h('strong', { text: b.source.booked_by })) : null,
+                b.source.link_sent ? h('div', null, h('span', { text: 'Payment link sent' }), h('strong', { text: b.source.link_sent.slice(0, 16) })) : null,
                 h('div', null, h('span', { text: 'Coupon' }), h('strong', { text: b.source.coupon || 'none' })),
                 b.source.area ? h('div', null, h('span', { text: 'Their area name' }), h('strong', { text: b.source.area })) : null))))
       ]);
@@ -606,7 +718,7 @@
               }).catch(fail);
             } }) : null;
             var row = h('tr', null,
-              h('td', null, h('a', { class: 'strong', href: C.base + 'providers/' + r.party_id + '/', 'data-go': 'providers/' + r.party_id, text: r.name }), lines ? h('div', null, lines) : null),
+              h('td', null, h('a', { class: 'strong', href: C.base + (r.type === 'affiliate' ? 'affiliates/' : 'providers/') + r.party_id + '/', 'data-go': (r.type === 'affiliate' ? 'affiliates/' : 'providers/') + r.party_id, text: r.name }), r.type === 'affiliate' ? h('span', { class: 'chip grey', text: 'Affiliate' }) : null, lines ? h('div', null, lines) : null),
               h('td', { text: r.country || '–' }), h('td', { text: r.method || '–' }), h('td', { text: String(r.trips) }),
               h('td', { text: r.held ? cash(r.held) : '–' }), h('td', { class: 'strong', text: cash(r.to_pay) }),
               h('td', null, h('span', { class: 'chip ' + r.tone, text: r.status })), h('td', null, paid));

@@ -374,7 +374,7 @@ final class ATC_Trips {
 		$open = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . self::t( 'booking_legs' ) . " WHERE booking_id = %d AND status IN ('new','accepted','released')", (int) $l['booking_id'] ) );
 		if ( ! $open ) {
 			$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'bookings' ) . " SET status = 'completed', updated_at = %s WHERE id = %d AND status = 'confirmed'", self::now(), (int) $l['booking_id'] ) ); // phpcs:ignore
-			$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'ledger' ) . " SET status = 'earned', updated_at = %s WHERE booking_id = %d AND role = 'platform' AND status = 'pending'", self::now(), (int) $l['booking_id'] ) ); // phpcs:ignore
+			$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'ledger' ) . " SET status = 'earned', updated_at = %s WHERE booking_id = %d AND role IN ('platform','affiliate','referrer') AND status = 'pending'", self::now(), (int) $l['booking_id'] ) ); // phpcs:ignore
 		}
 	}
 

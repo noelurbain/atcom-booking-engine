@@ -314,6 +314,15 @@ final class ATC_Mail {
 		self::send( $b['email'], 'Refund on booking ' . $b['number'], self::wrap( 'We refunded ' . ATC_Book::money( $amount ), self::p( 'Hi ' . self::e( $b['first_name'] ) . ', we refunded <strong>' . self::e( ATC_Book::money( $amount ) ) . '</strong> to the card you paid with. Banks usually show it within 5 to 10 days. Your booking stays as it is.' ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'refund' ) );
 	}
 
+	/** Booked for a client by an affiliate or our team: the client pays from this link. */
+	public static function payment_link( array $b, string $url ): void {
+		$body = self::p( 'Hi ' . self::e( $b['first_name'] ) . ', your airport transfer is ready to confirm. Check the details and pay securely by card to book it.' )
+			. self::box( '<strong>Total: ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) . '</strong><br>Free cancellation up to ' . (int) ATC_Settings::get( 'free_cancel_hours' ) . ' h before pickup.' )
+			. self::table( self::trip_rows( $b, false ) )
+			. self::p( 'The price is held for you; if it changed in the meantime, the payment page shows the current one before you pay.' );
+		self::send( $b['email'], 'Confirm your airport transfer: ' . ATC_Book::money( (int) $b['total_cents'] ), self::wrap( 'Your airport transfer is ready to book', $body, 'Check and pay', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'payment_link' ) );
+	}
+
 	/** Our team asked the traveler to pay more (an upgrade, an extra stop). */
 	public static function charge_request( array $b, array $c ): void {
 		$key  = ATC_Checkout::key_of( $b );
@@ -335,7 +344,7 @@ final class ATC_Mail {
 		foreach ( $lines as $l ) {
 			$rows[] = array( $l['date'] . ' · ' . $l['number'], $l['direction'] . ( $l['how'] ? ' · ' . $l['how'] : '' ) . ' · ' . ATC_Book::money( $l['amount'] ) );
 		}
-		$body = self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', we sent your payout for rides completed up to ' . self::e( $month ) . '.' )
+		$body = self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', we sent your payout for ' . ( 'affiliate' === $p['type'] ? 'commissions on trips' : 'rides' ) . ' completed up to ' . self::e( $month ) . '.' )
 			. self::box( '<strong style="font-size:20px">' . self::e( ATC_Book::money( $amount ) ) . '</strong><br>Reference: ' . self::e( $reference ), '#E8F4EC', '#CFE6D7' )
 			. self::table( $rows );
 		self::send( self::provider_to( $p ), 'Payout sent: ' . ATC_Book::money( $amount ) . ' · ' . $month, self::wrap( 'Your payout for ' . $month, $body, 'Open the portal', home_url( '/portal/' ) ), array( 'kind' => 'payout' ) );

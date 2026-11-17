@@ -250,6 +250,7 @@ final class ATC_Checkout {
 			return new WP_Error( 'atc_booking', 'We could not save your booking. Please try again.', array( 'status' => 500 ) );
 		}
 		self::write_legs( $id, $o, $s, $q, array() );
+		ATC_Affiliates::attach( $id );
 		ATC_Install::log( 'booking', $id, 'started', array( 'service' => $o['service_id'], 'total' => $total ) );
 		return array( 'number' => $number, 'key' => $key );
 	}
@@ -557,7 +558,7 @@ final class ATC_Checkout {
 		if ( 'held' !== $b['status'] || empty( $b['stripe_payment_intent'] ) ) {
 			return $b['status'];
 		}
-		$pi = self::stripe( 'GET', 'payment_intents/' . rawurlencode( $b['stripe_payment_intent'] ) . '?expand[]=latest_charge' );
+		$pi = self::stripe( 'GET', 'payment_intents/' . rawurlencode( $b['stripe_payment_intent'] ) . '?expand[]=latest_charge.balance_transaction' );
 		if ( is_wp_error( $pi ) ) {
 			return 'held';
 		}
@@ -588,6 +589,12 @@ final class ATC_Checkout {
 		$snap['method']  = $card ? 'card' : (string) ( $pi['payment_method_types'][0] ?? 'card' );
 		$snap['card']    = $card ? array( 'brand' => $card['brand'] ?? '', 'last4' => $card['last4'] ?? '' ) : null;
 		$snap['paid_at'] = self::now();
+		// Stripe's fee, for the money report (comes out of our share).
+		$bt = $pi['latest_charge']['balance_transaction'] ?? null;
+		if ( is_array( $bt ) ) {
+			$snap['stripe_fee'] = (int) ( $bt['fee'] ?? 0 );
+			$snap['stripe_net'] = (int) ( $bt['net'] ?? 0 );
+		}
 		self::save_snapshot( (int) $b['id'], $snap );
 
 		$l     = self::t( 'ledger' );
@@ -598,7 +605,9 @@ final class ATC_Checkout {
 			$prov += (int) $leg['provider_cents'];
 			$wpdb->insert( $l, array( 'booking_id' => (int) $b['id'], 'leg_id' => (int) $leg['id'], 'party_id' => (int) $leg['party_id'], 'role' => 'provider', 'amount_cents' => (int) $leg['provider_cents'], 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		}
-		$wpdb->insert( $l, array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'platform', 'amount_cents' => (int) $b['total_cents'] - $prov, 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'note' => 'Before Stripe fees', 'created_at' => self::now(), 'updated_at' => self::now() ) );
+		$b   = self::find( '', (int) $b['id'] );
+		$aff = ATC_Affiliates::on_paid( $b );
+		$wpdb->insert( $l, array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'platform', 'amount_cents' => (int) $b['total_cents'] - $prov - $aff, 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'note' => 'Before Stripe fees', 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		ATC_Install::log( 'booking', (int) $b['id'], 'paid', array( 'amount' => (int) $pi['amount_received'], 'payment_intent' => $pi['id'] ) );
 		do_action( 'atc_booking_confirmed', (int) $b['id'] );
 	}

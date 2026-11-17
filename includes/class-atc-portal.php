@@ -17,7 +17,7 @@ final class ATC_Portal {
 		add_action( 'wp_login_failed', array( __CLASS__, 'login_failed' ) );
 		add_action( 'admin_post_nopriv_atc_form', array( __CLASS__, 'theme_signup' ), 1 );
 		add_action( 'admin_post_atc_form', array( __CLASS__, 'theme_signup' ), 1 );
-		add_filter( 'show_admin_bar', static fn( $show ) => current_user_can( 'atc_provider_portal' ) && ! current_user_can( 'edit_posts' ) ? false : $show );
+		add_filter( 'show_admin_bar', static fn( $show ) => ( current_user_can( 'atc_provider_portal' ) || current_user_can( 'atc_affiliate_portal' ) ) && ! current_user_can( 'edit_posts' ) ? false : $show );
 	}
 
 	public static function rewrite(): void {
@@ -80,7 +80,7 @@ final class ATC_Portal {
 	}
 
 	public static function keep_out_of_wp_admin(): void {
-		if ( wp_doing_ajax() || ! current_user_can( 'atc_provider_portal' ) || current_user_can( 'edit_posts' ) ) {
+		if ( wp_doing_ajax() || ! ( current_user_can( 'atc_provider_portal' ) || current_user_can( 'atc_affiliate_portal' ) ) || current_user_can( 'edit_posts' ) ) {
 			return;
 		}
 		wp_safe_redirect( home_url( '/portal/' ) );
@@ -136,6 +136,10 @@ final class ATC_Portal {
 			self::frame_open( 'Sign-in email' );
 			echo '<main class="atc-wrap atc-narrow"><section class="card pad"><h1>' . ( is_wp_error( $res ) ? 'Email not changed' : 'Email changed' ) . '</h1><p>' . esc_html( is_wp_error( $res ) ? $res->get_error_message() : 'From now on, sign in with ' . wp_get_current_user()->user_email . '.' ) . '</p><p><a class="btn dark" href="' . esc_url( home_url( '/portal/account/' ) ) . '">Back to the portal</a></p></section></main>';
 			self::frame_close();
+			exit;
+		}
+		if ( ! ATC_Partner::current_party_id() && ATC_Affiliates::current_id() ) {
+			self::affiliate_app();
 			exit;
 		}
 		if ( ! ATC_Partner::current_party_id() ) {
@@ -384,6 +388,18 @@ final class ATC_Portal {
 	}
 
 	/* ---------- The provider app ---------- */
+
+	private static function affiliate_app(): void {
+		$config = array(
+			'rest'   => esc_url_raw( rest_url( 'atc/v1/affiliate' ) ),
+			'nonce'  => wp_create_nonce( 'wp_rest' ),
+			'base'   => esc_url_raw( home_url( '/portal/' ) ),
+			'logout' => esc_url_raw( wp_nonce_url( home_url( '/portal/logout/' ), 'atc_logout' ) ),
+		);
+		self::frame_open( 'Affiliate panel', 'Affiliate panel' );
+		echo '<div class="atc-wrap atc-shell"><nav id="atc-side" class="atc-side" aria-label="Affiliate menu"></nav><main id="atc-app" class="atc-main" aria-live="polite"><p class="atc-muted">Loading…</p></main></div><div id="atc-toast" role="status" aria-live="polite"></div>';
+		self::frame_close( '<script>window.ATC = ' . wp_json_encode( $config ) . ';</script><script src="' . esc_url( ATC_URL . 'assets/affiliate.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script>' );
+	}
 
 	private static function app(): void {
 		$config = array(

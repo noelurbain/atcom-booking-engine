@@ -273,8 +273,20 @@
 
   /* ---------- Shared bits for steps 2 and 3 ---------- */
   function post(url, body) {
-    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) })
+    var hd = { 'Content-Type': 'application/json' };
+    if (C.nonce) hd['X-WP-Nonce'] = C.nonce;
+    return fetch(url, { method: 'POST', headers: hd, credentials: 'same-origin', body: JSON.stringify(body) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) { var e = new Error(d.message || 'Something went wrong. Please try again.'); e.data = d; throw e; } return d; }); });
+  }
+  var sendBox = document.querySelector('[data-ab-sendlink]');
+  if (sendBox) {
+    var sendBtn = sendBox.querySelector('[data-ab-send]');
+    sendBtn.addEventListener('click', function () {
+      sendBtn.disabled = true;
+      post(C.api + 'checkout/send-link', { number: sendBox.getAttribute('data-number'), key: sendBox.getAttribute('data-key') })
+        .then(function (d) { sendBtn.textContent = 'Sent to ' + d.to + ' ✓'; showError(sendBox.querySelector('[data-ab-error]'), ''); })
+        .catch(function (x) { sendBtn.disabled = false; showError(sendBox.querySelector('[data-ab-error]'), x.message); });
+    });
   }
   function showError(box, msg) {
     if (!box) return;

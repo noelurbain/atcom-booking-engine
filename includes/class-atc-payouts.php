@@ -39,7 +39,7 @@ final class ATC_Payouts {
 		$day    = (int) ATC_Settings::get( 'payout_day' );
 
 		// Earned and not in a payout yet, for rides up to this month.
-		$earned = $wpdb->get_results( $wpdb->prepare( "SELECT party_id, COUNT(*) n, SUM(amount_cents) amt FROM {$l} WHERE role = 'provider' AND status = 'earned' AND payout_id IS NULL AND party_id > 0 AND (service_month IS NULL OR service_month <= %s) GROUP BY party_id", $period ), OBJECT_K ); // phpcs:ignore
+		$earned = $wpdb->get_results( $wpdb->prepare( "SELECT party_id, COUNT(*) n, SUM(amount_cents) amt FROM {$l} WHERE role IN ('provider','affiliate','referrer') AND status = 'earned' AND payout_id IS NULL AND party_id > 0 AND (service_month IS NULL OR service_month <= %s) GROUP BY party_id", $period ), OBJECT_K ); // phpcs:ignore
 		// No-shows waiting for our decision.
 		$held = $wpdb->get_results( $wpdb->prepare( "SELECT x.party_id, SUM(x.amount_cents) amt FROM {$l} x JOIN " . self::t( 'booking_legs' ) . " g ON g.id = x.leg_id WHERE x.role = 'provider' AND x.status = 'pending' AND g.status = 'no_show' AND (x.service_month IS NULL OR x.service_month <= %s) GROUP BY x.party_id", $period ), OBJECT_K ); // phpcs:ignore
 		// Payouts already made for this month.
@@ -81,6 +81,7 @@ final class ATC_Payouts {
 			$tot['held'] += $hold;
 			$rows[]       = array(
 				'party_id'  => $pid,
+				'type'      => (string) ( $p['type'] ?? 'provider' ),
 				'name'      => $p['name'] ?? ( '#' . $pid ),
 				'country'   => (string) ( $p['country'] ?? '' ),
 				'method'    => $pay['set'] ? ucfirst( $pay['method'] ) . ' · ' . $pay['currency'] . ( $pay['last4'] ? ' · ••' . $pay['last4'] : '' ) : '',
@@ -131,7 +132,7 @@ final class ATC_Payouts {
 			$pay = ATC_Partner::payout_summary( $r['party_id'] );
 			$wpdb->insert( self::t( 'payouts' ), array( 'party_id' => $r['party_id'], 'period' => $period, 'amount_cents' => $r['to_pay'], 'currency' => 'USD', 'method' => $pay['method'], 'status' => 'approved', 'created_at' => self::now() ) );
 			$id = (int) $wpdb->insert_id;
-			$wpdb->query( $wpdb->prepare( "UPDATE {$l} SET payout_id = %d, updated_at = %s WHERE role = 'provider' AND status = 'earned' AND payout_id IS NULL AND party_id = %d AND (service_month IS NULL OR service_month <= %s)", $id, self::now(), $r['party_id'], $period ) ); // phpcs:ignore
+			$wpdb->query( $wpdb->prepare( "UPDATE {$l} SET payout_id = %d, updated_at = %s WHERE role IN ('provider','affiliate','referrer') AND status = 'earned' AND payout_id IS NULL AND party_id = %d AND (service_month IS NULL OR service_month <= %s)", $id, self::now(), $r['party_id'], $period ) ); // phpcs:ignore
 			// The lines decide the amount, in case something moved since the list was drawn.
 			$sum = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE(SUM(amount_cents),0) FROM {$l} WHERE payout_id = %d", $id ) ); // phpcs:ignore
 			$wpdb->update( self::t( 'payouts' ), array( 'amount_cents' => $sum ), array( 'id' => $id ) );
@@ -167,12 +168,12 @@ final class ATC_Payouts {
 	/** The rides behind a payout. */
 	public static function lines( int $id ): array {
 		global $wpdb;
-		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT x.amount_cents, b.number, g.pickup_at, g.direction, g.completed_how FROM ' . self::t( 'ledger' ) . ' x JOIN ' . self::t( 'bookings' ) . ' b ON b.id = x.booking_id LEFT JOIN ' . self::t( 'booking_legs' ) . ' g ON g.id = x.leg_id WHERE x.payout_id = %d ORDER BY g.pickup_at', $id ), ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT x.amount_cents, x.role, b.number, COALESCE(g.pickup_at, (SELECT MAX(pickup_at) FROM ' . self::t( 'booking_legs' ) . ' z WHERE z.booking_id = b.id)) pickup_at, g.direction, g.completed_how FROM ' . self::t( 'ledger' ) . ' x JOIN ' . self::t( 'bookings' ) . ' b ON b.id = x.booking_id LEFT JOIN ' . self::t( 'booking_legs' ) . ' g ON g.id = x.leg_id WHERE x.payout_id = %d ORDER BY pickup_at', $id ), ARRAY_A );
 		return array_map(
 			static fn( $r ) => array(
 				'number'    => $r['number'],
 				'date'      => $r['pickup_at'] ? substr( $r['pickup_at'], 0, 10 ) : '',
-				'direction' => 'arrival' === $r['direction'] ? 'Arrival' : 'Departure',
+				'direction' => 'affiliate' === $r['role'] ? 'Commission' : ( 'referrer' === $r['role'] ? 'Referral commission' : ( 'arrival' === $r['direction'] ? 'Arrival' : 'Departure' ) ),
 				'how'       => array( 'code' => 'Service code', 'auto' => 'Completed on its own', 'manual' => 'Marked by provider', 'no_show_paid' => 'No-show (accepted)', 'legacy' => 'Old site' )[ $r['completed_how'] ] ?? '',
 				'amount'    => (int) $r['amount_cents'],
 			),

@@ -136,8 +136,9 @@ final class ATC_Ops {
 		$paid    = (int) $b['total_cents'] - (int) ( $b['snap']['refunded'] ?? 0 );
 		$prov    = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE(SUM(amount_cents),0) FROM {$l} WHERE booking_id = %d AND role = 'provider' AND status NOT IN ('cancelled')", $booking_id ) ); // phpcs:ignore
 		$current = $wpdb->get_row( $wpdb->prepare( "SELECT id, status FROM {$l} WHERE booking_id = %d AND role = 'platform' AND status NOT IN ('cancelled') ORDER BY id DESC LIMIT 1", $booking_id ), ARRAY_A ); // phpcs:ignore
+		$aff     = ATC_Affiliates::rebalance( $b, $paid );
 		if ( $current ) {
-			$wpdb->update( $l, array( 'amount_cents' => $paid - $prov, 'updated_at' => self::now() ), array( 'id' => (int) $current['id'] ) );
+			$wpdb->update( $l, array( 'amount_cents' => $paid - $prov - $aff, 'updated_at' => self::now() ), array( 'id' => (int) $current['id'] ) );
 		}
 	}
 

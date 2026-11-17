@@ -84,6 +84,11 @@ final class ATC_REST_Control {
 		$bk( 'refund', static fn( $n, $b ) => ATC_Ops::refund( $n, (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['cancel'] ), mb_substr( sanitize_text_field( (string) ( $b['reason'] ?? '' ) ), 0, 200 ) ) );
 		$bk( 'resend', static fn( $n, $b ) => ATC_Ops::resend( $n ) );
 
+		// Affiliates.
+		self::route( '/affiliates', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Affiliates::list( (string) $r['status'] ) ) ) );
+		self::route( '/affiliates/(?P<id>\\d+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::get( (int) $r['id'] ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::save( (int) $r['id'], self::body( $r ) ) ) ) );
+		self::route( '/affiliates/(?P<id>\\d+)/invite', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::invite( (int) $r['id'] ) ) ) );
+
 		// Payouts.
 		self::route( '/payouts', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Payouts::run( (string) $r['period'] ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Payouts::approve( (string) ( self::body( $r )['period'] ?? '' ) ) ) ) );
 		self::route( '/payouts/(?P<id>\\d+)/paid', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Payouts::mark_paid( (int) $r['id'], (string) ( self::body( $r )['reference'] ?? '' ) ) ) ) );

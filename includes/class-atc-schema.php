@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks',
 		);
 	}
 
@@ -410,6 +410,17 @@ final class ATC_Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY kind_airport_term (kind,airport_id,term),
   KEY last_at (last_at)
+) $c;";
+
+		// Affiliate link clicks, counted per affiliate, day and landing page (no personal data).
+		$sql[] = "CREATE TABLE {$p}clicks (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  party_id bigint(20) unsigned NOT NULL,
+  day date NOT NULL,
+  landing varchar(190) NOT NULL DEFAULT '',
+  clicks int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY party_day_landing (party_id,day,landing)
 ) $c;";
 
 		// How travelers meet their driver at an airport: ours (party_id 0) or a provider's own, per terminal ('' = all).

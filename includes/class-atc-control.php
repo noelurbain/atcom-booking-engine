@@ -80,6 +80,7 @@ final class ATC_Control {
 			'rest'      => esc_url_raw( rest_url( 'atc/v1/control' ) ),
 			'nonce'     => wp_create_nonce( 'wp_rest' ),
 			'base'      => esc_url_raw( home_url( '/control/' ) ),
+			'home'      => esc_url_raw( home_url( '/' ) ),
 			'mapsKey'   => ATC_Settings::maps_browser_key(),
 			'version'   => ATC_VERSION,
 		);
@@ -116,6 +117,7 @@ final class ATC_Control {
 		<a href="<?php echo esc_url( home_url( '/control/' ) ); ?>" data-view="">Dashboard</a>
 		<a href="<?php echo esc_url( home_url( '/control/bookings/' ) ); ?>" data-view="bookings">Bookings</a>
 		<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
+		<a href="<?php echo esc_url( home_url( '/control/affiliates/' ) ); ?>" data-view="affiliates">Affiliates</a>
 		<span class="off">Prices <i class="soon">soon</i></span>
 		<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
 		<a href="<?php echo esc_url( home_url( '/control/airports/' ) ); ?>" data-view="airports">Airports</a>

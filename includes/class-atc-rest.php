@@ -67,7 +67,20 @@ final class ATC_REST {
 				},
 			)
 		);
+		register_rest_route(
+			self::NS,
+			'/checkout/send-link',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => 'is_user_logged_in',
+				'callback'            => static function ( WP_REST_Request $r ) {
+					$p = (array) $r->get_json_params();
+					return self::out( ATC_Affiliates::send_link( (string) ( $p['number'] ?? '' ), (string) ( $p['key'] ?? '' ) ) );
+				},
+			)
+		);
 		self::register_manage();
+		ATC_REST_Affiliate::register_routes();
 	}
 
 	public static function register_manage(): void {
