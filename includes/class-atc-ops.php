@@ -77,6 +77,7 @@ final class ATC_Ops {
 				'party_id'   => (int) $r['party_id'],
 				'label'      => $r['provider'] . ' · ' . $r['vehicle'] . ' (up to ' . (int) $r['max_passengers'] . ')',
 				'suggested'  => $amount,
+				'retail'     => null === $r['retail_cents'] ? null : ( $round ? intdiv( (int) $r['retail_cents'], 2 ) : (int) $r['retail_cents'] ),
 				'current'    => (int) $r['service_id'] === (int) $leg['service_id'] && (int) $r['party_id'] === (int) $leg['party_id'],
 			);
 		}
@@ -128,7 +129,7 @@ final class ATC_Ops {
 	}
 
 	/** Our share = what the traveler paid, minus refunds, minus what the providers get. */
-	private static function rebalance_platform( int $booking_id ): void {
+	public static function rebalance_platform( int $booking_id ): void {
 		global $wpdb;
 		$l       = self::t( 'ledger' );
 		$b       = ATC_Checkout::find( '', $booking_id );
@@ -199,14 +200,35 @@ final class ATC_Ops {
 			if ( empty( $b['stripe_payment_intent'] ) ) {
 				return new WP_Error( 'atc_refund', 'This booking was not paid through Stripe here, so refund it where it was paid.', array( 'status' => 409 ) );
 			}
-			$r = ATC_Checkout::stripe( 'POST', 'refunds', array( 'payment_intent' => $b['stripe_payment_intent'], 'amount' => $amount_cents, 'reason' => 'requested_by_customer', 'metadata' => array( 'booking' => $b['number'], 'by' => (string) get_current_user_id() ) ) );
-			if ( is_wp_error( $r ) ) {
-				return new WP_Error( 'atc_refund', 'Stripe refused the refund: ' . $r->get_error_message(), array( 'status' => 502 ) );
+			// The booking may have been paid in parts (an upgrade paid later): newest payment first.
+			if ( ! isset( $b['snap']['pi_refunded'] ) ) {
+				$b['snap']['pi_refunded'] = array( $b['stripe_payment_intent'] => (int) ( $b['snap']['refunded'] ?? 0 ) );
 			}
-			$b['snap']['refunded'] = (int) ( $b['snap']['refunded'] ?? 0 ) + (int) $r['amount'];
-			ATC_Checkout::snapshot( (int) $b['id'], $b['snap'] );
-			$wpdb->insert( self::t( 'ledger' ), array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'refund', 'amount_cents' => -(int) $r['amount'], 'currency' => 'USD', 'status' => 'paid', 'note' => mb_substr( $reason, 0, 255 ) ?: 'Refund', 'created_at' => self::now(), 'updated_at' => self::now() ) );
-			ATC_Install::log( 'booking', (int) $b['id'], 'refunded', array( 'amount' => (int) $r['amount'], 'reason' => $reason, 'stripe' => $r['id'] ?? '' ) );
+			$sources = ATC_Charges::refund_sources( $b );
+			$need    = $amount_cents;
+			$sent    = 0;
+			foreach ( $sources as $pi => $room ) {
+				if ( $need <= 0 ) {
+					break;
+				}
+				$part = min( $need, $room );
+				$r    = ATC_Checkout::stripe( 'POST', 'refunds', array( 'payment_intent' => $pi, 'amount' => $part, 'reason' => 'requested_by_customer', 'metadata' => array( 'booking' => $b['number'], 'by' => (string) get_current_user_id() ) ) );
+				if ( is_wp_error( $r ) ) {
+					if ( ! $sent ) {
+						return new WP_Error( 'atc_refund', 'Stripe refused the refund: ' . $r->get_error_message(), array( 'status' => 502 ) );
+					}
+					break;
+				}
+				$got                             = (int) $r['amount'];
+				$b['snap']['pi_refunded'][ $pi ] = (int) ( $b['snap']['pi_refunded'][ $pi ] ?? 0 ) + $got;
+				$b['snap']['refunded']           = (int) ( $b['snap']['refunded'] ?? 0 ) + $got;
+				ATC_Checkout::snapshot( (int) $b['id'], $b['snap'] );
+				$wpdb->insert( self::t( 'ledger' ), array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'refund', 'amount_cents' => -$got, 'currency' => 'USD', 'status' => 'paid', 'note' => mb_substr( $reason, 0, 255 ) ?: 'Refund', 'created_at' => self::now(), 'updated_at' => self::now() ) );
+				ATC_Install::log( 'booking', (int) $b['id'], 'refunded', array( 'amount' => $got, 'reason' => $reason, 'stripe' => $r['id'] ?? '' ) );
+				$need -= $got;
+				$sent += $got;
+			}
+			$amount_cents = $sent;
 		}
 		$b = ATC_Checkout::find( '', (int) $b['id'] );
 		if ( $cancel || (int) $b['snap']['refunded'] >= (int) $b['total_cents'] ) {

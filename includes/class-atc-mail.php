@@ -314,6 +314,17 @@ final class ATC_Mail {
 		self::send( $b['email'], 'Refund on booking ' . $b['number'], self::wrap( 'We refunded ' . ATC_Book::money( $amount ), self::p( 'Hi ' . self::e( $b['first_name'] ) . ', we refunded <strong>' . self::e( ATC_Book::money( $amount ) ) . '</strong> to the card you paid with. Banks usually show it within 5 to 10 days. Your booking stays as it is.' ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'refund' ) );
 	}
 
+	/** Our team asked the traveler to pay more (an upgrade, an extra stop). */
+	public static function charge_request( array $b, array $c ): void {
+		$key  = ATC_Checkout::key_of( $b );
+		$url  = add_query_arg( array( 'pay_extra' => $c['id'] ), ATC_Checkout::reservation_url( $b['number'], $key ) );
+		$body = self::p( 'Hi ' . self::e( $b['first_name'] ) . ', there is a change on your booking <strong>' . self::e( $b['number'] ) . '</strong> with a price difference.' )
+			. self::box( '<strong>' . self::e( $c['reason'] ) . '</strong><br><span style="font-size:20px;font-weight:700">' . self::e( ATC_Book::money( (int) $c['amount'] ) ) . '</span>' )
+			. self::p( 'You pay it securely by card on the next page. Your booking stays as it is in the meantime.' )
+			. self::table( self::trip_rows( $b, false ) );
+		self::send( $b['email'], 'Amount to pay on booking ' . $b['number'] . ': ' . ATC_Book::money( (int) $c['amount'] ), self::wrap( 'Amount to pay: ' . ATC_Book::money( (int) $c['amount'] ), $body, 'Pay ' . ATC_Book::money( (int) $c['amount'] ), $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'charge' ) );
+	}
+
 	/** Payout sent: the statement for the provider. */
 	public static function payout_statement( int $party_id, string $month, int $amount, string $reference, array $lines ): void {
 		$p = ATC_Catalog::party( $party_id );
@@ -362,7 +373,7 @@ final class ATC_Mail {
 		$now = time();
 
 		// Finish your booking: started (contact given), not paid, between 1 and 24 hours ago. Once.
-		$rows = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$t} WHERE status = 'held' AND email <> '' AND created_at BETWEEN %s AND %s LIMIT 50", gmdate( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now - HOUR_IN_SECONDS ) ) ); // phpcs:ignore
+		$rows = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$t} WHERE status = 'held' AND email <> '' AND snapshot NOT LIKE '%%\"legacy\":true%%' AND created_at BETWEEN %s AND %s LIMIT 50", gmdate( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now - HOUR_IN_SECONDS ) ) ); // phpcs:ignore
 		foreach ( $rows as $id ) {
 			$b = ATC_Checkout::find( '', (int) $id );
 			if ( ! $b || ! empty( $b['snap']['reminded'] ) ) {
@@ -381,7 +392,7 @@ final class ATC_Mail {
 		}
 
 		// The day before: rides picking up in 20 to 28 hours.
-		$legs = $wpdb->get_results( $wpdb->prepare( "SELECT l.id, l.booking_id FROM {$l} l JOIN {$t} b ON b.id = l.booking_id WHERE b.status = 'confirmed' AND l.status NOT IN ('cancelled','held') AND l.pickup_at BETWEEN %s AND %s LIMIT 100", gmdate( 'Y-m-d H:i:s', $now + 20 * HOUR_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now + 28 * HOUR_IN_SECONDS ) ), ARRAY_A ); // phpcs:ignore
+		$legs = $wpdb->get_results( $wpdb->prepare( "SELECT l.id, l.booking_id FROM {$l} l JOIN {$t} b ON b.id = l.booking_id WHERE b.status = 'confirmed' AND b.snapshot NOT LIKE '%%\"legacy\":true%%' AND l.status NOT IN ('cancelled','held') AND l.pickup_at BETWEEN %s AND %s LIMIT 100", gmdate( 'Y-m-d H:i:s', $now + 20 * HOUR_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now + 28 * HOUR_IN_SECONDS ) ), ARRAY_A ); // phpcs:ignore
 		foreach ( $legs as $leg ) {
 			$b = ATC_Checkout::find( '', (int) $leg['booking_id'] );
 			$done = (array) ( $b['snap']['reminded_legs'] ?? array() );
@@ -402,7 +413,7 @@ final class ATC_Mail {
 		}
 
 		// How was it: a day after the last ride.
-		$rows = $wpdb->get_col( $wpdb->prepare( "SELECT b.id FROM {$t} b WHERE b.status IN ('confirmed','completed') AND (SELECT MAX(pickup_at) FROM {$l} WHERE booking_id = b.id) BETWEEN %s AND %s LIMIT 50", gmdate( 'Y-m-d H:i:s', $now - 3 * DAY_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS ) ) ); // phpcs:ignore
+		$rows = $wpdb->get_col( $wpdb->prepare( "SELECT b.id FROM {$t} b WHERE b.status IN ('confirmed','completed') AND b.snapshot NOT LIKE '%%\"legacy\":true%%' AND (SELECT MAX(pickup_at) FROM {$l} WHERE booking_id = b.id) BETWEEN %s AND %s LIMIT 50", gmdate( 'Y-m-d H:i:s', $now - 3 * DAY_IN_SECONDS ), gmdate( 'Y-m-d H:i:s', $now - DAY_IN_SECONDS ) ) ); // phpcs:ignore
 		foreach ( $rows as $id ) {
 			$b = ATC_Checkout::find( '', (int) $id );
 			if ( ! $b || ! empty( $b['snap']['review_asked'] ) || ATC_Manage::reviewed( (int) $id ) ) {

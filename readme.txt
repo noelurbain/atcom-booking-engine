@@ -1,5 +1,21 @@
 === ATCOM Booking Engine ===
-Version: 0.11.0 (team actions, payouts, airports)
+Version: 0.12.0 (extra payments, old-site import 2)
+
+New in 0.12.0:
+- Extra payments. Changing a ride to a service that sells for more shows the difference, and the team either
+  asks the traveler to pay it (email with a card link, paid on Stripe's page) or absorbs it; our share after
+  the change is shown, in red when negative. Control → booking → Extra payments: ask for any amount (extra
+  stop, waiting time), see open/paid requests, cancel an open one. The reservation page shows an "Amount to
+  pay" bar. Paid amounts add to the total and our share (Stripe webhook or the return page). Refunds and
+  traveler cancellations also return extra payments.
+- Import, second file (Control → import, or JSON body {data, dry_run}): traveler names, emails, phones,
+  flights, notes and luggage of old reservations; old provider applications as pending providers (no portal
+  account, invite from Providers); old affiliate applications as affiliates with their AFF code; old paid
+  reservations whose rides are past are marked completed (no money lines, never in payouts), and the hourly
+  job keeps doing that for the rest.
+- Old-site reservations get no reminder, review or abandoned-booking emails here and can't be cancelled
+  online here.
+
 
 New in 0.11.0:
 - Control → booking: Resend confirmation (traveler only); Refund or cancel (any amount up to what is left,

@@ -26,7 +26,8 @@ final class ATC_Manage {
 	}
 
 	public static function can_cancel( array $b ): bool {
-		return 'confirmed' === $b['status'] && ! empty( $b['legs'] ) && self::open_leg( $b['legs'][0] );
+		// Old-site reservations were paid there; cancelling and refunds stay with the team.
+		return 'confirmed' === $b['status'] && empty( $b['snap']['legacy'] ) && ! empty( $b['legs'] ) && self::open_leg( $b['legs'][0] );
 	}
 
 	public static function can_change( array $b ): bool {
@@ -195,7 +196,14 @@ final class ATC_Manage {
 			if ( is_wp_error( $r ) ) {
 				return new WP_Error( 'atc_refund', 'We could not refund the payment just now. Nothing was cancelled; please try again in a few minutes.', array( 'status' => 502 ) );
 			}
-			$refund                = (int) ( $r['amount'] ?? 0 );
+			$refund = (int) ( $r['amount'] ?? 0 );
+			// Extra payments made later (an upgrade) go back too.
+			foreach ( ATC_Charges::all( $b ) as $c ) {
+				if ( 'paid' === $c['status'] && '' !== $c['pi'] ) {
+					$x = ATC_Checkout::stripe( 'POST', 'refunds', array( 'payment_intent' => $c['pi'], 'reason' => 'requested_by_customer', 'metadata' => array( 'booking' => $b['number'] ) ) );
+					$refund += is_wp_error( $x ) ? 0 : (int) ( $x['amount'] ?? 0 );
+				}
+			}
 			$b['snap']['refunded'] = (int) ( $b['snap']['refunded'] ?? 0 ) + $refund;
 			ATC_Checkout::snapshot( (int) $b['id'], $b['snap'] );
 			global $wpdb;

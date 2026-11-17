@@ -209,7 +209,7 @@
         }
         // 2. Service code.
         if (r.leg_status === 'completed') {
-          add(card, h('div', { class: 'card ok pad', style: 'gap:4px' }, h('strong', { text: r.completed_how === 'code' ? 'Trip completed with the service code' : r.completed_how === 'auto' ? 'Trip completed (no code, 24 h after pickup)' : 'Trip marked completed without code' }),
+          add(card, h('div', { class: 'card ok pad', style: 'gap:4px' }, h('strong', { text: r.completed_how === 'code' ? 'Trip completed with the service code' : r.completed_how === 'legacy' ? 'Trip completed (booked and paid on the old site)' : r.completed_how === 'auto' ? 'Trip completed (no code, 24 h after pickup)' : 'Trip marked completed without code' }),
             h('span', { class: 'small atc-muted', text: 'Recorded ' + r.completed + '. ' + money(r.amount) + ' goes into your next payout.' })));
         } else if (r.leg_status === 'no_show') {
           add(card, h('div', { class: 'card warn pad' }, h('strong', { text: 'No-show reported ' + r.completed }), h('span', { class: 'small atc-muted', text: 'Our team checks it before the payout.' })));

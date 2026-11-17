@@ -254,6 +254,11 @@ final class ATC_Bookings {
 				'code_tries'   => (int) $b['service_code_attempts'],
 				'code_locked'  => (int) $b['service_code_attempts'] >= (int) ATC_Settings::get( 'service_code_attempts' ),
 				'service_code' => $legacy ? '' : (string) $b['service_code'],
+				'can_charge'   => ATC_Charges::can_charge( $full ),
+			),
+			'charges'  => array_map(
+				static fn( $c ) => array( 'id' => $c['id'], 'amount' => (int) $c['amount'], 'reason' => (string) $c['reason'], 'status' => (string) $c['status'], 'created' => substr( (string) $c['created'], 0, 16 ), 'paid_at' => $c['paid_at'] ? substr( (string) $c['paid_at'], 0, 16 ) : '' ),
+				ATC_Charges::all( $full )
 			),
 		);
 	}

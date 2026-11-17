@@ -64,7 +64,21 @@ final class ATC_REST_Control {
 		);
 		// Team actions on a booking.
 		$bk = static fn( string $action, callable $fn ) => self::route( '/bookings/(?P<number>[A-Za-z0-9]+)/' . $action, array( 'POST' => static fn( WP_REST_Request $r ) => self::out( $fn( (string) $r['number'], self::body( $r ) ) ) ) );
-		$bk( 'reassign', static fn( $n, $b ) => ATC_Ops::reassign( $n, (int) ( $b['leg'] ?? 0 ), (int) ( $b['service_id'] ?? 0 ), (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['tell'] ) ) );
+		$bk(
+			'reassign',
+			static function ( $n, $b ) {
+				$charge = (int) round( 100 * (float) ( $b['charge'] ?? 0 ) );
+				$out    = ATC_Ops::reassign( $n, (int) ( $b['leg'] ?? 0 ), (int) ( $b['service_id'] ?? 0 ), (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['tell'] ) );
+				if ( ! is_wp_error( $out ) && $charge > 0 ) {
+					$asked = ATC_Charges::request( $n, $charge, (string) ( $b['charge_reason'] ?? '' ), (int) ( $b['leg'] ?? 0 ) );
+					// The ride is already given; a failed request is reported but does not undo it.
+					return is_wp_error( $asked ) ? array_merge( $out, array( 'warning' => 'The ride was given, but the payment request was not sent: ' . $asked->get_error_message() ) ) : $asked;
+				}
+				return $out;
+			}
+		);
+		$bk( 'charge', static fn( $n, $b ) => ATC_Charges::request( $n, (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), (string) ( $b['reason'] ?? '' ), (int) ( $b['leg'] ?? 0 ) ) );
+		$bk( 'charge-cancel', static fn( $n, $b ) => ATC_Charges::cancel( $n, sanitize_key( (string) ( $b['id'] ?? '' ) ) ) );
 		$bk( 'noshow', static fn( $n, $b ) => ATC_Ops::no_show_decision( $n, (int) ( $b['leg'] ?? 0 ), ! empty( $b['pay'] ), (string) ( $b['note'] ?? '' ) ) );
 		$bk( 'unlock', static fn( $n, $b ) => ATC_Ops::unlock_code( $n ) );
 		$bk( 'refund', static fn( $n, $b ) => ATC_Ops::refund( $n, (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['cancel'] ), mb_substr( sanitize_text_field( (string) ( $b['reason'] ?? '' ) ), 0, 200 ) ) );
@@ -275,6 +289,10 @@ final class ATC_REST_Control {
 			'/import',
 			array(
 				'POST' => static function ( WP_REST_Request $r ) {
+					$json = $r->get_json_params();
+					if ( is_array( $json ) && is_array( $json['data'] ?? null ) ) {
+						return rest_ensure_response( ATC_Migration::import( $json['data'], ! empty( $json['dry_run'] ) ) );
+					}
 					$files = $r->get_file_params();
 					if ( empty( $files['file']['tmp_name'] ) || ! is_uploaded_file( $files['file']['tmp_name'] ) ) {
 						return new WP_Error( 'atc_import', 'Choose the import file first.', array( 'status' => 400 ) );

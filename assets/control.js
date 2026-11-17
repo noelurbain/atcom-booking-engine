@@ -203,26 +203,97 @@
   function reassignBox(l, number, draw) {
     var wrap = h('div');
     var open = h('button', { type: 'button', class: l.status === 'released' ? 'btn dark' : 'link', text: l.status === 'released' ? 'Give this ride to another provider' : 'Change provider', onclick: function () { form.hidden = !form.hidden; } });
-    var sel = h('select', null, h('option', { value: '', text: l.candidates.length ? 'Choose a provider' : 'No provider covers this zone' }), l.candidates.map(function (c) {
-      return h('option', { value: c.service_id, 'data-amount': c.suggested === null ? '' : (c.suggested / 100).toFixed(2), text: c.label + (c.suggested === null ? ' · no price for this zone' : ' · gets ' + cash(c.suggested)) + (c.current ? ' (now)' : '') });
+    var sel = h('select', null, h('option', { value: '', text: l.candidates.length ? 'Choose a provider' : 'No provider covers this zone' }), l.candidates.map(function (c, i) {
+      return h('option', { value: c.service_id, 'data-i': i, text: c.label + (c.suggested === null ? ' · no price for this zone' : ' · gets ' + cash(c.suggested)) + (c.retail !== null && c.retail > l.retail ? ' · sells ' + cash(c.retail) : '') + (c.current ? ' (now)' : '') });
     }));
     var amt = h('input', { type: 'number', min: 0, step: '0.01', placeholder: '0.00', style: 'max-width:140px' });
-    sel.addEventListener('change', function () { var o = sel.options[sel.selectedIndex]; if (o && o.getAttribute('data-amount')) amt.value = o.getAttribute('data-amount'); });
     var tell = h('input', { type: 'checkbox', checked: true });
+    // Price difference: the traveler pays it, or we absorb it.
+    var diffBox = h('div', { class: 'card warn pad', hidden: true, style: 'gap:8px' });
+    var askPay = h('input', { type: 'radio', name: 'diff' + l.id, value: 'ask', checked: true });
+    var absorb = h('input', { type: 'radio', name: 'diff' + l.id, value: 'absorb' });
+    var chargeAmt = h('input', { type: 'number', min: 1, step: '0.01', style: 'max-width:140px' });
+    var chargeWhy = h('input', { type: 'text', maxlength: 160 });
+    var share = h('span', { class: 'small strong' });
+    function picked() { var o = sel.options[sel.selectedIndex]; return o && o.getAttribute('data-i') !== null ? l.candidates[+o.getAttribute('data-i')] : null; }
+    function update() {
+      var c = picked();
+      var diff = c && c.retail !== null ? c.retail - l.retail : 0;
+      diffBox.hidden = !(diff > 0);
+      if (diff > 0) {
+        clear(diffBox);
+        add(diffBox, [
+          h('strong', { text: 'This service sells for ' + cash(c.retail) + '. The traveler paid ' + cash(l.retail) + ' for this ride: ' + cash(diff) + ' more.' }),
+          h('label', { class: 'atc-inline' }, askPay, ' Ask the traveler to pay the difference (email with a card payment link)'),
+          h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Amount to ask (USD)' }), chargeAmt), h('label', { class: 'field' }, h('span', { text: 'What for (the traveler sees it)' }), chargeWhy)),
+          h('label', { class: 'atc-inline' }, absorb, ' We absorb it (the traveler pays nothing more)'),
+          h('span', { class: 'small atc-muted', text: 'The ride changes now either way. If the traveler doesn’t pay, you can cancel the request or change the ride back.' })
+        ]);
+        if (!chargeAmt.dataset.touched) chargeAmt.value = (diff / 100).toFixed(2);
+        if (!chargeWhy.dataset.touched) chargeWhy.value = 'Upgrade to ' + c.label.split(' · ').slice(1).join(' · ').replace(/\s*\(up to \d+\)/, '');
+      }
+      var got = Math.round((+amt.value || 0) * 100);
+      var extra = diff > 0 && askPay.checked ? Math.round((+chargeAmt.value || 0) * 100) : 0;
+      var ours = l.retail + extra - got;
+      share.textContent = c ? 'Our share on this ride after the change: ' + (ours < 0 ? '− ' : '') + cash(Math.abs(ours)) + (extra ? ' (once the traveler pays)' : '') : '';
+      share.className = 'small strong' + (ours < 0 ? ' neg' : '');
+    }
+    chargeAmt.addEventListener('input', function () { chargeAmt.dataset.touched = 1; update(); });
+    chargeWhy.addEventListener('input', function () { chargeWhy.dataset.touched = 1; });
+    askPay.addEventListener('change', update); absorb.addEventListener('change', update); amt.addEventListener('input', update);
+    sel.addEventListener('change', function () { var c = picked(); if (c && c.suggested !== null) amt.value = (c.suggested / 100).toFixed(2); delete chargeAmt.dataset.touched; delete chargeWhy.dataset.touched; update(); });
     var save = h('button', { type: 'button', class: 'btn dark', text: 'Give the ride', onclick: function () {
       if (!sel.value) { toast('Choose a provider first.', true); return; }
+      var body = { leg: l.id, service_id: sel.value, amount: amt.value, tell: tell.checked ? 1 : 0 };
+      if (!diffBox.hidden && askPay.checked) { body.charge = chargeAmt.value; body.charge_reason = chargeWhy.value; }
       save.disabled = true;
-      api('POST', '/bookings/' + number + '/reassign', { leg: l.id, service_id: sel.value, amount: amt.value, tell: tell.checked ? 1 : 0 }).then(function (nb) { toast('Done. The new provider got the booking by email.'); draw(nb); }).catch(function (e) { save.disabled = false; fail(e); });
+      api('POST', '/bookings/' + number + '/reassign', body).then(function (nb) {
+        if (nb.warning) toast(nb.warning, true); else toast(body.charge ? 'Done. The new provider got the booking, and the traveler got the payment request.' : 'Done. The new provider got the booking by email.');
+        draw(nb);
+      }).catch(function (e) { save.disabled = false; fail(e); });
     } });
     var form = h('div', { class: 'card pad', hidden: true, style: 'gap:10px' },
       h('strong', { text: 'Give this ride to' }),
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Provider and vehicle' }), sel), h('label', { class: 'field' }, h('span', { text: 'They get (USD)' }), amt)),
+      diffBox,
+      share,
       h('label', { class: 'atc-inline' }, tell, ' Tell the traveler (email with the new provider)'),
-      h('span', { class: 'small atc-muted', text: 'The current provider is told the ride is no longer theirs. The traveler’s price does not change; our share adjusts.' }),
+      h('span', { class: 'small atc-muted', text: 'The current provider is told the ride is no longer theirs.' }),
       h('div', null, save));
     if (l.status === 'released') add(wrap, h('p', { class: 'chip red', text: 'Handed back by the provider: needs a new one' }));
     add(wrap, [h('div', null, open), form]);
     return wrap;
+  }
+
+  function chargesBox(b, number, draw) {
+    var a = b.actions || {};
+    var list = b.charges || [];
+    if (!a.can_charge && !list.length) return null;
+    var panel = h('div', { class: 'card pad', hidden: true, style: 'gap:10px' });
+    var amt = h('input', { type: 'number', min: 1, step: '0.01', placeholder: '0.00', style: 'max-width:160px' });
+    var why = h('input', { type: 'text', maxlength: 160, placeholder: 'e.g. Extra stop at the supermarket' });
+    var go = h('button', { type: 'button', class: 'btn dark', text: 'Send the payment request', onclick: function () {
+      go.disabled = true;
+      api('POST', '/bookings/' + number + '/charge', { amount: amt.value, reason: why.value }).then(function (nb) { toast('Sent. The traveler got an email with a payment link.'); draw(nb); }).catch(function (e) { go.disabled = false; fail(e); });
+    } });
+    add(panel, [h('strong', { text: 'Ask the traveler to pay more' }),
+      h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Amount (USD)' }), amt), h('label', { class: 'field' }, h('span', { text: 'What for (the traveler sees it)' }), why)),
+      h('span', { class: 'small atc-muted', text: 'They pay by card on Stripe. When paid, it adds to the booking total and to our share. Set the provider’s pay with Change provider.' }),
+      h('div', null, go)]);
+    var tone = { open: 'orange', paid: 'green', cancelled: 'grey' };
+    var label = { open: 'Waiting for payment', paid: 'Paid', cancelled: 'Cancelled' };
+    return h('section', { class: 'card pad' },
+      h('h2', { text: 'Extra payments' }),
+      list.length ? h('div', { class: 'rows' }, list.map(function (c) {
+        var stop = c.status === 'open' ? h('button', { type: 'button', class: 'link', text: 'Cancel request', onclick: function () {
+          stop.disabled = true;
+          api('POST', '/bookings/' + number + '/charge-cancel', { id: c.id }).then(function (nb) { toast('Request cancelled.'); draw(nb); }).catch(function (e) { stop.disabled = false; fail(e); });
+        } }) : null;
+        return h('div', null, h('span', null, h('div', { text: c.reason }), h('div', { class: 'small atc-muted', text: 'Asked ' + c.created + (c.paid_at ? ' · paid ' + c.paid_at : '') })),
+          h('span', { class: 'atc-actions' }, h('strong', { text: cash(c.amount) }), h('span', { class: 'chip ' + tone[c.status], text: label[c.status] }), stop));
+      })) : h('p', { class: 'small atc-muted', text: 'Nothing asked so far.' }),
+      a.can_charge ? h('div', null, h('button', { type: 'button', class: 'link', text: 'Ask the traveler to pay more', onclick: function () { panel.hidden = !panel.hidden; } })) : null,
+      panel);
   }
 
   function noShowBox(l, number, draw) {
@@ -293,6 +364,7 @@
                   h('th', { scope: 'row' }, h('div', { text: m.party }), m.status ? h('div', { class: 'small atc-muted', text: m.status }) : null),
                   h('td', { text: (m.amount < 0 ? '− ' : '') + cash(Math.abs(m.amount)) }));
               })))),
+            chargesBox(b, number, draw),
             h('section', { class: 'card pad' },
               h('h2', { text: 'Payment' }),
               h('div', { class: 'rows' },

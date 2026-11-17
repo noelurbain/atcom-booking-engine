@@ -173,7 +173,7 @@ final class ATC_Payouts {
 				'number'    => $r['number'],
 				'date'      => $r['pickup_at'] ? substr( $r['pickup_at'], 0, 10 ) : '',
 				'direction' => 'arrival' === $r['direction'] ? 'Arrival' : 'Departure',
-				'how'       => array( 'code' => 'Service code', 'auto' => 'Completed on its own', 'manual' => 'Marked by provider', 'no_show_paid' => 'No-show (accepted)' )[ $r['completed_how'] ] ?? '',
+				'how'       => array( 'code' => 'Service code', 'auto' => 'Completed on its own', 'manual' => 'Marked by provider', 'no_show_paid' => 'No-show (accepted)', 'legacy' => 'Old site' )[ $r['completed_how'] ] ?? '',
 				'amount'    => (int) $r['amount_cents'],
 			),
 			$rows

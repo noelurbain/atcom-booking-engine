@@ -288,3 +288,7 @@
   .ab-search .ab-from{flex:1 1 170px}.ab-search .ab-to{flex:1.4 1 200px}.ab-search .ab-date{flex:0 1 160px}.ab-search .ab-time{flex:0 1 120px}.ab-search .ab-pax{flex:0 1 180px}
   .ab-search .ab-row{gap:10px}
 }
+.ab-alert.is-warn{background:var(--warnbg);color:var(--warn);font-weight:500}
+.ab-due{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.ab-due strong{font-size:16px}
+.ab-due .ab-btn{color:var(--ink);text-decoration:none}

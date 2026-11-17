@@ -635,6 +635,13 @@ final class ATC_Checkout {
 		$obj   = $event['data']['object'] ?? array();
 		switch ( $event['type'] ?? '' ) {
 			case 'payment_intent.succeeded':
+				if ( 'extra' === ( $obj['metadata']['kind'] ?? '' ) ) {
+					$b = self::find( '', (int) ( $obj['metadata']['booking_id'] ?? 0 ) );
+					if ( $b ) {
+						ATC_Charges::mark_paid( $b, (string) ( $obj['metadata']['charge'] ?? '' ), (string) $obj['id'], (int) ( $obj['amount_received'] ?? 0 ) );
+					}
+					break;
+				}
 				$b = self::find( '', 0, (string) ( $obj['id'] ?? '' ) );
 				if ( $b && 'held' === $b['status'] ) {
 					self::sync_payment( $b );

@@ -199,6 +199,22 @@ final class ATC_Book {
 				exit;
 			}
 		}
+		// phpcs:disable WordPress.Security.NonceVerification -- the booking key is the access check.
+		if ( 'reservation' === $view && ! empty( $_GET['pay_extra'] ) ) {
+			$url = ATC_Charges::checkout_url( $b, $key, sanitize_key( wp_unslash( $_GET['pay_extra'] ) ) );
+			if ( ! is_wp_error( $url ) ) {
+				wp_redirect( $url ); // phpcs:ignore WordPress.Security.SafeRedirect -- Stripe's own page.
+				exit;
+			}
+			wp_safe_redirect( ATC_Checkout::reservation_url( $b['number'], $key ) );
+			exit;
+		}
+		if ( 'reservation' === $view && ! empty( $_GET['extra_back'] ) ) {
+			if ( ATC_Charges::sync( $b, sanitize_key( wp_unslash( $_GET['extra_back'] ) ) ) ) {
+				$b = ATC_Checkout::load( $b['number'], $key );
+			}
+		}
+		// phpcs:enable
 		$titles = array( 'checkout' => 'Flight and details', 'pay' => 'Payment', 'reservation' => 'Your booking ' . $b['number'] );
 		add_filter( 'pre_get_document_title', static fn() => $titles[ $view ] . ' · Airport Transportation' );
 		if ( 'checkout' === $view ) {
@@ -798,6 +814,7 @@ final class ATC_Book {
 		<section class="ab-wrap ab-main ab-confirm">
 			<div class="ab-col">
 				<?php echo self::done_notice(); // phpcs:ignore -- escaped inside. ?>
+				<?php echo self::charges_notice( $b, $key ); // phpcs:ignore -- escaped inside. ?>
 				<?php if ( $cancelled ) : ?>
 					<div class="ab-band is-off">
 						<h1 class="ab-h1">This booking is cancelled.</h1>
@@ -906,6 +923,33 @@ final class ATC_Book {
 		</section>
 		<?php
 		return (string) ob_get_clean();
+	}
+
+	/** Extra payments: due ones with a Pay button, and a thank-you right after paying. */
+	private static function charges_notice( array $b, string $key ): string {
+		$out = '';
+		if ( ! empty( $_GET['extra_back'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$c = null;
+			foreach ( ATC_Charges::all( $b ) as $x ) {
+				$c = $x['id'] === sanitize_key( wp_unslash( $_GET['extra_back'] ) ) ? $x : $c; // phpcs:ignore WordPress.Security.NonceVerification
+			}
+			if ( $c && 'paid' === $c['status'] ) {
+				$out .= '<div class="ab-alert is-ok" role="status">Thank you, we received ' . esc_html( self::money( (int) $c['amount'] ) ) . ' for ' . esc_html( $c['reason'] ) . '. Stripe emails you the receipt.</div>';
+			} elseif ( $c && 'open' === $c['status'] ) {
+				$out .= '<div class="ab-alert is-info" role="status">We are confirming your payment. Refresh this page in a minute.</div>';
+			}
+		}
+		if ( 'cancelled' === $b['status'] ) {
+			return $out;
+		}
+		foreach ( ATC_Charges::all( $b ) as $c ) {
+			if ( 'open' !== $c['status'] ) {
+				continue;
+			}
+			$url  = add_query_arg( array( 'pay_extra' => $c['id'] ), ATC_Checkout::reservation_url( $b['number'], $key ) );
+			$out .= '<div class="ab-alert is-warn ab-due" role="status"><div><strong>Amount to pay: ' . esc_html( self::money( (int) $c['amount'] ) ) . '</strong><br>' . esc_html( $c['reason'] ) . '</div><a class="ab-btn is-accent" href="' . esc_url( $url ) . '">Pay ' . esc_html( self::money( (int) $c['amount'] ) ) . '</a></div>';
+		}
+		return $out;
 	}
 
 	/** Notices after a change, a cancellation or a rating (?done=...). */
