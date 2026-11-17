@@ -1352,6 +1352,10 @@
             h('span', { class: 'chip grey', text: 'Vehicle categories: ' + r.services }),
             h('span', { class: 'chip grey', text: 'Prices: ' + r.prices }),
             h('span', { class: 'chip grey', text: 'Bookings: ' + r.bookings_new + ' new, ' + r.bookings_existing + ' already here' }),
+            r.travelers_updated !== undefined ? h('span', { class: 'chip grey', text: 'Travelers: ' + r.travelers_updated + ' bookings got name and contact, ' + r.legs_updated + ' rides got flight, notes and bags' }) : null,
+            r.provider_applications_new !== undefined ? h('span', { class: 'chip grey', text: 'Provider sign-ups: ' + r.provider_applications_new + ' new (pending), ' + r.provider_applications_existing + ' already here' }) : null,
+            r.affiliates_new !== undefined ? h('span', { class: 'chip grey', text: 'Affiliates: ' + r.affiliates_new + ' new, ' + r.affiliates_existing + ' already here' }) : null,
+            r.bookings_completed ? h('span', { class: 'chip green', text: r.bookings_completed + ' past bookings marked completed' }) : null,
             r.prices_held ? h('span', { class: 'chip orange', text: r.prices_held + ' prices left out (wrong currency or typo)' }) : null),
           r.issues.length ? h('details', null, h('summary', { class: 'strong', text: r.issues.length + ' things to look at' }), h('ul', null, r.issues.map(function (i) { return h('li', { class: 'small', text: i }); }))) : null,
           dry ? h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'button', onclick: function () { run(false); }, text: 'Looks right: import now' })) : h('div', { class: 'atc-actions' }, h('a', { class: 'btn', href: C.base + 'providers/', 'data-go': 'providers', text: 'See the providers' }))));
@@ -1359,9 +1363,9 @@
     }
     add(app, [
       h('a', { class: 'back', href: C.base + 'providers/', 'data-go': 'providers', text: '← Providers' }),
-      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Import from the old site' }), h('p', { class: 'atc-muted', text: 'Providers, the airports they serve, their coverage areas (as zones), their prices and the old bookings (without traveler names or contacts). Travelers keep paying the same; providers get 75% under the new 25% commission. Safe to run again: nothing is doubled, and shapes you drew here are never replaced.' }))),
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Import from the old site' }), h('p', { class: 'atc-muted', text: 'Providers, the airports they serve, their coverage areas (as zones), their prices and the old bookings. A second file adds traveler names and contacts, provider and affiliate sign-ups, and completes past bookings. Travelers keep paying the same; providers get 75% under the new 25% commission. Safe to run again: nothing is doubled, and shapes you drew here are never replaced.' }))),
       h('section', { class: 'card pad' },
-        h('label', { class: 'field' }, h('span', { text: 'Import file (atcom-migration.json)' }), file),
+        h('label', { class: 'field' }, h('span', { text: 'Import file (atcom-migration.json or atcom-migration-2.json)' }), file),
         h('div', { class: 'atc-actions' },
           h('button', { class: 'btn dark', type: 'button', onclick: function () { run(true); }, text: 'Check first' }),
           h('button', { class: 'btn', type: 'button', onclick: function () { if (confirm('Import now without checking first?')) run(false); }, text: 'Import' })),
