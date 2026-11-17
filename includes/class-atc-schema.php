@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages',
 		);
 	}
 
@@ -478,12 +478,40 @@ final class ATC_Schema {
   type varchar(30) NOT NULL,
   status varchar(20) NOT NULL DEFAULT 'open',
   subject varchar(255) NOT NULL,
+  opened_by varchar(20) NOT NULL DEFAULT 'team',
+  user_id bigint(20) unsigned NULL,
+  assigned_to bigint(20) unsigned NULL,
+  urgent tinyint(1) NOT NULL DEFAULT 0,
+  money_cents bigint(20) NOT NULL DEFAULT 0,
+  holds longtext NULL,
+  outcome varchar(30) NULL,
+  stripe_dispute varchar(100) NULL,
   crisp_session varchar(100) NULL,
+  due_at datetime NULL,
+  last_reply_at datetime NULL,
+  last_reply_by varchar(20) NULL,
+  resolved_at datetime NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
   KEY booking_id (booking_id),
-  KEY status (status)
+  KEY party_id (party_id),
+  KEY status (status),
+  KEY stripe_dispute (stripe_dispute)
+) $c;";
+
+		// Messages on a ticket. 'audience': who can read it besides our team (traveler, provider, or internal).
+		$sql[] = "CREATE TABLE {$p}ticket_messages (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  ticket_id bigint(20) unsigned NOT NULL,
+  author varchar(20) NOT NULL,
+  user_id bigint(20) unsigned NULL,
+  author_name varchar(190) NOT NULL DEFAULT '',
+  audience varchar(20) NOT NULL DEFAULT 'internal',
+  body text NOT NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY ticket_id (ticket_id)
 ) $c;";
 
 		// Audit log: every change to a booking, price, payout or party, and who made it.

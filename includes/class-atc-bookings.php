@@ -257,6 +257,7 @@ final class ATC_Bookings {
 				'area'      => (string) ( $snap['area'] ?? '' ),
 			),
 			'events'   => $events,
+			'tickets'  => ATC_Tickets::list( array( 'status' => 'all', 'booking_id' => (int) $b['id'] ) )['tickets'],
 			'actions'  => array(
 				'refund_left'  => $paid && ! $legacy && $b['stripe_payment_intent'] ? $total - (int) ( $snap['refunded'] ?? 0 ) : 0,
 				'can_cancel'   => 'confirmed' === $b['status'] && ! $legacy,

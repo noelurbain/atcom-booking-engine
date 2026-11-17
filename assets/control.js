@@ -96,12 +96,176 @@
     if (parts[0] === 'zones') return viewZones();
     if (parts[0] === 'meeting') return viewMeeting();
     if (parts[0] === 'payouts') return viewPayouts();
+    if (parts[0] === 'tickets' && parts[1]) return viewTicket(parseInt(parts[1], 10));
+    if (parts[0] === 'tickets') return viewTickets();
     if (parts[0] === 'affiliates' && parts[1]) return viewAffiliate(parseInt(parts[1], 10));
     if (parts[0] === 'affiliates') return viewAffiliates();
     if (parts[0] === 'airports') return viewAirports();
     if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
     if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
+  }
+
+  /* ---------- Tickets ---------- */
+
+  var tkTone = { open: 'orange', waiting_us: 'orange', waiting_traveler: 'blue', waiting_provider: 'blue', resolved: 'green', closed: 'grey' };
+  function tkLink(t) { return h('a', { class: 'strong', href: C.base + 'tickets/' + t.id + '/', 'data-go': 'tickets/' + t.id, text: t.ref }); }
+  function tkChips(t) {
+    return [h('span', { class: 'chip ' + (tkTone[t.status] || 'grey'), text: t.status_name }), t.urgent && t.open ? h('span', { class: 'chip red', text: 'Urgent' }) : null, t.overdue ? h('span', { class: 'chip red', text: 'Reply overdue' }) : null, t.held ? h('span', { class: 'chip orange', text: 'Money on hold' }) : null];
+  }
+
+  function newTicketForm(booking, onDone) {
+    var types = { no_show: 'Driver didn’t show up or was late', wrong_vehicle: 'Wrong vehicle or service', overcharge: 'Asked to pay more', refund: 'Refund request', schedule: 'Flight or schedule problem', lost_item: 'Lost item', complaint: 'Complaint', traveler_no_show: 'Traveler didn’t show up', provider: 'Provider question', affiliate: 'Affiliate question', other: 'Something else' };
+    var ref = h('input', { type: 'text', value: booking || '', placeholder: 'AT…', style: 'text-transform:uppercase' });
+    var type = h('select', null, Object.keys(types).map(function (k) { return h('option', { value: k, text: types[k] }); }));
+    var subject = h('input', { type: 'text', maxlength: 200, placeholder: 'Short title (optional)' });
+    var body = h('textarea', { rows: 3, placeholder: 'What happened (our team only; reply to the traveler or provider from the ticket)' });
+    var money = h('input', { type: 'number', min: 0, step: '0.01', placeholder: '0.00', style: 'max-width:140px' });
+    var hold = h('input', { type: 'checkbox' });
+    var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Open ticket' });
+    return h('form', { class: 'card pad', style: 'gap:10px', onsubmit: function (e) {
+      e.preventDefault(); btn.disabled = true;
+      api('POST', '/tickets', { booking: ref.value.trim(), type: type.value, subject: subject.value, body: body.value, money: money.value, hold: hold.checked ? 1 : 0 })
+        .then(function (t) { toast('Ticket ' + t.ref + ' opened.'); onDone(t); }).catch(function (x) { btn.disabled = false; fail(x); });
+    } },
+      h('strong', { text: 'New ticket' }),
+      h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Booking (optional)' }), ref), h('label', { class: 'field' }, h('span', { text: 'Type' }), type)),
+      h('label', { class: 'field' }, h('span', { text: 'Title' }), subject),
+      h('label', { class: 'field' }, h('span', { text: 'Note' }), body),
+      h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Money at stake (USD)' }), money), h('label', { class: 'atc-inline', style: 'align-self:end' }, hold, ' Hold the provider’s and affiliate’s money for this booking')),
+      h('div', null, btn));
+  }
+
+  function ticketsCard(b, number) {
+    var list = b.tickets || [];
+    var form = h('div', { hidden: true });
+    return h('section', { class: 'card pad' + (list.some(function (t) { return t.open; }) ? ' warn' : '') },
+      h('div', { class: 'row-flat' }, h('h2', { text: 'Tickets' }), h('button', { class: 'link', type: 'button', text: 'Open a ticket', onclick: function () {
+        form.hidden = !form.hidden; if (!form.firstChild) add(form, newTicketForm(number, function (t) { go('tickets/' + t.id); }));
+      } })),
+      list.length ? h('div', { class: 'rows' }, list.map(function (t) {
+        return h('a', { class: 'row', href: C.base + 'tickets/' + t.id + '/', 'data-go': 'tickets/' + t.id }, h('span', null, h('strong', { text: t.ref + ' · ' }), t.subject), h('span', { class: 'atc-actions' }, tkChips(t)));
+      })) : h('p', { class: 'atc-muted small', text: 'No tickets on this booking.' }),
+      form);
+  }
+
+  function viewTickets() {
+    clear(app);
+    var params = new URLSearchParams(location.search);
+    var st = { status: params.get('status') || 'open', q: '', mine: false };
+    var tbody = h('tbody');
+    var pills = h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Show' });
+    var q = h('input', { type: 'search', placeholder: 'Booking, title or provider', 'aria-label': 'Find a ticket' });
+    var mine = h('input', { type: 'checkbox' });
+    var form = h('div', { hidden: true });
+    var counts = {};
+    function drawPills() {
+      clear(pills);
+      [['open', 'Open'], ['urgent', 'Urgent or overdue'], ['waiting_us', 'Waiting on us'], ['holds', 'Money on hold'], ['resolved', 'Resolved'], ['all', 'All']].forEach(function (o) {
+        var n = { open: counts.open, urgent: counts.urgent, waiting_us: counts.us, holds: counts.holds }[o[0]];
+        add(pills, h('button', { type: 'button', class: 'pe-pill' + (st.status === o[0] ? ' on' : ''), 'aria-pressed': st.status === o[0] ? 'true' : 'false', text: o[1] + (n ? ' · ' + n : ''), onclick: function () { st.status = o[0]; load(); } }));
+      });
+    }
+    function load() {
+      api('GET', '/tickets?status=' + st.status + '&q=' + encodeURIComponent(q.value) + (mine.checked ? '&mine=1' : '')).then(function (r) {
+        counts = r.counts; drawPills(); clear(tbody);
+        if (!r.tickets.length) add(tbody, h('tr', null, h('td', { colspan: 6, class: 'atc-muted', text: st.status === 'open' ? 'No open tickets.' : 'Nothing here.' })));
+        r.tickets.forEach(function (t) {
+          add(tbody, h('tr', null,
+            h('td', null, tkLink(t), h('div', { class: 'small atc-muted', text: 'by ' + t.opened_by + ' · ' + t.created })),
+            h('td', null, h('div', { class: 'strong', text: t.subject }), h('div', { class: 'small atc-muted', text: t.type_name })),
+            h('td', null, t.booking ? bookingLink(t.booking) : '–', t.provider ? h('div', { class: 'small atc-muted', text: t.provider }) : null),
+            h('td', { class: 'nowrap', text: t.money ? cash(t.money) : '–' }),
+            h('td', null, h('div', { text: t.updated }), h('div', { class: 'small atc-muted', text: 'last: ' + t.last_by + (t.assigned ? ' · ' + t.assigned : '') })),
+            h('td', null, h('div', { class: 'atc-actions' }, tkChips(t)))));
+        });
+      }).catch(fail);
+    }
+    var tm; q.addEventListener('input', function () { clearTimeout(tm); tm = setTimeout(load, 300); });
+    mine.addEventListener('change', load);
+    add(app, [
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Tickets' }), h('p', { class: 'atc-muted', text: 'Problems on bookings from travelers, providers, card disputes and low ratings. First reply within 48 hours; urgent ones (trip in the next 48 hours, disputes) the same day.' })),
+        h('button', { class: 'btn dark', type: 'button', text: 'New ticket', onclick: function () { form.hidden = !form.hidden; if (!form.firstChild) add(form, newTicketForm('', function (t) { go('tickets/' + t.id); })); } })),
+      form,
+      h('div', { class: 'pe-bar' }, pills, h('label', { class: 'atc-inline small' }, mine, ' Mine'), q),
+      h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+        h('thead', null, h('tr', null, ['Ticket', 'About', 'Booking', 'At stake', 'Last reply', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))), tbody)))
+    ]);
+    drawPills(); load();
+  }
+
+  function viewTicket(id) {
+    clear(app);
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/tickets/' + id).then(function draw(t) {
+      clear(app);
+      var bi = t.booking_info;
+      function upd(body, msg) { return api('POST', '/tickets/' + id, body).then(function (n) { toast(msg || 'Saved.'); draw(n); }).catch(fail); }
+      // Thread
+      var thread = h('ol', { class: 'thread' }, t.messages.map(function (m) {
+        return h('li', { class: 'msg ' + m.author + (m.audience === 'internal' ? ' internal' : '') },
+          h('div', { class: 'small atc-muted strong' }, m.name + ' · ' + m.role + ' · ' + m.when + ' UTC', h('span', { class: 'chip ' + (m.audience === 'internal' ? 'grey' : 'blue'), text: m.audience === 'internal' ? 'internal' : 'seen by ' + m.audience })),
+          h('div', { class: 'body', text: m.body }));
+      }));
+      var to = h('select', null, h('option', { value: 'internal', text: 'Internal note (our team only)' }), bi ? h('option', { value: 'traveler', text: 'Reply to the traveler (email)' }) : null, t.party_id ? h('option', { value: 'provider', text: 'Reply to the provider (email + portal)' }) : null);
+      var text = h('textarea', { rows: 4 });
+      var send = h('button', { class: 'btn dark', type: 'button', text: 'Send', onclick: function () {
+        send.disabled = true;
+        api('POST', '/tickets/' + id + '/reply', { audience: to.value, body: text.value }).then(function (n) { toast(to.value === 'internal' ? 'Note added.' : 'Sent.'); draw(n); }).catch(function (x) { send.disabled = false; fail(x); });
+      } });
+      // Side: status, assign, hold
+      var status = h('select', null, Object.keys({ open: 1, waiting_traveler: 1, waiting_provider: 1, waiting_us: 1, resolved: 1, closed: 1 }).map(function (k) {
+        return h('option', { value: k, selected: t.status === k, text: { open: 'Open', waiting_traveler: 'Waiting on the traveler', waiting_provider: 'Waiting on the provider', waiting_us: 'Waiting on us', resolved: 'Resolved', closed: 'Closed' }[k] });
+      }));
+      status.addEventListener('change', function () { upd({ status: status.value }, 'Status changed.'); });
+      var who = h('select', null, h('option', { value: '0', text: 'Nobody' }), (t.staff || []).map(function (s) { return h('option', { value: s.id, selected: s.id === t.assigned_id, text: s.name }); }));
+      who.addEventListener('change', function () { upd({ assigned_to: who.value }, 'Assigned.'); });
+      // Resolve
+      var res = h('div', { class: 'card pad', hidden: true, style: 'gap:10px' });
+      if (t.open || t.held) {
+        var outcome = h('select', null, [['no_fault', 'Provider not at fault: pay as usual'], ['provider_fault', 'Provider at fault: don’t pay them (affiliate commission reversed too)'], ['partial', 'Partly: the provider gets…'], ['no_money', 'No money changes']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+        var pAmt = h('input', { type: 'number', min: 0, step: '0.01', value: bi ? (bi.provider_cents / 100).toFixed(2) : '', style: 'max-width:140px' });
+        var pRow = h('label', { class: 'field', hidden: true }, h('span', { text: 'Provider gets in total (USD)' }), pAmt);
+        outcome.addEventListener('change', function () { pRow.hidden = outcome.value !== 'partial'; });
+        var refund = h('input', { type: 'number', min: 0, step: '0.01', placeholder: '0.00', style: 'max-width:140px' });
+        var note = h('textarea', { rows: 2, placeholder: 'What we decided (sent to the people you tick below)' });
+        var tt = h('input', { type: 'checkbox', checked: !!bi }), tp = h('input', { type: 'checkbox', checked: !!t.party_id });
+        var go2 = h('button', { class: 'btn dark', type: 'button', text: 'Resolve', onclick: function () {
+          go2.disabled = true;
+          api('POST', '/tickets/' + id + '/resolve', { outcome: outcome.value, provider: pAmt.value, refund: refund.value, note: note.value, tell_traveler: tt.checked ? 1 : 0, tell_provider: tp.checked ? 1 : 0 })
+            .then(function (n) { toast('Resolved.'); draw(n); }).catch(function (x) { go2.disabled = false; fail(x); });
+        } });
+        add(res, [h('strong', { text: 'Resolve' }), h('label', { class: 'field' }, h('span', { text: 'Outcome' }), outcome), pRow,
+          bi && !bi.legacy ? h('label', { class: 'field' }, h('span', { text: 'Refund to the traveler’s card (USD, optional; up to ' + cash(bi.total - bi.refunded) + ')' }), refund) : null,
+          h('label', { class: 'field' }, h('span', { text: 'Decision' }), note),
+          bi ? h('label', { class: 'atc-inline' }, tt, ' Tell the traveler') : null, t.party_id ? h('label', { class: 'atc-inline' }, tp, ' Tell the provider') : null,
+          h('div', null, go2)]);
+      }
+      add(app, [
+        h('a', { class: 'back', href: C.base + 'tickets/', 'data-go': 'tickets', text: '← Tickets' }),
+        h('section', { class: 'card pad' },
+          h('div', { class: 'atc-actions' }, h('h1', { text: t.ref }), tkChips(t)),
+          h('p', { class: 'strong', text: t.subject }),
+          h('p', { class: 'atc-muted', text: t.type_name + ' · opened by ' + t.opened_by + ' · ' + t.created + ' UTC' + (t.due && t.open ? ' · reply due ' + t.due + ' UTC' : '') + (t.outcome ? ' · outcome: ' + t.outcome.replace('_', ' ') : '') }),
+          t.dispute ? h('p', null, h('a', { href: 'https://dashboard.stripe.com/disputes/' + t.dispute, target: '_blank', rel: 'noopener', text: 'Answer the dispute in Stripe ↗' })) : null,
+          h('div', { class: 'atc-actions' }, (t.open || t.held) ? h('button', { class: 'btn dark', type: 'button', text: 'Resolve…', onclick: function () { res.hidden = !res.hidden; } }) : null)),
+        res,
+        h('div', { class: 'pe-split' },
+          h('div', { class: 'pe-left' },
+            h('section', { class: 'card pad' }, h('h2', { text: 'Conversation' }), t.messages.length ? thread : h('p', { class: 'atc-muted', text: 'No messages yet.' }),
+              h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Who reads it' }), to)), h('label', { class: 'field' }, h('span', { text: 'Message' }), text), h('div', null, send))),
+          h('div', { class: 'bk-side' },
+            h('section', { class: 'card pad' }, h('h2', { text: 'Ticket' }), h('label', { class: 'field' }, h('span', { text: 'Status' }), status), h('label', { class: 'field' }, h('span', { text: 'Assigned to' }), who),
+              h('div', { class: 'atc-actions' },
+                h('button', { class: 'link', type: 'button', text: t.urgent ? 'Not urgent' : 'Mark urgent', onclick: function () { upd({ urgent: t.urgent ? 0 : 1 }); } }),
+                bi ? h('button', { class: 'link', type: 'button', text: t.held ? 'Release the money' : 'Hold the money', onclick: function () { upd({ hold: t.held ? 0 : 1 }, t.held ? 'Released: it goes into the next payout.' : 'On hold: kept out of payouts until resolved.'); } }) : null)),
+            bi ? h('section', { class: 'card pad' }, h('h2', { text: 'Booking' }),
+              h('div', { class: 'kv' }, kv('Reference', bookingLink(bi.number)), kv('Status', bi.status), kv('Traveler', bi.traveler), kv('Email', bi.email), kv('Phone', bi.phone), kv('Paid', cash(bi.total) + (bi.refunded ? ' · refunded ' + cash(bi.refunded) : '')))) : null,
+            t.lines && t.lines.length ? h('section', { class: 'card pad money' }, h('h2', { text: 'Money on this booking' }), h('table', { class: 'bare' }, h('tbody', null, t.lines.map(function (l) {
+              return h('tr', null, h('th', { scope: 'row' }, h('div', { text: l.role + (l.name ? ' · ' + l.name : '') }), h('div', { class: 'small atc-muted', text: l.status.replace('_', ' ') + (l.in_payout ? ' · in a payout' : '') })), h('td', { text: (l.amount < 0 ? '− ' : '') + cash(Math.abs(l.amount)) }));
+            })))) : null))
+      ]);
+    }).catch(fail);
   }
 
   /* ---------- Affiliates ---------- */
@@ -454,6 +618,7 @@
                 l.noshow_open ? noShowBox(l, number, draw) : null,
                 l.can_reassign ? reassignBox(l, number, draw) : null);
             }),
+            ticketsCard(b, number),
             h('section', { class: 'card pad' },
               h('h2', { text: 'Traveler' }),
               b.legacy && !b.traveler.name ? h('p', { class: 'atc-muted', text: 'Name, email and phone were not copied from the old site; they are on the old site\'s booking.' }) :

@@ -1,5 +1,20 @@
 === ATCOM Booking Engine ===
-Version: 0.13.0 (affiliates)
+Version: 0.14.0 (tickets and dispute holds)
+
+New in 0.14.0:
+- Tickets (Control → Tickets, with a counter of tickets waiting on us). Opened by our team (also from a booking),
+  by the traveler (Report a problem on the reservation page, small link), by the provider (portal: Tickets, and
+  "Report it to our team" on a booking), and automatically on a Stripe dispute and on ratings of 2 stars or less.
+- Conversation per ticket: internal notes, replies to the traveler (email, answered on the reservation page) and
+  to the provider (email + portal). Status, assignee, urgent; first reply due in 48 h, 8 h when urgent (trip in
+  the next 48 h, disputes); overdue ones are flagged.
+- Money holds: a ticket can hold the booking's provider and affiliate money (kept out of payouts, shown as held).
+  Resolve: provider not at fault (paid), at fault (not paid, affiliate commission reversed), partly (set amount),
+  or no money change; optional refund to the traveler's card from the same screen.
+- Stripe disputes: charge.dispute.created opens an urgent ticket with the money on hold and the evidence due date;
+  charge.dispute.closed adds the result (a lost dispute is recorded as money returned).
+  Add both events to the Stripe webhook.
+
 
 New in 0.13.0:
 - Affiliates. ?ref=CODE on any page remembers the affiliate for 30 days (last click wins) and counts the click.

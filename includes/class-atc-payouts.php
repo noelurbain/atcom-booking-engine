@@ -41,7 +41,7 @@ final class ATC_Payouts {
 		// Earned and not in a payout yet, for rides up to this month.
 		$earned = $wpdb->get_results( $wpdb->prepare( "SELECT party_id, COUNT(*) n, SUM(amount_cents) amt FROM {$l} WHERE role IN ('provider','affiliate','referrer') AND status = 'earned' AND payout_id IS NULL AND party_id > 0 AND (service_month IS NULL OR service_month <= %s) GROUP BY party_id", $period ), OBJECT_K ); // phpcs:ignore
 		// No-shows waiting for our decision.
-		$held = $wpdb->get_results( $wpdb->prepare( "SELECT x.party_id, SUM(x.amount_cents) amt FROM {$l} x JOIN " . self::t( 'booking_legs' ) . " g ON g.id = x.leg_id WHERE x.role = 'provider' AND x.status = 'pending' AND g.status = 'no_show' AND (x.service_month IS NULL OR x.service_month <= %s) GROUP BY x.party_id", $period ), OBJECT_K ); // phpcs:ignore
+		$held = $wpdb->get_results( $wpdb->prepare( "SELECT x.party_id, SUM(x.amount_cents) amt FROM {$l} x JOIN " . self::t( 'booking_legs' ) . " g ON g.id = x.leg_id WHERE x.role = 'provider' AND ( ( x.status = 'pending' AND g.status = 'no_show' ) OR x.status = 'on_hold' ) AND (x.service_month IS NULL OR x.service_month <= %s) GROUP BY x.party_id", $period ), OBJECT_K ); // phpcs:ignore
 		// Payouts already made for this month.
 		$made = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::t( 'payouts' ) . ' WHERE period = %s', $period ), ARRAY_A );
 		$by   = array();

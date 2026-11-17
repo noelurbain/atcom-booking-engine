@@ -241,6 +241,34 @@ final class ATC_Manage {
 		return in_array( $b['status'], array( 'confirmed', 'completed' ), true ) && $first && strtotime( $first . ' UTC' ) < time() && ! self::reviewed( (int) $b['id'] );
 	}
 
+	/** The traveler reports a problem, or answers in a ticket they already have. */
+	public static function ticket( string $number, string $key, array $p ) {
+		$b = ATC_Checkout::load( $number, $key );
+		if ( ! $b || 'held' === $b['status'] ) {
+			return new WP_Error( 'atc_not_found', 'We could not open that booking.', array( 'status' => 404 ) );
+		}
+		$body = (string) ( $p['body'] ?? '' );
+		if ( ! empty( $p['id'] ) ) {
+			$id = (int) $p['id'];
+			if ( ATC_Tickets::booking_of( $id ) !== (int) $b['id'] ) {
+				return new WP_Error( 'atc_not_found', 'Conversation not found.', array( 'status' => 404 ) );
+			}
+			$r = ATC_Tickets::reply( $id, 'traveler', $body );
+			return is_wp_error( $r ) ? $r : array( 'ok' => true );
+		}
+		$allowed = array( 'no_show', 'wrong_vehicle', 'overcharge', 'refund', 'schedule', 'lost_item', 'complaint', 'other' );
+		$id      = ATC_Tickets::open(
+			array(
+				'booking_id'  => (int) $b['id'],
+				'type'        => in_array( $p['type'] ?? '', $allowed, true ) ? $p['type'] : 'other',
+				'body'        => $body,
+				'by'          => 'traveler',
+				'author_name' => trim( $b['first_name'] . ' ' . $b['last_name'] ),
+			)
+		);
+		return is_wp_error( $id ) ? $id : array( 'ok' => true, 'id' => $id );
+	}
+
 	public static function review( string $number, string $key, int $rating, string $comment ) {
 		global $wpdb;
 		$b = ATC_Checkout::load( $number, $key );
@@ -256,6 +284,9 @@ final class ATC_Manage {
 		$avg = $wpdb->get_row( $wpdb->prepare( 'SELECT AVG(rating) a, COUNT(*) n FROM ' . self::t( 'reviews' ) . " WHERE party_id = %d AND status = 'published'", $pid ), ARRAY_A );
 		$wpdb->update( self::t( 'parties' ), array( 'rating_avg' => round( (float) $avg['a'], 2 ), 'rating_count' => (int) $avg['n'] ), array( 'id' => $pid ) );
 		ATC_Install::log( 'booking', (int) $b['id'], 'reviewed', array( 'rating' => $rating ) );
+		if ( $rating <= 2 ) {
+			ATC_Tickets::low_rating( $b, $rating, $comment );
+		}
 		return array( 'ok' => true );
 	}
 }

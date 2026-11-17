@@ -292,3 +292,12 @@
 .ab-due{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .ab-due strong{font-size:16px}
 .ab-due .ab-btn{color:var(--ink);text-decoration:none}
+.ab-report{margin-top:4px;font-size:14px}
+.ab-report summary{cursor:pointer;color:var(--muted,#6b6b6b);text-decoration:underline;padding:6px 0}
+.ab-report[open] summary{margin-bottom:10px}
+.ab-report .ab-form{background:#fff;border:1px solid var(--line,#e6e1d8);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.ab-thread{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:10px}
+.ab-thread li{border-radius:12px;padding:10px 12px;background:#F7F5F0}
+.ab-thread li.is-you{background:#fff;border:1px solid var(--line,#e6e1d8)}
+.ab-thread p{margin:4px 0 0;white-space:pre-wrap}
+.ab-help h2 .ab-chip{font-size:12px;font-weight:700;background:#F1F4F8;border-radius:999px;padding:2px 8px;vertical-align:middle;margin-left:6px}

@@ -916,6 +916,7 @@ final class ATC_Book {
 				</section>
 
 				<?php echo self::manage_card( $b, $key ); // phpcs:ignore -- escaped inside. ?>
+				<?php echo self::help_card( $b, $key ); // phpcs:ignore -- escaped inside. ?>
 			</div>
 			<aside class="ab-side">
 				<?php if ( $can_free && ! $cancelled ) : ?>
@@ -972,6 +973,7 @@ final class ATC_Book {
 			'updated'   => 'Your changes are saved. We sent the new details to you and to your provider.',
 			'cancelled' => 'Your booking is cancelled and the refund is on its way to your card. We sent you an email.',
 			'rated'     => 'Thanks for rating your ride. It helps other travelers choose.',
+			'reported'  => 'Thanks, we got your message. We answer by email and on this page, within 48 hours.',
 		)[ $done ] ?? '';
 		return $msg ? '<div class="ab-alert is-ok" role="status">' . esc_html( $msg ) . '</div>' : '';
 	}
@@ -1051,6 +1053,51 @@ final class ATC_Book {
 	}
 
 	/** After the ride: rate the provider (once). */
+	/** Report a problem, and the conversation with our team about it. Kept small: a link, not a support push. */
+	private static function help_card( array $b, string $key ): string {
+		if ( 'held' === $b['status'] ) {
+			return '';
+		}
+		$tickets = ATC_Tickets::for_booking( (int) $b['id'], 'traveler' );
+		$cfg     = array( 'number' => $b['number'], 'key' => $key, 'back' => ATC_Checkout::reservation_url( $b['number'], $key ) );
+		$types   = array( 'no_show' => 'My driver didn’t show up or was late', 'wrong_vehicle' => 'Wrong vehicle or service', 'overcharge' => 'I was asked to pay more', 'refund' => 'Refund', 'lost_item' => 'I left something in the vehicle', 'complaint' => 'Complaint', 'other' => 'Something else' );
+		ob_start();
+		if ( $tickets ) :
+			foreach ( $tickets as $t ) :
+				?>
+				<section class="ab-card ab-pad ab-help" id="help" aria-label="Conversation <?php echo esc_attr( $t['ref'] ); ?>">
+					<h2><?php echo esc_html( $t['type_name'] ); ?> <span class="ab-chip"><?php echo esc_html( $t['status_name'] ); ?></span></h2>
+					<ol class="ab-thread">
+						<?php foreach ( $t['messages'] as $m ) : ?>
+							<li class="<?php echo 'You' === $m['name'] ? 'is-you' : 'is-us'; ?>"><span class="ab-muted"><?php echo esc_html( $m['name'] . ' · ' . $m['when'] . ' UTC' ); ?></span><p><?php echo nl2br( esc_html( $m['body'] ) ); ?></p></li>
+						<?php endforeach; ?>
+					</ol>
+					<?php if ( $t['open'] ) : ?>
+						<form class="ab-form" data-ab-ticket="<?php echo esc_attr( wp_json_encode( $cfg + array( 'id' => $t['id'] ) ) ); ?>" novalidate>
+							<div class="ab-field"><label for="tk-<?php echo (int) $t['id']; ?>">Your reply</label><textarea id="tk-<?php echo (int) $t['id']; ?>" name="body" rows="3" maxlength="5000" required></textarea></div>
+							<div class="ab-alert" role="alert" hidden data-ab-error></div>
+							<div class="ab-actions"><button type="submit" class="ab-btn">Send</button></div>
+						</form>
+					<?php endif; ?>
+				</section>
+				<?php
+			endforeach;
+		endif;
+		?>
+		<details class="ab-report"<?php echo $tickets ? '' : ' id="help"'; ?>>
+			<summary>Report a problem with this booking</summary>
+			<form class="ab-form" data-ab-ticket="<?php echo esc_attr( wp_json_encode( $cfg ) ); ?>" novalidate>
+				<div class="ab-field"><label for="tk-type">What happened</label><select id="tk-type" name="type"><?php foreach ( $types as $k => $v ) : ?><option value="<?php echo esc_attr( $k ); ?>"><?php echo esc_html( $v ); ?></option><?php endforeach; ?></select></div>
+				<div class="ab-field"><label for="tk-body">Tell us more</label><textarea id="tk-body" name="body" rows="4" maxlength="5000" required></textarea></div>
+				<div class="ab-alert" role="alert" hidden data-ab-error></div>
+				<div class="ab-actions"><button type="submit" class="ab-btn">Send</button></div>
+				<p class="ab-muted">We answer by email and here, within 48 hours. To change your flight, time or hotel, use Change details above.</p>
+			</form>
+		</details>
+		<?php
+		return (string) ob_get_clean();
+	}
+
 	private static function rate_card( array $b, string $key ): string {
 		if ( ! ATC_Manage::can_review( $b ) ) {
 			return '';

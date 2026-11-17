@@ -195,6 +195,36 @@ final class ATC_REST_Portal {
 		};
 		// Bookings: the provider's rides.
 		self::route( '/bookings', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Trips::list( self::pid(), (string) $r['filter'], max( 1, (int) $r['page'] ), ! empty( $r['all'] ) ) ) ) );
+		// Tickets: the provider's own, and reporting a problem on one of its bookings.
+		self::route(
+			'/tickets',
+			array(
+				'GET'  => static fn() => rest_ensure_response( ATC_Tickets::for_party( self::pid() ) ),
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b   = self::body( $r );
+					$bk  = '' !== (string) ( $b['booking'] ?? '' ) ? ATC_Checkout::find( (string) $b['booking'] ) : null;
+					if ( $bk && ! in_array( self::pid(), array_map( static fn( $l ) => (int) $l['party_id'], $bk['legs'] ), true ) ) {
+						return new WP_Error( 'atc_not_found', 'That booking is not yours.', array( 'status' => 404 ) );
+					}
+					$allowed = array( 'traveler_no_show', 'schedule', 'overcharge', 'lost_item', 'complaint', 'provider', 'other' );
+					$id = ATC_Tickets::open( array( 'booking_id' => $bk ? (int) $bk['id'] : 0, 'party_id' => self::pid(), 'type' => in_array( $b['type'] ?? '', $allowed, true ) ? $b['type'] : 'provider', 'subject' => (string) ( $b['subject'] ?? '' ), 'body' => (string) ( $b['body'] ?? '' ), 'by' => 'provider' ) );
+					return is_wp_error( $id ) ? $id : rest_ensure_response( ATC_Tickets::get( $id, 'provider' ) );
+				},
+			)
+		);
+		self::route(
+			'/tickets/(?P<id>\d+)',
+			array(
+				'GET'  => static fn( WP_REST_Request $r ) => ATC_Tickets::party_of( (int) $r['id'] ) === self::pid() ? self::out( ATC_Tickets::get( (int) $r['id'], 'provider' ) ) : new WP_Error( 'atc_not_found', 'Ticket not found.', array( 'status' => 404 ) ),
+				'POST' => static function ( WP_REST_Request $r ) {
+					if ( ATC_Tickets::party_of( (int) $r['id'] ) !== self::pid() ) {
+						return new WP_Error( 'atc_not_found', 'Ticket not found.', array( 'status' => 404 ) );
+					}
+					$res = ATC_Tickets::reply( (int) $r['id'], 'provider', (string) ( self::body( $r )['body'] ?? '' ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( ATC_Tickets::get( (int) $r['id'], 'provider' ) );
+				},
+			)
+		);
 		self::route( '/bookings/(?P<number>[A-Za-z0-9]+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Trips::detail( self::pid(), (string) $r['number'] ) ) ) );
 		self::route( '/bookings/(?P<number>[A-Za-z0-9]+)/ack', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Trips::acknowledge_booking( self::pid(), (string) $r['number'] ) ) ) );
 		$leg = static fn( string $action, callable $fn ) => self::route( '/legs/(?P<id>\\d+)/' . $action, array( 'POST' => static fn( WP_REST_Request $r ) => self::out( $fn( (int) $r['id'], self::body( $r ) ) ) ) );

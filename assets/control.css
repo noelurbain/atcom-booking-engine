@@ -199,3 +199,12 @@ ol.timeline li{display:grid;grid-template-columns:150px 1fr;gap:12px}
 .steps-mini li{background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px}
 .atc-inline input[type=checkbox]{width:18px;height:18px;accent-color:var(--ink)}
 .atc-main .neg{color:#B42318}
+/* Tickets */
+.atc-sidenav i.count{display:inline-block;margin-left:6px;min-width:20px;padding:1px 6px;border-radius:999px;background:#E8590C;color:#fff;font-style:normal;font-size:12px;font-weight:800;text-align:center}
+.thread{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:10px}
+.thread .msg{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;display:flex;flex-direction:column;gap:6px}
+.thread .msg .chip{margin-left:8px}
+.thread .msg.team{background:#F7F5F0}
+.thread .msg.internal{background:#FFF8E1;border-style:dashed}
+.thread .msg.system{background:#F1F4F8}
+.thread .msg .body{white-space:pre-wrap;font-size:14px}

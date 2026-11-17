@@ -634,6 +634,19 @@
       post(C.api + 'booking/review', body).then(function () { backTo(rc.back, 'rated'); }).catch(function (x) { btn.disabled = false; showError(err, x.message); });
     });
   }
+  document.querySelectorAll('[data-ab-ticket]').forEach(function (tf) {
+    var tc = JSON.parse(tf.getAttribute('data-ab-ticket'));
+    tf.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var err = tf.querySelector('[data-ab-error]'), body = formData(tf);
+      if (!body.body || !body.body.trim()) { showError(err, 'Write a few words first.'); return; }
+      body.number = tc.number; body.key = tc.key; if (tc.id) body.id = tc.id;
+      var btn = tf.querySelector('[type=submit]'); btn.disabled = true;
+      post(C.api + 'booking/ticket', body).then(function () { var u = new URL(tc.back, location.href); u.searchParams.set('done', 'reported'); u.searchParams.set('t', Date.now()); location.href = u.toString() + '#help'; })
+        .catch(function (x) { btn.disabled = false; showError(err, x.message); });
+    });
+  });
+  if (location.hash === '#help') { var hp = document.getElementById('help'); if (hp) { if (hp.tagName === 'DETAILS') hp.open = true; hp.scrollIntoView({ block: 'start' }); } }
   var find = document.querySelector('[data-ab-find]');
   if (find) find.addEventListener('submit', function (e) {
     e.preventDefault();

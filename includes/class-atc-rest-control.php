@@ -84,6 +84,42 @@ final class ATC_REST_Control {
 		$bk( 'refund', static fn( $n, $b ) => ATC_Ops::refund( $n, (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['cancel'] ), mb_substr( sanitize_text_field( (string) ( $b['reason'] ?? '' ) ), 0, 200 ) ) );
 		$bk( 'resend', static fn( $n, $b ) => ATC_Ops::resend( $n ) );
 
+		// Tickets.
+		self::route(
+			'/tickets',
+			array(
+				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Tickets::list( array( 'status' => (string) ( $r['status'] ?? 'open' ), 'type' => (string) $r['type'], 'q' => (string) $r['q'], 'mine' => ! empty( $r['mine'] ), 'booking_id' => (int) $r['booking_id'] ) ) ),
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b  = self::body( $r );
+					$id = ATC_Tickets::open( array( 'booking' => (string) ( $b['booking'] ?? '' ), 'type' => (string) ( $b['type'] ?? '' ), 'subject' => (string) ( $b['subject'] ?? '' ), 'body' => (string) ( $b['body'] ?? '' ), 'by' => 'team', 'audience' => 'internal', 'hold' => ! empty( $b['hold'] ), 'money' => (int) round( 100 * (float) ( $b['money'] ?? 0 ) ) ) );
+					return is_wp_error( $id ) ? $id : rest_ensure_response( ATC_Tickets::get( $id ) );
+				},
+			)
+		);
+		self::route( '/tickets/(?P<id>\d+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Tickets::get( (int) $r['id'] ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Tickets::update( (int) $r['id'], self::body( $r ) ) ) ) );
+		self::route(
+			'/tickets/(?P<id>\d+)/reply',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b   = self::body( $r );
+					$res = ATC_Tickets::reply( (int) $r['id'], 'team', (string) ( $b['body'] ?? '' ), (string) ( $b['audience'] ?? 'internal' ), (string) ( $b['status'] ?? '' ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( ATC_Tickets::get( (int) $r['id'] ) );
+				},
+			)
+		);
+		self::route(
+			'/tickets/(?P<id>\d+)/resolve',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					if ( ! current_user_can( 'atc_refund' ) && (float) ( self::body( $r )['refund'] ?? 0 ) > 0 ) {
+						return new WP_Error( 'atc_forbidden', 'Your role can’t refund. Ask an admin.', array( 'status' => 403 ) );
+					}
+					$b = self::body( $r );
+					return self::out( ATC_Tickets::resolve( (int) $r['id'], (string) ( $b['outcome'] ?? '' ), (int) round( 100 * (float) ( $b['provider'] ?? 0 ) ), (int) round( 100 * (float) ( $b['refund'] ?? 0 ) ), (string) ( $b['note'] ?? '' ), ! empty( $b['tell_traveler'] ), ! empty( $b['tell_provider'] ) ) );
+				},
+			)
+		);
+
 		// Affiliates.
 		self::route( '/affiliates', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Affiliates::list( (string) $r['status'] ) ) ) );
 		self::route( '/affiliates/(?P<id>\\d+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::get( (int) $r['id'] ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::save( (int) $r['id'], self::body( $r ) ) ) ) );

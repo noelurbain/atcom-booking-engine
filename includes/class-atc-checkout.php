@@ -656,6 +656,10 @@ final class ATC_Checkout {
 					self::sync_payment( $b );
 				}
 				break;
+			case 'charge.dispute.created':
+			case 'charge.dispute.closed':
+				ATC_Tickets::stripe_dispute( (string) $event['type'], (array) $obj );
+				break;
 			case 'charge.refunded':
 				$b = self::find( '', 0, (string) ( $obj['payment_intent'] ?? '' ) );
 				if ( $b && 'confirmed' === $b['status'] && ! empty( $obj['refunded'] ) ) {

@@ -314,6 +314,40 @@ final class ATC_Mail {
 		self::send( $b['email'], 'Refund on booking ' . $b['number'], self::wrap( 'We refunded ' . ATC_Book::money( $amount ), self::p( 'Hi ' . self::e( $b['first_name'] ) . ', we refunded <strong>' . self::e( ATC_Book::money( $amount ) ) . '</strong> to the card you paid with. Banks usually show it within 5 to 10 days. Your booking stays as it is.' ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'refund' ) );
 	}
 
+	/** Tickets: our team is told about a new ticket or a reply from the traveler or provider. */
+	public static function ticket_team( int $id, string $what ): void {
+		$t = ATC_Tickets::get( $id );
+		if ( is_wp_error( $t ) ) {
+			return;
+		}
+		$last = end( $t['messages'] );
+		$body = self::p( self::e( $what . ' on ' . $t['ref'] . ( $t['booking'] ? ', booking ' . $t['booking'] : '' ) . ' (' . $t['type_name'] . ').' ) )
+			. ( $last ? self::box( '<strong>' . self::e( $last['name'] ) . '</strong><br>' . nl2br( self::e( $last['body'] ) ) ) : '' )
+			. ( $t['urgent'] ? self::p( '<strong>Urgent:</strong> answer today.' ) : self::p( 'First reply due within 48 hours.' ) );
+		self::team( ( $t['urgent'] ? '[Urgent] ' : '' ) . $what . ': ' . $t['subject'] . ' (' . $t['ref'] . ')', self::wrap( $t['subject'], $body, 'Open the ticket', home_url( '/control/tickets/' . $id . '/' ) ) );
+	}
+
+	/** Tickets: our reply to the traveler or the provider. */
+	public static function ticket_reply( int $id, string $to, string $text ): void {
+		$t = ATC_Tickets::get( $id );
+		if ( is_wp_error( $t ) || ! $t['booking'] && 'traveler' === $to ) {
+			return;
+		}
+		$b = $t['booking'] ? ATC_Checkout::find( $t['booking'] ) : null;
+		if ( 'traveler' === $to && $b ) {
+			$url  = ATC_Checkout::reservation_url( $b['number'], ATC_Checkout::key_of( $b ) ) . '#help';
+			$body = self::p( 'Hi ' . self::e( $b['first_name'] ) . ', we replied about your booking <strong>' . self::e( $b['number'] ) . '</strong>:' ) . self::box( nl2br( self::e( $text ) ) ) . self::p( 'To answer, open your booking and write in the same conversation.' );
+			self::send( $b['email'], 'About your booking ' . $b['number'], self::wrap( 'We replied to your message', $body, 'Open your booking', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'ticket' ) );
+		} elseif ( 'provider' === $to && $t['party_id'] ) {
+			$p = ATC_Catalog::party( $t['party_id'] );
+			if ( ! $p ) {
+				return;
+			}
+			$body = self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', a message from our team' . ( $t['booking'] ? ' about booking <strong>' . self::e( $t['booking'] ) . '</strong>' : '' ) . ':' ) . self::box( nl2br( self::e( $text ) ) ) . self::p( 'Answer in the portal, under Tickets.' );
+			self::send( self::provider_to( $p ), 'Airport Transportation: ' . $t['subject'] . ' (' . $t['ref'] . ')', self::wrap( $t['subject'], $body, 'Open in the portal', home_url( '/portal/tickets/' . $id . '/' ) ), array( 'kind' => 'ticket' ) );
+		}
+	}
+
 	/** Booked for a client by an affiliate or our team: the client pays from this link. */
 	public static function payment_link( array $b, string $url ): void {
 		$body = self::p( 'Hi ' . self::e( $b['first_name'] ) . ', your airport transfer is ready to confirm. Check the details and pay securely by card to book it.' )

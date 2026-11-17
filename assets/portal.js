@@ -69,6 +69,7 @@
     ['documents', 'Documents', 'documents'],
     ['payout', 'Payout details', 'payout'],
     ['agreement', 'Agreement', 'agreement'],
+    ['tickets', 'Tickets', null],
     ['account', 'Account', null]
   ];
 
@@ -103,8 +104,9 @@
     var p = path();
     clear(app);
     if (p.indexOf('bookings/') === 0) return viewTrip(p.split('/')[1]);
+    if (p.indexOf('tickets/') === 0) return viewTicket(parseInt(p.split('/')[1], 10));
     ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
-       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount }[p] || viewSetup)();
+       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets }[p] || viewSetup)();
   }
 
   function head(title, sub) {
@@ -270,6 +272,7 @@
         }
         add(left, card);
       });
+      add(left, reportBox(number));
 
       add(right, h('section', { class: 'card pad' },
         h('h2', { text: 'Traveler' }),
@@ -667,6 +670,57 @@
         h('div', { class: 'grid2' }, field('Current password', cur), field('New password (at least 10 characters)', nw)),
         h('div', { class: 'atc-actions' }, pBtn))
     ]);
+  }
+
+  /* ---------- Tickets ---------- */
+
+  var tTypes = { traveler_no_show: 'Traveler didn’t show up', schedule: 'Flight or schedule problem', overcharge: 'Payment or price problem', lost_item: 'Lost item', complaint: 'Complaint about the traveler', provider: 'Question for our team', other: 'Something else' };
+  function newTicket(booking, onDone) {
+    var type = h('select', null, Object.keys(tTypes).map(function (k) { return h('option', { value: k, selected: k === (booking ? 'other' : 'provider'), text: tTypes[k] }); }));
+    var subj = booking ? null : h('input', { type: 'text', maxlength: 200, placeholder: 'Short title' });
+    var body = h('textarea', { rows: 4, placeholder: 'Tell us what happened' });
+    var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Send to our team' });
+    return h('form', { class: 'card pad', style: 'gap:10px', onsubmit: function (e) {
+      e.preventDefault(); btn.disabled = true;
+      api('POST', '/tickets', { booking: booking || '', type: type.value, subject: subj ? subj.value : '', body: body.value })
+        .then(function (t) { toast('Sent. We answer within 48 hours, the same day if the trip is soon.'); onDone(t); }).catch(function (x) { btn.disabled = false; fail(x); });
+    } }, h('strong', { text: booking ? 'Report a problem with this booking' : 'Write to our team' }), field('About', type), subj ? field('Title', subj) : null, field('Message', body), h('div', null, btn));
+  }
+  function reportBox(number) {
+    var box = h('div', { hidden: true });
+    return h('section', { class: 'card pad' }, h('div', { class: 'atc-actions', style: 'justify-content:space-between' }, h('h2', { text: 'A problem with this booking?' }),
+      h('button', { class: 'link', type: 'button', text: 'Report it to our team', onclick: function () { box.hidden = !box.hidden; if (!box.firstChild) add(box, newTicket(number, function (t) { go('tickets/' + t.id); })); } })), box);
+  }
+  function viewTickets() {
+    var form = h('div', { hidden: true });
+    var list = h('section', { class: 'card pad' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, [head('Tickets', 'Problems and questions between you and our team. To report a problem with a booking, open the booking.'),
+      h('div', null, h('button', { class: 'btn dark', type: 'button', text: 'Write to our team', onclick: function () { form.hidden = !form.hidden; if (!form.firstChild) add(form, newTicket('', function (t) { go('tickets/' + t.id); })); } })),
+      form, list]);
+    api('GET', '/tickets').then(function (rows) {
+      clear(list);
+      if (!rows.length) { add(list, h('p', { class: 'atc-muted', text: 'No tickets.' })); return; }
+      add(list, h('div', { class: 'rows' }, rows.map(function (t) {
+        return h('a', { class: 'row', href: C.base + 'tickets/' + t.id + '/', 'data-go': 'tickets/' + t.id },
+          h('span', null, h('strong', { text: t.ref + ' · ' + t.subject }), h('div', { class: 'small atc-muted', text: (t.booking ? 'Booking ' + t.booking + ' · ' : '') + 'updated ' + t.updated })),
+          h('span', { class: 'chip ' + (t.open ? (t.status_name === 'Waiting for your reply' ? 'orange' : 'blue') : 'grey'), text: t.status_name }));
+      })));
+    }).catch(fail);
+  }
+  function viewTicket(id) {
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/tickets/' + id).then(function draw(t) {
+      clear(app);
+      var text = h('textarea', { rows: 4 });
+      var send = h('button', { class: 'btn dark', type: 'button', text: 'Send', onclick: function () {
+        send.disabled = true; api('POST', '/tickets/' + id, { body: text.value }).then(function (n) { toast('Sent.'); draw(n); }).catch(function (x) { send.disabled = false; fail(x); });
+      } });
+      add(app, [h('a', { class: 'back', href: C.base + 'tickets/', 'data-go': 'tickets', text: '← Tickets' }),
+        head(t.ref + ' · ' + t.subject, (t.booking ? 'Booking ' + t.booking + ' · ' : '') + t.type_name + ' · ' + t.status_name),
+        h('section', { class: 'card pad' }, h('ol', { class: 'thread' }, t.messages.map(function (m) {
+          return h('li', { class: 'msg ' + m.author }, h('div', { class: 'small atc-muted strong', text: m.name + ' · ' + m.when + ' UTC' }), h('div', { class: 'body', text: m.body }));
+        })), t.open ? [field('Your reply', text), h('div', null, send)] : h('p', { class: 'atc-muted', text: 'This ticket is closed. Write a new one if you need us.' }))]);
+    }).catch(fail);
   }
 
   /* ---------- start ---------- */
