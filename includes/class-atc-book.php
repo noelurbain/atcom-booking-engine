@@ -646,6 +646,38 @@ final class ATC_Book {
 						<?php echo $step( 'carry_ons', 'Carry-ons', 'Small bags and backpacks', $v( 'carry_ons', '0' ) ); // phpcs:ignore ?>
 					</section>
 
+					<?php
+					$xs    = ATC_Extras::offered( (int) ( $offer['party_id'] ?? ( $b['legs'][0]['party_id'] ?? 0 ) ) );
+					$xhave = array();
+					if ( $b ) {
+						foreach ( ATC_Extras::chosen( (int) $b['id'] ) as $c ) {
+							$xhave[ $c['extra_id'] ] = $c['qty'];
+						}
+					}
+					$rides = $round ? 2 : 1;
+					if ( $xs ) :
+						?>
+					<section class="ab-card ab-pad" aria-labelledby="ab-h-extras" data-ab-extras data-rides="<?php echo (int) $rides; ?>" data-base="<?php echo (int) ( $total - ( $b ? ATC_Extras::totals( (int) $b['id'] )['retail'] : 0 ) ); ?>">
+						<h2 id="ab-h-extras">Extras <span class="ab-muted">(optional)</span></h2>
+						<p class="ab-muted">Added to your price now and ready in the vehicle.</p>
+						<?php foreach ( $xs as $x ) :
+							$n    = (int) ( $xhave[ $x['id'] ] ?? 0 );
+							$each = 'per_ride' === $x['unit'] ? ( $round ? ' each ride (×2 on a round trip)' : '' ) : ( 'per_item' === $x['unit'] ? ' each' : '' );
+							?>
+							<div class="ab-paxrow ab-xrow"><span><strong><?php echo esc_html( $x['name'] ); ?></strong><small><?php echo esc_html( self::money( $x['price'] ) . $each . ( $x['description'] ? ' · ' . $x['description'] : '' ) ); ?></small></span>
+								<?php if ( 'per_booking' === $x['unit'] && 1 === $x['max_qty'] ) : ?>
+									<label class="ab-xcheck"><input type="checkbox" data-ab-x="<?php echo (int) $x['id']; ?>" data-price="<?php echo (int) $x['price']; ?>" data-unit="<?php echo esc_attr( $x['unit'] ); ?>" <?php checked( $n > 0 ); ?>><span>Add</span></label>
+									<input type="hidden" name="extra_<?php echo (int) $x['id']; ?>" value="<?php echo (int) $n; ?>">
+								<?php else : ?>
+									<span class="ab-step"><button type="button" data-ab-xstep="<?php echo (int) $x['id']; ?>:-1" aria-label="Fewer">−</button><output data-ab-xout="<?php echo (int) $x['id']; ?>"><?php echo (int) $n; ?></output><button type="button" data-ab-xstep="<?php echo (int) $x['id']; ?>:1" aria-label="More">+</button></span>
+									<input type="hidden" name="extra_<?php echo (int) $x['id']; ?>" value="<?php echo (int) $n; ?>" data-ab-x="<?php echo (int) $x['id']; ?>" data-price="<?php echo (int) $x['price']; ?>" data-unit="<?php echo esc_attr( $x['unit'] ); ?>" data-max="<?php echo (int) $x['max_qty']; ?>">
+								<?php endif; ?>
+							</div>
+						<?php endforeach; ?>
+						<p class="ab-xsum" data-ab-xsum hidden></p>
+					</section>
+					<?php endif; ?>
+
 					<section class="ab-card ab-pad" aria-labelledby="ab-h-notes">
 						<h2 id="ab-h-notes">Notes for your driver <span class="ab-muted">(optional)</span></h2>
 						<div class="ab-field"><label for="ab-notes" class="screen-reader-text">Notes for your driver</label><textarea id="ab-notes" name="notes" rows="3" maxlength="1000" placeholder="e.g. we travel with a stroller, or a child seat is needed"><?php echo esc_textarea( $v( 'notes' ) ); ?></textarea></div>
@@ -769,6 +801,10 @@ final class ATC_Book {
 						}
 						echo $row( 'Lead traveler', esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . $b['email'] . ' · ' . $b['phone'] ), $edit ); // phpcs:ignore
 						echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $one['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $one['carry_ons'] ?? 0 ) . ' carry-ons' ), $edit ); // phpcs:ignore
+						$xl = ATC_Extras::lines( (int) $b['id'] );
+						if ( $xl ) {
+							echo $row( 'Extras', esc_html( implode( ', ', array_map( static fn( $x ) => $x['label'] . ' · ' . self::money( $x['retail'] ), $xl ) ) ), $edit ); // phpcs:ignore
+						}
 						?>
 						<div class="ab-coupon" data-ab-coupon data-number="<?php echo esc_attr( $b['number'] ); ?>" data-key="<?php echo esc_attr( $key ); ?>"><div data-ab-coupon-body>
 							<?php if ( ! empty( $b['coupon_code'] ) ) : ?>
@@ -926,6 +962,10 @@ final class ATC_Book {
 						echo $row( $arr ? 'Return' : 'Pickup', '<strong>Pickup ' . esc_html( self::local( $ret['pickup_at'], $tz ) ) . '</strong>' . esc_html( ' at ' . $ret['from_place'] . ( ! empty( $ret['flight_number'] ) ? ' · ' . trim( $ret['flight_airline'] . ' ' . $ret['flight_number'] ) : '' ) ) ); // phpcs:ignore
 					}
 					echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $one['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $one['carry_ons'] ?? 0 ) . ' carry-ons' ) ); // phpcs:ignore
+					$xl = ATC_Extras::lines( (int) $b['id'] );
+					if ( $xl ) {
+						echo $row( 'Extras', esc_html( implode( ', ', array_map( static fn( $x ) => $x['label'], $xl ) ) ) ); // phpcs:ignore
+					}
 					if ( ! empty( $d['hotel_name'] ) ) {
 						echo $row( 'Hotel booking', esc_html( 'Under ' . $d['hotel_name'] ) ); // phpcs:ignore
 					}

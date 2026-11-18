@@ -1,5 +1,18 @@
 === ATCOM Booking Engine ===
-Version: 0.16.0 (searches, money report, analytics)
+Version: 0.17.0 (extras)
+
+New in 0.17.0:
+- Extras catalog (Control → Extras): infant, child and booster seats, a supermarket stop, beers, water and sodas,
+  sparkling wine, snacks, flowers, a celebration kit, a custom name sign; rename, turn off or add more.
+  Charged per booking, per ride (twice on a round trip) or each, with a maximum per booking.
+- Providers switch on what they offer and set the price (portal → Extras; our team: provider → Edit their extras),
+  as Suggested retail price / Amount you will get paid with the usual commission.
+- Step 2 shows the provider's extras with steppers or a checkbox; the total on the side follows. Prices come from
+  the provider's offer on the server. Discount codes apply on top.
+- Extras show on the payment review, the confirmation page, all booking emails (with the provider's amount in
+  theirs), the portal booking ("Extras to bring"), Control's booking and the money report. The provider's share
+  is paid with the last ride (ledger line "Extras").
+
 
 New in 0.16.0:
 - Every results page is logged (airport, destination, offers found; visitor as a monthly-rotating hash, no personal

@@ -195,6 +195,10 @@ final class ATC_REST_Portal {
 		};
 		// Bookings: the provider's rides.
 		self::route( '/bookings', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Trips::list( self::pid(), (string) $r['filter'], max( 1, (int) $r['page'] ), ! empty( $r['all'] ) ) ) ) );
+		// Extras the provider offers.
+		self::route( '/extras', array( 'GET' => static fn() => rest_ensure_response( ATC_Extras::for_provider( self::pid() ) ) ) );
+		self::route( '/extras/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Extras::save_offer( self::pid(), (int) $r['id'], self::body( $r ) ) ) ) );
+
 		// Tickets: the provider's own, and reporting a problem on one of its bookings.
 		self::route(
 			'/tickets',

@@ -53,6 +53,7 @@ final class ATC_Install {
 				self::market_capacities();
 			}
 			self::seed();
+			ATC_Extras::seed_catalog();
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
 		}

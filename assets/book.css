@@ -305,3 +305,7 @@
 .ab-coupon-row{display:flex;gap:8px;margin-top:8px}
 .ab-coupon-row input{flex:1;min-width:0}
 .ab-coupon .ab-alert{margin-top:8px}
+.ab-xrow{align-items:center}
+.ab-xcheck{display:inline-flex;align-items:center;gap:8px;font-weight:700;cursor:pointer}
+.ab-xcheck input{width:20px;height:20px;accent-color:#15171C}
+.ab-xsum{margin:10px 0 0;font-weight:800;text-align:right}

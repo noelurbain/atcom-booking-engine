@@ -360,6 +360,37 @@
       });
     });
 
+    // Extras: steppers and checkboxes, the total on the side follows.
+    var xs = det.querySelector('[data-ab-extras]');
+    if (xs) {
+      var rides = +xs.getAttribute('data-rides') || 1, base = +xs.getAttribute('data-base') || 0;
+      var usd = function (c) { return 'USD ' + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); };
+      var xsum = function () {
+        var sum = 0;
+        xs.querySelectorAll('input[name^=extra_]').forEach(function (i) {
+          var src = xs.querySelector('[data-ab-x="' + i.name.slice(6) + '"]'), n = +i.value || 0;
+          if (!n || !src) return;
+          var unit = src.getAttribute('data-unit'), price = +src.getAttribute('data-price');
+          sum += price * (unit === 'per_ride' ? n * rides : (unit === 'per_booking' ? 1 : n));
+        });
+        var line = xs.querySelector('[data-ab-xsum]');
+        line.hidden = !sum; line.textContent = sum ? 'Extras: ' + usd(sum) : '';
+        document.querySelectorAll('[data-ab-grand]').forEach(function (g) { g.textContent = usd(base + sum); });
+      };
+      xs.querySelectorAll('[data-ab-xstep]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var p = b.getAttribute('data-ab-xstep').split(':'), input = xs.querySelector('input[name=extra_' + p[0] + ']');
+          input.value = Math.max(0, Math.min(+input.getAttribute('data-max') || 1, +input.value + +p[1]));
+          xs.querySelector('[data-ab-xout="' + p[0] + '"]').textContent = input.value;
+          xsum();
+        });
+      });
+      xs.querySelectorAll('input[type=checkbox][data-ab-x]').forEach(function (c) {
+        c.addEventListener('change', function () { xs.querySelector('input[name=extra_' + c.getAttribute('data-ab-x') + ']').value = c.checked ? 1 : 0; xsum(); });
+      });
+      xsum();
+    }
+
     // No flight yet: the flight number is not needed.
     var nf = det.querySelector('[data-ab-noflight]');
     function flightState() {

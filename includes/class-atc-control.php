@@ -124,6 +124,7 @@ final class ATC_Control {
 		<a href="<?php echo esc_url( home_url( '/control/meeting/' ) ); ?>" data-view="meeting">Meeting your driver</a>
 		<a href="<?php echo esc_url( home_url( '/control/payouts/' ) ); ?>" data-view="payouts">Payouts</a>
 		<a href="<?php echo esc_url( home_url( '/control/coupons/' ) ); ?>" data-view="coupons">Discount codes</a>
+		<a href="<?php echo esc_url( home_url( '/control/extras/' ) ); ?>" data-view="extras">Extras</a>
 		<a href="<?php echo esc_url( home_url( '/control/insights/' ) ); ?>" data-view="insights">Searches</a>
 		<?php if ( current_user_can( 'atc_payouts' ) ) : ?>
 			<a href="<?php echo esc_url( home_url( '/control/report/' ) ); ?>" data-view="report">Money report</a>

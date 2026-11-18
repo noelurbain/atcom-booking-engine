@@ -190,6 +190,8 @@ final class ATC_Bookings {
 			);
 		}
 		$legacy = ! empty( $snap['legacy'] );
+		$xtot   = ATC_Extras::totals( (int) $b['id'] );
+		$prov  += $xtot['provider'];
 		$paid   = in_array( $b['status'], array( 'confirmed', 'completed' ), true );
 		$total  = (int) $b['total_cents'];
 		$money  = array( array( 'Traveler paid (Suggested retail price)', $paid ? ( ! empty( $snap['method'] ) ? 'with ' . ucfirst( (string) $snap['method'] ) : 'captured' ) : 'not paid', $paid ? $total : 0 ) );
@@ -260,6 +262,7 @@ final class ATC_Bookings {
 				'area'      => (string) ( $snap['area'] ?? '' ),
 			),
 			'events'   => $events,
+			'extras'   => ATC_Extras::lines( (int) $b['id'] ),
 			'tickets'  => ATC_Tickets::list( array( 'status' => 'all', 'booking_id' => (int) $b['id'] ) )['tickets'],
 			'actions'  => array(
 				'refund_left'  => $paid && ! $legacy && $b['stripe_payment_intent'] ? $total - (int) ( $snap['refunded'] ?? 0 ) : 0,

@@ -90,7 +90,9 @@
     document.querySelectorAll('a[data-view]').forEach(function (a) {
       a.classList.toggle('on', a.getAttribute('data-view') === (parts[0] === 'import' ? 'providers' : parts[0]));
     });
+    if (parts[0] === 'providers' && parts[1] && parts[2] === 'extras') return viewProviderExtras(parseInt(parts[1], 10));
     if (parts[0] === 'providers' && parts[1]) return viewProvider(parseInt(parts[1], 10));
+    if (parts[0] === 'extras') return viewExtrasCatalog();
     if (parts[0] === 'providers') return viewProviders();
     if (parts[0] === 'import') return viewImport();
     if (parts[0] === 'zones') return viewZones();
@@ -107,6 +109,75 @@
     if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
     if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
+  }
+
+  /* ---------- Extras ---------- */
+
+  var xUnits = { per_booking: 'per booking', per_ride: 'per ride', per_item: 'each' };
+
+  function viewExtrasCatalog() {
+    clear(app);
+    var list = h('div');
+    var formBox = h('div');
+    function form(x, groups, done) {
+      x = x || {};
+      var name = h('input', { type: 'text', value: x.name || '', maxlength: 190 });
+      var desc = h('input', { type: 'text', value: x.description || '', maxlength: 255 });
+      var grp = h('select', null, Object.keys(groups).map(function (k) { return h('option', { value: k, selected: x.group === k, text: groups[k] }); }));
+      var unit = h('select', null, Object.keys(xUnits).map(function (k) { return h('option', { value: k, selected: x.unit === k, text: xUnits[k] }); }));
+      var max = h('input', { type: 'number', min: 1, max: 10, value: x.max_qty || 1, style: 'max-width:100px' });
+      var sug = h('input', { type: 'number', min: 0, step: '1', value: x.suggested ? x.suggested / 100 : '', style: 'max-width:120px' });
+      var sort = h('input', { type: 'number', value: x.sort || 999, style: 'max-width:100px' });
+      var st = h('select', null, h('option', { value: 'active', selected: x.status !== 'off', text: 'On' }), h('option', { value: 'off', selected: x.status === 'off', text: 'Off (hidden everywhere)' }));
+      var btn = h('button', { class: 'btn dark', type: 'submit', text: x.id ? 'Save' : 'Add to the catalog' });
+      return h('form', { class: 'card pad', style: 'gap:10px', onsubmit: function (e) {
+        e.preventDefault(); btn.disabled = true;
+        api('POST', '/extras' + (x.id ? '/' + x.id : ''), { name: name.value, description: desc.value, group: grp.value, unit: unit.value, max_qty: max.value, suggested: sug.value, sort: sort.value, status: st.value }).then(function () { toast('Saved.'); done(); }).catch(function (er) { btn.disabled = false; fail(er); });
+      } }, h('strong', { text: x.id ? 'Edit ' + x.name : 'New extra' }),
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Name (travelers see it)' }), name), h('label', { class: 'field' }, h('span', { text: 'Group' }), grp)),
+        h('label', { class: 'field' }, h('span', { text: 'Short description' }), desc),
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Charged' }), unit), h('label', { class: 'field' }, h('span', { text: 'Most per booking' }), max)),
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Suggested price for providers (USD)' }), sug), h('label', { class: 'field' }, h('span', { text: 'Order' }), sort)),
+        h('label', { class: 'field' }, h('span', { text: 'Status' }), st), h('div', null, btn));
+    }
+    function load() {
+      api('GET', '/extras').then(function (r) {
+        clear(list);
+        add(list, h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+          h('thead', null, h('tr', null, ['Extra', 'Group', 'Charged', 'Max', 'Suggested', 'Status', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+          h('tbody', null, r.catalog.map(function (x) {
+            return h('tr', null, h('td', null, h('strong', { text: x.name }), h('div', { class: 'small atc-muted', text: x.description })), h('td', { text: r.groups[x.group] || x.group }), h('td', { text: xUnits[x.unit] }), h('td', { text: String(x.max_qty) }), h('td', { text: x.suggested ? cash(x.suggested) : '–' }),
+              h('td', null, h('span', { class: 'chip ' + (x.status === 'active' ? 'green' : 'grey'), text: x.status === 'active' ? 'On' : 'Off' })),
+              h('td', null, h('button', { class: 'link', type: 'button', text: 'Edit', onclick: function () { clear(formBox); add(formBox, form(x, r.groups, function () { clear(formBox); load(); })); window.scrollTo(0, 0); } })));
+          }))))));
+        newBtn.onclick = function () { clear(formBox); add(formBox, form(null, r.groups, function () { clear(formBox); load(); })); };
+      }).catch(fail);
+    }
+    var newBtn = h('button', { class: 'btn dark', type: 'button', text: 'New extra' });
+    add(app, [h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Extras catalog' }), h('p', { class: 'atc-muted', text: 'The extras travelers can add. Each provider switches on the ones it offers and sets its own price (in its portal, or here under the provider: Edit their extras).' })), newBtn), formBox, list]);
+    load();
+  }
+
+  function viewProviderExtras(id) {
+    clear(app);
+    var box = h('div', { class: 'stack' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, [h('a', { class: 'back', href: C.base + 'providers/' + id + '/', 'data-go': 'providers/' + id, text: '← Provider' }), h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Their extras' }), h('p', { class: 'atc-muted', text: 'What this provider offers and at what price, as in their portal.' }))), box]);
+    function draw(d) {
+      clear(box);
+      var pct = d.commission_bp / 100;
+      add(box, h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+        h('thead', null, h('tr', null, ['Extra', 'Offered', 'Traveler pays (USD)', 'Provider gets', 'Max', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+        h('tbody', null, d.items.map(function (x) {
+          var on = h('input', { type: 'checkbox', checked: x.on });
+          var ret = h('input', { type: 'number', min: 1, step: '1', value: x.retail !== null ? x.retail / 100 : '', placeholder: (x.suggested / 100) + ' suggested', style: 'max-width:130px' });
+          var get = h('span', { text: x.provider !== null ? cash(x.provider) : '–' });
+          ret.addEventListener('input', function () { get.textContent = ret.value ? 'USD ' + (ret.value * (1 - pct / 100)).toFixed(2) : '–'; });
+          var max = h('input', { type: 'number', min: 1, max: x.max_qty, value: x.my_max, style: 'max-width:80px' });
+          var btn = h('button', { class: 'btn', type: 'button', text: 'Save', onclick: function () { btn.disabled = true; api('POST', '/providers/' + id + '/extras/' + x.id, { on: on.checked ? 1 : 0, retail: ret.value, max_qty: max.value }).then(function (nd) { toast('Saved.'); draw(nd); }).catch(function (e) { btn.disabled = false; fail(e); }); } });
+          return h('tr', null, h('td', null, h('strong', { text: x.name }), h('div', { class: 'small atc-muted', text: xUnits[x.unit] })), h('td', null, on), h('td', null, ret), h('td', null, get), h('td', null, max), h('td', null, btn));
+        }))))));
+    }
+    api('GET', '/providers/' + id + '/extras').then(draw).catch(fail);
   }
 
   /* ---------- Searches (insights) ---------- */
@@ -816,6 +887,7 @@
                 l.noshow_open ? noShowBox(l, number, draw) : null,
                 l.can_reassign ? reassignBox(l, number, draw) : null);
             }),
+            b.extras && b.extras.length ? h('section', { class: 'card pad' }, h('h2', { text: 'Extras' }), h('table', { class: 'bare' }, h('tbody', null, b.extras.map(function (x) { return h('tr', null, h('th', { scope: 'row' }, h('div', { text: x.label }), h('div', { class: 'small atc-muted', text: 'provider gets ' + cash(x.provider) })), h('td', { text: cash(x.retail) })); })))) : null,
             ticketsCard(b, number),
             h('section', { class: 'card pad' },
               h('h2', { text: 'Traveler' }),
@@ -1923,7 +1995,8 @@
         h('h2', { class: 'pe-title', text: 'Prices' }),
         h('div', { class: 'pe-root', id: 'atc-prices' }),
         servicesCard(id, d.services, zones),
-        vehiclesCard(id, d.vehicles)
+        vehiclesCard(id, d.vehicles),
+        h('section', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('h2', { text: 'Extras' }), h('a', { class: 'btn', href: C.base + 'providers/' + id + '/extras/', 'data-go': 'providers/' + id + '/extras', text: 'Edit their extras' })))
       ]);
       window.ATCPrices.mount(document.getElementById('atc-prices'), { api: api, base: '/providers/' + id + '/prices', who: 'staff', toast: toast, fail: fail });
     }).catch(fail);

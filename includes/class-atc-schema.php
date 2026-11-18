@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches', 'extra_types',
 		);
 	}
 
@@ -218,10 +218,26 @@ final class ATC_Schema {
 ) $c;";
 
 		// Extras carry the same two prices; party_id NULL means we fulfil it.
+		// Extras catalog (ours) and each provider's offer of them, with its price.
+		$sql[] = "CREATE TABLE {$p}extra_types (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  slug varchar(60) NOT NULL,
+  name varchar(190) NOT NULL,
+  grp varchar(40) NOT NULL DEFAULT 'comfort',
+  description varchar(255) NULL,
+  unit varchar(20) NOT NULL DEFAULT 'per_booking',
+  max_qty int(11) NOT NULL DEFAULT 1,
+  suggested_cents bigint(20) NOT NULL DEFAULT 0,
+  sort int(11) NOT NULL DEFAULT 0,
+  status varchar(20) NOT NULL DEFAULT 'active',
+  PRIMARY KEY  (id),
+  UNIQUE KEY slug (slug)
+) $c;";
 		$sql[] = "CREATE TABLE {$p}extras (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   party_id bigint(20) unsigned NULL,
   airport_id bigint(20) unsigned NULL,
+  extra_type_id bigint(20) unsigned NULL,
   name longtext NOT NULL,
   description longtext NULL,
   unit varchar(20) NOT NULL DEFAULT 'per_booking',
@@ -231,85 +247,16 @@ final class ATC_Schema {
   notice_minutes int(11) NOT NULL DEFAULT 0,
   status varchar(20) NOT NULL DEFAULT 'active',
   PRIMARY KEY  (id),
-  KEY party_airport (party_id,airport_id)
+  KEY party_airport (party_id,airport_id),
+  KEY party_type (party_id,extra_type_id)
 ) $c;";
-
-		$sql[] = "CREATE TABLE {$p}bookings (
-  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  number varchar(20) NOT NULL,
-  site_id bigint(20) unsigned NULL,
-  status varchar(20) NOT NULL DEFAULT 'held',
-  channel varchar(20) NOT NULL DEFAULT 'web',
-  trip_type varchar(20) NOT NULL DEFAULT 'one_way',
-  affiliate_id bigint(20) unsigned NULL,
-  referrer_id bigint(20) unsigned NULL,
-  agency_id bigint(20) unsigned NULL,
-  user_id bigint(20) unsigned NULL,
-  first_name varchar(100) NOT NULL DEFAULT '',
-  last_name varchar(100) NOT NULL DEFAULT '',
-  email varchar(190) NOT NULL DEFAULT '',
-  phone varchar(40) NOT NULL DEFAULT '',
-  adults int(11) NOT NULL DEFAULT 1,
-  children int(11) NOT NULL DEFAULT 0,
-  lang varchar(10) NOT NULL DEFAULT 'en',
-  currency char(3) NOT NULL DEFAULT 'USD',
-  retail_cents bigint(20) NOT NULL DEFAULT 0,
-  discount_cents bigint(20) NOT NULL DEFAULT 0,
-  total_cents bigint(20) NOT NULL DEFAULT 0,
-  coupon_code varchar(40) NULL,
-  snapshot longtext NULL,
-  service_code varchar(10) NOT NULL,
-  service_code_used_at datetime NULL,
-  service_code_used_by bigint(20) unsigned NULL,
-  service_code_attempts int(11) NOT NULL DEFAULT 0,
-  stripe_payment_intent varchar(100) NULL,
-  hold_expires_at datetime NULL,
-  created_at datetime NOT NULL,
-  updated_at datetime NOT NULL,
-  PRIMARY KEY  (id),
-  UNIQUE KEY number (number),
-  KEY status (status),
-  KEY email (email),
-  KEY affiliate_id (affiliate_id),
-  KEY stripe_payment_intent (stripe_payment_intent)
-) $c;";
-
-		// Arrival and departure legs; each leg belongs to one provider.
-		$sql[] = "CREATE TABLE {$p}booking_legs (
-  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  booking_id bigint(20) unsigned NOT NULL,
-  direction varchar(20) NOT NULL,
-  service_id bigint(20) unsigned NOT NULL,
-  party_id bigint(20) unsigned NOT NULL,
-  zone_id bigint(20) unsigned NULL,
-  pickup_at datetime NULL,
-  flight_airline varchar(100) NULL,
-  flight_number varchar(20) NULL,
-  flight_time datetime NULL,
-  from_place varchar(255) NOT NULL DEFAULT '',
-  to_place varchar(255) NOT NULL DEFAULT '',
-  suitcases int(11) NOT NULL DEFAULT 0,
-  carry_ons int(11) NOT NULL DEFAULT 0,
-  notes text NULL,
-  driver_id bigint(20) unsigned NULL,
-  vehicle_id bigint(20) unsigned NULL,
-  retail_cents bigint(20) NOT NULL DEFAULT 0,
-  provider_cents bigint(20) NOT NULL DEFAULT 0,
-  status varchar(20) NOT NULL DEFAULT 'held',
-  acknowledged_at datetime NULL,
-  completed_at datetime NULL,
-  completed_how varchar(20) NULL,
-  PRIMARY KEY  (id),
-  KEY booking_id (booking_id),
-  KEY party_pickup (party_id,pickup_at),
-  KEY status_pickup (status,pickup_at)
-) $c;";
-
 		$sql[] = "CREATE TABLE {$p}booking_extras (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   booking_id bigint(20) unsigned NOT NULL,
   leg_id bigint(20) unsigned NULL,
   extra_id bigint(20) unsigned NOT NULL,
+  name varchar(190) NOT NULL DEFAULT '',
+  unit varchar(20) NOT NULL DEFAULT 'per_booking',
   qty int(11) NOT NULL DEFAULT 1,
   retail_cents bigint(20) NOT NULL,
   provider_cents bigint(20) NOT NULL,

@@ -69,7 +69,7 @@ final class ATC_Report {
 			if ( 'cancelled' === $r['status'] && empty( $snap['paid_at'] ) ) {
 				continue; // never paid
 			}
-			$extras = 0;
+			$extras = ATC_Extras::totals( (int) $r['id'] )['retail'];
 			foreach ( (array) ( $snap['charges'] ?? array() ) as $c ) {
 				$extras += 'paid' === ( $c['status'] ?? '' ) ? (int) $c['amount'] : 0;
 			}

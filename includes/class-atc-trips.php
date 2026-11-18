@@ -174,6 +174,7 @@ final class ATC_Trips {
 			),
 			'hotel_name' => (string) ( $d['hotel_name'] ?? '' ),
 			'notes'      => (string) ( $d['notes'] ?? '' ),
+			'extras'     => ATC_Extras::lines( (int) $b['id'] ),
 			'drivers'    => self::drivers( $pid ),
 			'vehicles'   => ATC_Catalog::vehicles( $pid ),
 		);

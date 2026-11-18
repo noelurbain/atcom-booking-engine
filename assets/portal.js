@@ -65,6 +65,7 @@
     ['vehicles', 'Vehicles', 'vehicles'],
     ['coverage', 'Zones you serve', 'coverage'],
     ['prices', 'Prices', null],
+    ['extras', 'Extras', null],
     ['meeting', 'Meeting travelers', null],
     ['documents', 'Documents', 'documents'],
     ['payout', 'Payout details', 'payout'],
@@ -106,7 +107,7 @@
     if (p.indexOf('bookings/') === 0) return viewTrip(p.split('/')[1]);
     if (p.indexOf('tickets/') === 0) return viewTicket(parseInt(p.split('/')[1], 10));
     ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
-       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets }[p] || viewSetup)();
+       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras }[p] || viewSetup)();
   }
 
   function head(title, sub) {
@@ -280,6 +281,7 @@
         digits ? h('div', { class: 'atc-actions' },
           h('a', { class: 'btn', href: 'tel:+' + digits, text: 'Call' }),
           t.whatsapp ? h('a', { class: 'btn', href: 'https://wa.me/' + digits, target: '_blank', rel: 'noopener', text: 'WhatsApp' }) : null) : null));
+      if (b.extras && b.extras.length) add(right, h('section', { class: 'card pad warn' }, h('h2', { text: 'Extras to bring' }), h('ul', { style: 'margin:0;padding-left:18px' }, b.extras.map(function (x) { return h('li', null, h('strong', { text: x.label }), h('span', { class: 'small atc-muted', text: ' · you get ' + money(x.provider) })); }))));
       if (b.notes) add(right, h('section', { class: 'card pad' }, h('h2', { text: 'Note from the traveler' }), h('p', { class: 'prewrap', style: 'margin:0', text: b.notes })));
     }).catch(function (e) { clear(app); add(app, [h('a', { class: 'back', href: C.base + 'bookings/', 'data-go': 'bookings', text: '← Bookings' }), h('p', { class: 'chip red', text: e.message })]); });
   }
@@ -670,6 +672,37 @@
         h('div', { class: 'grid2' }, field('Current password', cur), field('New password (at least 10 characters)', nw)),
         h('div', { class: 'atc-actions' }, pBtn))
     ]);
+  }
+
+  /* ---------- Extras ---------- */
+
+  function extrasEditor(get, save, intro) {
+    var box = h('div', { class: 'stack' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    var units = { per_booking: 'per booking', per_ride: 'per ride', per_item: 'each' };
+    function draw(d) {
+      clear(box);
+      var pct = d.commission_bp / 100;
+      add(box, h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+        h('thead', null, h('tr', null, ['Extra', 'Offer it', 'Suggested retail price (USD)', 'Amount you will get paid', 'Max per booking', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+        h('tbody', null, d.items.map(function (x) {
+          var on = h('input', { type: 'checkbox', checked: x.on });
+          var ret = h('input', { type: 'number', min: 1, step: '1', value: x.retail !== null ? x.retail / 100 : '', placeholder: (x.suggested / 100) + ' suggested', style: 'max-width:130px' });
+          var get = h('input', { type: 'number', min: 1, step: '0.01', value: x.provider !== null ? (x.provider / 100).toFixed(2) : '', style: 'max-width:130px' });
+          ret.addEventListener('input', function () { get.value = ret.value ? (ret.value * (1 - pct / 100)).toFixed(2) : ''; });
+          get.addEventListener('input', function () { ret.value = get.value ? Math.round(get.value / (1 - pct / 100)) : ''; });
+          var max = h('select', null, Array.from({ length: x.max_qty }, function (_, i) { return h('option', { value: i + 1, selected: x.my_max === i + 1, text: String(i + 1) }); }));
+          var btn = h('button', { class: 'btn', type: 'button', text: 'Save', onclick: function () {
+            btn.disabled = true;
+            save(x.id, { on: on.checked ? 1 : 0, retail: ret.value, max_qty: max.value }).then(function (nd) { toast(on.checked ? x.name + ' is on.' : x.name + ' is off.'); draw(nd); }).catch(function (e) { btn.disabled = false; fail(e); });
+          } });
+          return h('tr', null, h('td', null, h('strong', { text: x.name }), h('div', { class: 'small atc-muted', text: units[x.unit] + (x.description ? ' · ' + x.description : '') })), h('td', null, on), h('td', null, ret), h('td', null, get), h('td', null, x.max_qty > 1 ? max : '1'), h('td', null, btn));
+        }))))), h('p', { class: 'small atc-muted', text: 'Our commission on extras is ' + pct + '%, as on transfers. Per ride: a child seat on a round trip counts twice. Travelers add extras on the details step; you see them on the booking and in your payout with the ride.' }));
+    }
+    get().then(draw).catch(fail);
+    add(app, [head('Extras', intro), box]);
+  }
+  function viewExtras() {
+    extrasEditor(function () { return api('GET', '/extras'); }, function (id, body) { return api('POST', '/extras/' + id, body); }, 'Child seats, a supermarket stop, drinks: switch on what you can bring and set your price. Most travelers add something.');
   }
 
   /* ---------- Tickets ---------- */

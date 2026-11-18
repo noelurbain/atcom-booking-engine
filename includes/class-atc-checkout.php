@@ -441,6 +441,15 @@ final class ATC_Checkout {
 			),
 			array( 'id' => (int) $b['id'] )
 		);
+		// Extras picked on this step (extra_<id> => qty), priced from the provider's offer.
+		$picked = array();
+		foreach ( $in as $k => $v ) {
+			if ( preg_match( '/^extra_(\d+)$/', (string) $k, $m ) ) {
+				$picked[ (int) $m[1] ] = (int) $v;
+			}
+		}
+		ATC_Extras::save_choice( self::find( '', (int) $b['id'] ), $picked );
+		ATC_Extras::refresh_totals( (int) $b['id'] );
 		ATC_Coupons::reapply( (int) $b['id'] );
 		ATC_Install::log( 'booking', (int) $b['id'], 'details_saved' );
 		// A code typed on this step: applied now, so the payment page opens with the right total.
@@ -471,7 +480,7 @@ final class ATC_Checkout {
 			return $got;
 		}
 		$o = $got['offer'];
-		if ( (int) $o['retail'] !== (int) $b['retail_cents'] ) {
+		if ( (int) $o['retail'] !== array_sum( array_map( static fn( $l ) => (int) $l['retail_cents'], $b['legs'] ) ) ) {
 			self::write_legs( (int) $b['id'], $o, $got['search'], $q, (array) ( $b['snap']['details'] ?? array() ) );
 		}
 		$wpdb->update(
@@ -479,6 +488,7 @@ final class ATC_Checkout {
 			array( 'retail_cents' => (int) $o['retail'], 'total_cents' => (int) $o['retail'], 'hold_expires_at' => gmdate( 'Y-m-d H:i:s', time() + 60 * self::HOLD_MINUTES ), 'updated_at' => self::now() ),
 			array( 'id' => (int) $b['id'] )
 		);
+		ATC_Extras::refresh_totals( (int) $b['id'] );
 		ATC_Coupons::reapply( (int) $b['id'] );
 		return self::load( $b['number'], $key );
 	}
@@ -622,6 +632,7 @@ final class ATC_Checkout {
 		}
 		$b   = self::find( '', (int) $b['id'] );
 		ATC_Coupons::used( $b );
+		$prov += ATC_Extras::on_paid( $b );
 		$aff = ATC_Affiliates::on_paid( $b );
 		$wpdb->insert( $l, array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'platform', 'amount_cents' => (int) $b['total_cents'] - $prov - $aff, 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'note' => 'Before Stripe fees', 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		ATC_Install::log( 'booking', (int) $b['id'], 'paid', array( 'amount' => (int) $pi['amount_received'], 'payment_intent' => $pi['id'] ) );

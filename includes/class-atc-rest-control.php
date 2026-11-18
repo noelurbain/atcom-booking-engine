@@ -136,6 +136,12 @@ final class ATC_REST_Control {
 			)
 		);
 
+		// Extras: our catalog, and any provider's offer (act as provider).
+		self::route( '/extras', array( 'GET' => static fn() => rest_ensure_response( array( 'catalog' => ATC_Extras::catalog( true ), 'groups' => ATC_Extras::groups(), 'units' => ATC_Extras::units() ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Extras::save_type( self::body( $r ) ) ) ) );
+		self::route( '/extras/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Extras::save_type( self::body( $r ), (int) $r['id'] ) ) ) );
+		self::route( '/providers/(?P<id>\\d+)/extras', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Extras::for_provider( (int) $r['id'] ) ) ) );
+		self::route( '/providers/(?P<id>\\d+)/extras/(?P<x>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Extras::save_offer( (int) $r['id'], (int) $r['x'], self::body( $r ) ) ) ) );
+
 		// Discount codes.
 		self::route( '/coupons', array( 'GET' => static fn() => rest_ensure_response( ATC_Coupons::list() ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ) ) ) ) );
 		self::route( '/coupons/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ), (int) $r['id'] ) ) ) );

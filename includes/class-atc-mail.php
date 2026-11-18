@@ -144,6 +144,10 @@ final class ATC_Mail {
 		$arr = $one;
 		$rows[] = array( 'Vehicle', ( $s['vehicle'] ?? '' ) . ', private' );
 		$rows[] = array( 'Passengers', self::pax( $b ) . ' · ' . (int) ( $arr['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $arr['carry_ons'] ?? 0 ) . ' carry-ons' );
+		$xl = ATC_Extras::lines( (int) $b['id'] );
+		if ( $xl ) {
+			$rows[] = array( 'Extras', implode( ', ', array_map( static fn( $x ) => $x['label'] . ( $for_provider ? ' (you get ' . ATC_Book::money( $x['provider'] ) . ')' : '' ), $xl ) ) );
+		}
 		if ( $for_provider ) {
 			$rows[] = array( 'Lead traveler', $b['first_name'] . ' ' . $b['last_name'] );
 			$rows[] = array( 'Mobile', $b['phone'] . ( ! empty( $s['whatsapp'] ) ? ' (WhatsApp)' : '' ) );
