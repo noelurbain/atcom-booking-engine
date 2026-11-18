@@ -1,5 +1,14 @@
 === ATCOM Booking Engine ===
-Version: 0.14.0 (tickets and dispute holds)
+Version: 0.14.1 (our brand on sign-in)
+
+New in 0.14.1:
+- wp-login.php and signed-out visits to wp-admin go to /login. The pages that stay there (forgot password,
+  check your email, new password) carry our logo, colors and font; no WordPress logo or language picker.
+  Escape hatch: wp-login.php?native=1.
+- WordPress traces removed: generator tag, version numbers on files, RSD/manifest/shortlink/REST/oEmbed links,
+  emoji script, X-Pingback, XML-RPC, author pages and ?author= lookups, the public user list in the API.
+  WordPress's own emails come from "Airport Transportation".
+
 
 New in 0.14.0:
 - Tickets (Control → Tickets, with a counter of tickets waiting on us). Opened by our team (also from a booking),
