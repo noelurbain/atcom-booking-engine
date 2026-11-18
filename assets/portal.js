@@ -63,6 +63,7 @@
     ['bookings', 'Bookings', null],
     ['company', 'Company', 'company'],
     ['directory', 'Directory profile', 'directory'],
+    ['pricelist', 'Upload price list', null],
     ['vehicles', 'Vehicles', 'vehicles'],
     ['coverage', 'Zones you serve', 'coverage'],
     ['prices', 'Prices', 'prices'],
@@ -108,7 +109,7 @@
     if (p.indexOf('bookings/') === 0) return viewTrip(p.split('/')[1]);
     if (p.indexOf('tickets/') === 0) return viewTicket(parseInt(p.split('/')[1], 10));
     ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
-       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras, directory: viewDirectory }[p] || viewSetup)();
+       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras, directory: viewDirectory, pricelist: viewPriceList }[p] || viewSetup)();
   }
 
   function head(title, sub) {
@@ -330,6 +331,10 @@
         var inner = [h('span', { class: 'st', text: st.label.toUpperCase() }), h('span', { class: 'nm', text: st.name })];
         return h('li', { class: 'step ' + st.state }, link ? h('a', { href: C.base + link + '/', 'data-go': link }, inner) : h('div', null, inner));
       })),
+      s.vehicles.state !== 'done' || s.prices.state !== 'done' ? h('section', { class: 'card pad', style: 'border-color:var(--orange)' },
+        h('h2', { text: 'Have a price list? Start with it' }),
+        h('p', { class: 'atc-muted', text: 'Upload your price list (Excel, CSV or Google Sheets) with your vehicles, places and prices. We match your vehicles to our categories, draw a zone for each place near ' + (me.airport ? me.airport.city : 'your airport') + ', and fill in your prices. You check everything before it is saved.' }),
+        h('div', { class: 'atc-actions' }, h('a', { class: 'btn dark', href: C.base + 'pricelist/', 'data-go': 'pricelist', text: 'Upload my price list' }), h('span', { class: 'small atc-muted', text: 'No list? Go step by step: Vehicles, then Zones, then Prices.' }))) : null,
       h('section', { class: 'card pad' },
         h('h2', { text: done + ' of ' + keys.length + ' done' }),
         h('p', { class: 'atc-muted', text: nextHint() }),
@@ -617,7 +622,18 @@
       clear(side);
       add(side, h('div', { class: 'row-flat' }, h('h2', { text: 'Your zones' }),
         h('button', { class: 'btn dark', type: 'button', text: 'Draw a zone', disabled: !!mode || !map, onclick: startDraw })));
-      if (!mine.length) add(side, h('p', { class: 'atc-muted', text: ours.length ? 'None yet. Draw your own zones, or tick ours below.' : 'None yet. Press “Draw a zone” and click around the area on the map.' }));
+      var q = h('input', { type: 'search', placeholder: 'Find an area by name, e.g. Tulum', disabled: !!mode || !map });
+      var findBtn = h('button', { class: 'btn', type: 'submit', text: 'Find', disabled: !!mode || !map });
+      add(side, h('form', { class: 'zd-find', onsubmit: function (e) {
+        e.preventDefault();
+        if (!q.value.trim()) { q.focus(); return; }
+        findBtn.disabled = true; findBtn.textContent = 'Looking…';
+        api('GET', '/zones/suggest?q=' + encodeURIComponent(q.value.trim())).then(function (r) {
+          if (!r.candidates.length) { findBtn.disabled = false; findBtn.textContent = 'Find'; toast('We did not find that area near ' + airport.city + '. Draw it by hand.', true); return; }
+          startSuggest(r.candidates, r.query);
+        }).catch(function (e2) { findBtn.disabled = false; findBtn.textContent = 'Find'; fail(e2); });
+      } }, q, findBtn));
+      if (!mine.length) add(side, h('p', { class: 'atc-muted', text: ours.length ? 'None yet. Find an area by name, draw your own, or tick ours below.' : 'None yet. Find an area by name, or press “Draw a zone” and click around it on the map.' }));
       mine.forEach(function (z) {
         add(side, h('div', { class: 'zd-row' + (mode && mode.edit === z.id ? ' on' : '') },
           h('span', { class: 'zd-swatch' }), h('strong', { text: z.name }),
@@ -671,6 +687,21 @@
             h('button', { class: 'btn', type: 'button', text: 'Undo point', disabled: !n, onclick: undoPoint }),
             h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: stopMode }), save)]);
         if (n >= 3) setTimeout(function () { if (!name.value) name.focus(); }, 0);
+      } else if (mode.suggest) {
+        var c = mode.suggest[mode.idx];
+        var nm = h('input', { type: 'text', maxlength: 100, value: mode.name || '' });
+        nm.addEventListener('input', function () { mode.name = nm.value; });
+        add(tools, [h('strong', { text: 'Option ' + (mode.idx + 1) + ' of ' + mode.suggest.length + ': ' + c.label.split(',').slice(0, 2).join(',') + ' · ' + c.kind + ', about ' + c.km2 + ' km²' }),
+          h('span', { class: 'small atc-muted', text: 'Drag the white points to adjust the edge before saving.' }),
+          h('div', { class: 'zd-bar' }, nm,
+            mode.suggest.length > 1 ? h('button', { class: 'btn', type: 'button', text: '‹ Previous', onclick: function () { showSuggest(mode.idx - 1); } }) : null,
+            mode.suggest.length > 1 ? h('button', { class: 'btn', type: 'button', text: 'Next ›', onclick: function () { showSuggest(mode.idx + 1); } }) : null,
+            h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: stopMode }),
+            h('button', { class: 'btn dark', type: 'button', text: 'Save zone', onclick: function (e) {
+              var b = e.currentTarget; b.disabled = true;
+              api('POST', '/zones', { name: nm.value, polygon: mode.poly.getPath().getArray().map(function (p) { return [p.lat(), p.lng()]; }) })
+                .then(function (d) { var n = nm.value; stopMode(); saved(d, n + ' saved. Now give it a price.'); }).catch(function (e2) { b.disabled = false; fail(e2); });
+            } }))]);
       } else if (mode.edit) {
         add(tools, [h('strong', { text: 'Drag the white points to move the edge. Drag a small middle point to add a corner.' }),
           h('div', { class: 'zd-bar' },
@@ -702,6 +733,22 @@
       mode.line.setPath(mode.draw.concat(mode.draw.length > 2 ? [mode.draw[0]] : []));
       drawTools();
     }
+    function startSuggest(list, query) {
+      mode = { suggest: list, idx: 0, name: query.replace(/,.*$/, ''), poly: null };
+      Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: false }); });
+      showSuggest(0);
+      drawSide();
+    }
+    function showSuggest(i) {
+      mode.idx = (i + mode.suggest.length) % mode.suggest.length;
+      if (mode.poly) mode.poly.setMap(null);
+      var path = mode.suggest[mode.idx].polygon.map(function (p) { return { lat: p[0], lng: p[1] }; });
+      mode.poly = new google.maps.Polygon({ map: map, paths: path, editable: true, strokeColor: '#E07A1F', strokeWeight: 3, fillColor: '#FBA53E', fillOpacity: 0.35, zIndex: 8 });
+      var b = new google.maps.LatLngBounds();
+      path.forEach(function (p) { b.extend(p); });
+      map.fitBounds(b, 60);
+      drawTools();
+    }
     function startEdit(z) {
       mode = { edit: z.id };
       polys[z.id].setOptions({ editable: true, zIndex: 9 });
@@ -712,6 +759,7 @@
     }
     function stopMode() {
       if (mode && mode.line) { mode.line.setMap(null); mode.dots.forEach(function (d) { d.setMap(null); }); }
+      if (mode && mode.poly) mode.poly.setMap(null);
       if (mode && mode.edit && polys[mode.edit]) polys[mode.edit].setOptions({ editable: false });
       mode = null;
       if (map) { map.setOptions({ draggableCursor: null }); Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: true }); }); }
@@ -769,6 +817,16 @@
   }
 
   /* ---------- Prices ---------- */
+
+  function viewPriceList() {
+    add(app, head('Upload your price list', 'The fastest way to set up: your vehicles, zones and prices from one file. Afterwards, check your vehicles (add each car), the shapes of your zones on the map, and any missing price.'));
+    var box = h('div', { class: 'pe-root' });
+    add(app, box);
+    window.ATCPrices.mount(box, {
+      api: api, base: '/prices', who: 'provider', h1: false, upload: true, toast: toast, fail: fail,
+      onSaved: function () { api('GET', '/me').then(function (d) { me = d; nav(); }); }
+    });
+  }
 
   function viewPrices() {
     var ps = me.steps.prices;

@@ -424,8 +424,54 @@ final class ATC_Geo {
 		return array( $out, $errors );
 	}
 
+	/**
+	 * The one shape we would use for a place name near an airport (a provider's price list, "New zone"):
+	 * a real outline from OpenStreetMap or Google's box, near the airport, containing the point Google found
+	 * for that name when we have one. Without any, a circle of 2 km around that point, to be checked.
+	 *
+	 * @return array|null {polygon, label, kind, km2, approx}
+	 */
+	public static function best_shape( string $name, array $airport, ?array $point = null ): ?array {
+		[ $list ] = self::shape_suggestions( $name, $airport );
+		$best     = null;
+		$score    = -1;
+		foreach ( $list as $c ) {
+			$ring = (array) ( $c['polygon'] ?? array() );
+			$km2  = self::area_km2( $ring );
+			if ( count( $ring ) < 3 || $km2 < 0.05 || $km2 > 30000 ) {
+				continue;
+			}
+			$clat = array_sum( array_column( $ring, 0 ) ) / count( $ring );
+			$clng = array_sum( array_column( $ring, 1 ) ) / count( $ring );
+			if ( self::km( (float) $airport['lat'], (float) $airport['lng'], $clat, $clng ) > 300 ) {
+				continue;
+			}
+			$s = ( 'osm' === ( $c['source'] ?? '' ) ? 2 : 1 ) + ( $point && self::point_in_polygon( (float) $point['lat'], (float) $point['lng'], $ring ) ? 4 : 0 );
+			if ( $s > $score ) {
+				$score = $s;
+				$best  = array( 'polygon' => $ring, 'label' => (string) ( $c['label'] ?? $name ), 'kind' => (string) ( $c['kind'] ?? '' ), 'km2' => round( $km2, 1 ), 'approx' => false );
+			}
+		}
+		if ( $best || ! $point ) {
+			return $best;
+		}
+		$ring = array();
+		for ( $i = 0; $i < 16; $i++ ) {
+			$a      = 2 * M_PI * $i / 16;
+			$ring[] = array( round( (float) $point['lat'] + ( 2 / 110.57 ) * sin( $a ), 7 ), round( (float) $point['lng'] + ( 2 / ( 111.32 * cos( deg2rad( (float) $point['lat'] ) ) ) ) * cos( $a ), 7 ) );
+		}
+		return array( 'polygon' => $ring, 'label' => (string) ( $point['name'] ?? $name ), 'kind' => 'Circle of 2 km', 'km2' => round( self::area_km2( $ring ), 1 ), 'approx' => true );
+	}
+
 	/** OpenStreetMap (Nominatim) boundaries near the airport. One request; their rules allow light use with a clear User-Agent. */
 	private static function osm_boundaries( string $name, array $airport ): array {
+		// Their usage policy: at most one request a second.
+		static $last = 0.0;
+		$wait = 1.05 - ( microtime( true ) - $last );
+		if ( $last && $wait > 0 ) {
+			usleep( (int) ( $wait * 1e6 ) );
+		}
+		$last = microtime( true );
 		$lat = (float) $airport['lat'];
 		$lng = (float) $airport['lng'];
 		$url = add_query_arg(

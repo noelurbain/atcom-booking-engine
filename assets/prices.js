@@ -89,7 +89,7 @@
     var onlyGaps = false;
     var extraZones = [], extraVehicles = [];
     var uploadBox = h('div');
-    var uploadOpen = false;
+    var uploadOpen = !!opts.upload;
 
     function load(airportId) {
       clear(root); add(root, h('p', { class: 'atc-muted', text: 'Loading prices…' }));
@@ -150,14 +150,16 @@
           h('div', { class: 'atc-actions' },
             airportSel,
             h('button', { class: 'btn', type: 'button', text: 'Download Excel', onclick: download }),
-            h('button', { class: 'btn', type: 'button', text: 'Upload Excel or CSV', onclick: function () { uploadOpen = true; renderUpload(); uploadBox.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }))),
+            opts.upload ? null : h('button', { class: 'btn', type: 'button', text: 'Upload Excel or CSV', onclick: function () { uploadOpen = true; renderUpload(); uploadBox.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }))),
+        opts.upload ? uploadBox : null,
+        opts.upload ? h('h2', { class: 'pe-title', text: 'Your price grid' }) : null,
         h('div', { class: 'pe-bar' },
           h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Direction' }, pill('one_way', 'One way'), pill('round_trip', 'Round trip')),
           gaps ? h('button', { type: 'button', class: 'pe-gaps' + (onlyGaps ? ' on' : ''), 'aria-pressed': onlyGaps ? 'true' : 'false', text: 'Only zones with missing prices (' + gaps + ' cells)', onclick: function () { onlyGaps = !onlyGaps; render(); } }) : null),
         h('div', { class: 'pe-split' },
           h('div', { class: 'pe-left' }, h('div', { class: 'card' }, table), h('div', { class: 'atc-actions' }, zoneAdd, vehAdd)),
           sel ? editor(sel.zone, sel.type, bp) : null),
-        uploadBox
+        opts.upload ? null : uploadBox
       ]);
       renderUpload();
     }
@@ -263,7 +265,7 @@
       });
       add(uploadBox, h('section', { class: 'card pad' },
         h('h2', { text: 'Upload your price list' }),
-        h('p', { class: 'small atc-muted', text: 'Excel, CSV or Google Sheets, in your own words: one row per place, with a column per vehicle (and "round trip" columns if you have them), or columns for place, vehicle, one way and round trip. We match your vehicles to our categories and your place names to our zones, and remember your names for next time. Travelers see our zone names.' }),
+        h('p', { class: 'small atc-muted', text: 'Excel, CSV or Google Sheets, in your own words: one row per place, with a column per vehicle (and "round trip" columns if you have them), or columns for place, vehicle, one way and round trip. We match your vehicles to our categories (you confirm each one), match your places to zones or draw new zones from their names near your airport, and fill in the price grid. We remember your names for next time.' }),
         result || null,
         h('div', { class: 'pe-up' }, file, paste),
         h('div', { class: 'atc-actions' }, go), status));
@@ -273,15 +275,15 @@
       clear(uploadBox);
       var placeSel = {}, vehSel = {}, found = {};
       var zoneOpts = function (cur) {
-        return [h('option', { value: 'skip', text: 'Leave out' }), h('option', { value: 'new', selected: cur === 'new', text: 'New zone (our team approves it)' })]
+        return [h('option', { value: 'skip', text: 'Leave out' }), h('option', { value: 'new', selected: cur === 'new', text: 'New zone (drawn from the name)' })]
           .concat(pv.zones.map(function (z) { return h('option', { value: z.id, selected: cur === z.id, text: z.name + (z.status === 'proposed' ? ' (pending)' : '') }); }));
       };
       var places = pv.places.map(function (p) {
-        var cur = p.zone_id ? p.zone_id : (p.place ? 'new' : 'skip');
-        if (p.place) found[p.name] = p.place;
+        var cur = p.zone_id ? p.zone_id : (p.place || p.shape ? 'new' : 'skip');
+        if (p.place || p.shape) found[p.name] = Object.assign({}, p.place || {}, { shape: p.shape ? p.shape.polygon : null });
         var s = h('select', { 'aria-label': 'Our zone for ' + p.name }, zoneOpts(cur));
         placeSel[p.name] = s;
-        var how = p.zone_id ? p.how : (p.place ? 'Found on the map ' + (p.km ? p.km + ' km from the airport' : '') + ', outside our zones' : p.how || 'Not found');
+        var how = p.zone_id ? p.how : (p.shape ? 'New zone: ' + (p.shape.approx ? 'a 2 km circle around ' + (p.place && p.place.name || p.name) + ' (check its shape after saving)' : p.shape.kind + ', about ' + p.shape.km2 + ' km²') : (p.place ? 'Found on the map ' + (p.km ? p.km + ' km from the airport' : '') : p.how || 'Not found, you can draw it on the map'));
         return h('tr', null, h('td', { class: 'strong', text: p.name }), h('td', null, s), h('td', { class: 'small atc-muted', text: how + ' · ' + p.prices + (p.prices === 1 ? ' price' : ' prices') }));
       });
       var vehicles = pv.vehicles.map(function (v) {
@@ -301,7 +303,7 @@
         saveBtn.disabled = true;
         opts.api('POST', opts.base + '/apply', { airport_id: g.airport.id, lines: pv.lines, places: p, vehicles: v, basis: basisSel.value, found: found }).then(function (r) {
           g = r.grid; render();
-          var msg = r.saved + ' prices saved.' + (r.new_zones.length ? ' New zones waiting for our team: ' + r.new_zones.join(', ') + '. Their prices count once approved.' : '');
+          var msg = r.saved + ' prices saved.' + (r.new_zones.length ? ' New zones drawn from their names: ' + r.new_zones.join(', ') + '. Check their shapes in Zones you serve.' : '') + (r.to_draw && r.to_draw.length ? ' We could not find ' + r.to_draw.join(', ') + ' on the map: draw ' + (r.to_draw.length === 1 ? 'it' : 'them') + ' in Zones you serve and upload again.' : '');
           renderUpload(h('p', { class: 'chip green', text: msg }));
           if (r.flagged && r.flagged.length) showFlags(r.flagged);
           opts.toast(r.saved + ' prices saved.');
@@ -317,7 +319,7 @@
         h('h3', { class: 'label', text: 'Your vehicles → our categories' }),
         h('div', { class: 'scroll' }, h('table', { class: 'narrow' }, h('tbody', null, vehicles))),
         h('div', { class: 'atc-actions' }, saveBtn, h('button', { class: 'btn', type: 'button', text: 'Start over', onclick: function () { renderUpload(); } }), h('button', { class: 'btn', type: 'button', text: 'Close', onclick: function () { uploadOpen = false; renderUpload(); } }))));
-      uploadBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!opts.upload) uploadBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     load(opts.airportId || 0);

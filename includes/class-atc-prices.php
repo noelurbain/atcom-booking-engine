@@ -21,6 +21,7 @@ final class ATC_Prices {
 	const MAX_CENTS    = 500000;  // over USD 5,000: flagged
 	const HARD_MAX     = 5000000; // over USD 50,000: refused
 	const GOOGLE_LIMIT = 40;      // lookups per upload
+	const SHAPE_LIMIT  = 12;      // new zones shaped per upload (OpenStreetMap allows one request a second)
 
 	private static function t( string $n ): string {
 		return ATC_Schema::table( $n );
@@ -471,8 +472,19 @@ final class ATC_Prices {
 		foreach ( $lines as [ $p ] ) {
 			$count[ $p ] = ( $count[ $p ] ?? 0 ) + 1;
 		}
+		// Places that match none of the zones: the shape we would draw for them, near the airport.
+		$airport = ATC_Catalog::airport( $airport_id );
+		$shapes  = self::SHAPE_LIMIT;
+		@set_time_limit( 120 ); // phpcs:ignore
 		foreach ( $places as $k => &$pl ) {
 			$pl['prices'] = $count[ $k ];
+			if ( empty( $pl['zone_id'] ) && $shapes > 0 && '' !== trim( (string) $k ) ) {
+				--$shapes;
+				$pl['shape'] = ATC_Geo::best_shape( (string) $k . ( false === stripos( (string) $k, (string) $airport['city'] ) ? ', ' . $airport['city'] : '' ), $airport, $pl['place'] ?? null );
+				if ( ! $pl['shape'] && ! empty( $pl['place'] ) ) {
+					$pl['shape'] = ATC_Geo::best_shape( (string) $k, $airport, $pl['place'] );
+				}
+			}
 		}
 		unset( $pl );
 		return array(
@@ -531,7 +543,9 @@ final class ATC_Prices {
 	 * $basis: 'retail' (amounts are what travelers pay) or 'provider' (what the provider gets paid).
 	 */
 	public static function apply( int $party_id, int $airport_id, array $lines, array $places, array $vehicles, string $basis, array $found = array() ) {
-		$zones = array();
+		global $wpdb;
+		$to_draw = array();
+		$zones   = array();
 		foreach ( self::zone_rows( $party_id, $airport_id ) as $z ) {
 			$zones[ $z['id'] ] = true;
 		}
@@ -541,9 +555,29 @@ final class ATC_Prices {
 		foreach ( $places as $name => $choice ) {
 			$name = (string) $name;
 			if ( 'new' === $choice ) {
-				$zmap[ $name ] = self::propose_zone( $party_id, $airport_id, $name, isset( $found[ $name ] ) && is_array( $found[ $name ] ) ? $found[ $name ] : null );
-				$zones[ $zmap[ $name ] ] = true;
-				$new[]         = $name;
+				// A zone of the provider's own, shaped from its name: live at once, no approval.
+				$f     = isset( $found[ $name ] ) && is_array( $found[ $name ] ) ? $found[ $name ] : array();
+				$shape = isset( $f['shape'] ) && is_array( $f['shape'] ) ? $f['shape'] : null;
+				if ( ! $shape ) {
+					$airport = ATC_Catalog::airport( $airport_id );
+					$s2      = $airport ? ATC_Geo::best_shape( $name, $airport, isset( $f['lat'], $f['lng'] ) ? $f : null ) : null;
+					$shape   = $s2 ? $s2['polygon'] : null;
+				}
+				$own = $shape ? ATC_Partner::save_own_zone( $party_id, array( 'name' => mb_substr( trim( sanitize_text_field( $name ) ), 0, 100 ), 'polygon' => $shape, 'airport_id' => $airport_id ) ) : new WP_Error( 'atc_zone', 'no shape' );
+				if ( is_wp_error( $own ) ) {
+					// Same name already drawn by them: use it.
+					$same = $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'zones' ) . " WHERE party_id = %d AND airport_id = %d AND status = 'active' AND name = %s", $party_id, $airport_id, mb_substr( trim( sanitize_text_field( $name ) ), 0, 100 ) ) );
+					if ( $same ) {
+						$zmap[ $name ]           = (int) $same;
+						$zones[ (int) $same ] = true;
+					} else {
+						$to_draw[] = $name;
+					}
+					continue;
+				}
+				$zmap[ $name ]           = (int) $own['id'];
+				$zones[ (int) $own['id'] ] = true;
+				$new[]                    = $name;
 			} elseif ( is_numeric( $choice ) && isset( $zones[ (int) $choice ] ) ) {
 				$zmap[ $name ] = (int) $choice;
 			}
@@ -576,6 +610,7 @@ final class ATC_Prices {
 			}
 		}
 		$res['new_zones'] = $new;
+		$res['to_draw']   = $to_draw;
 		return $res;
 	}
 

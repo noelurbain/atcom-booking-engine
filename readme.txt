@@ -1,5 +1,14 @@
 === ATCOM Booking Engine ===
-Version: 0.19.0 (providers draw their own zones; prices required)
+Version: 0.20.0 (price list upload first; zones found by name)
+
+New in 0.20.0:
+- Portal → Upload price list (also offered on the Setup page, before Vehicles): one file sets up vehicles,
+  zones and prices. Their vehicle names are matched to our categories (they confirm each), their place names
+  to zones (ours or theirs); a place we don't have becomes a new zone of theirs, drawn from its name near
+  their airport (OpenStreetMap outline or Google's box; a 2 km circle when only the point is known). No
+  approval from our team. Places not found on the map are listed for them to draw.
+- Portal → Zones you serve: "Find an area by name" shows ready-made outlines (previous/next), adjustable by
+  dragging the points, then saved as their zone.
 
 New in 0.19.0:
 - Providers draw their own zones on the map (portal → Zones you serve → Draw a zone): click around the area,

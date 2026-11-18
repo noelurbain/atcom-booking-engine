@@ -650,7 +650,7 @@ final class ATC_Partner {
 			}
 			$airport = ATC_Catalog::airport( (int) $zone['airport_id'] );
 		} else {
-			$airport = self::home_airport( $party_id );
+			$airport = ! empty( $in['airport_id'] ) ? ATC_Catalog::airport( (int) $in['airport_id'] ) : self::home_airport( $party_id );
 			if ( ! $airport ) {
 				return new WP_Error( 'atc_zone', 'Set your main airport first.', array( 'status' => 400 ) );
 			}

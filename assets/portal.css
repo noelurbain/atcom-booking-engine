@@ -75,3 +75,5 @@ h2.section{margin:8px 0 0;font-size:18px}
 .zd-row.on{background:#FFF8EE}
 .zd-swatch{width:14px;height:14px;border-radius:4px;background:#2E9E55;opacity:.7;border:2px solid #1F6B35;flex:0 0 14px}
 .zd-acts{margin-left:auto;display:flex;gap:12px}
+.zd-find{display:flex;gap:8px;margin:6px 0 10px}
+.zd-find input{flex:1 1 auto;min-width:0;border-radius:10px}

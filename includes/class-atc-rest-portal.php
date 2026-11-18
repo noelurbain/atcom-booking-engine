@@ -206,6 +206,31 @@ final class ATC_REST_Portal {
 			)
 		);
 		self::route(
+			'/zones/suggest',
+			array(
+				'GET' => static function ( WP_REST_Request $r ) {
+					$q = trim( sanitize_text_field( (string) $r['q'] ) );
+					$p = ATC_Catalog::party( self::pid() );
+					$a = $p && $p['home_airport_id'] ? ATC_Catalog::airport( (int) $p['home_airport_id'] ) : null;
+					if ( '' === $q || ! $a ) {
+						return new WP_Error( 'atc_suggest', 'Type the name of an area first.', array( 'status' => 400 ) );
+					}
+					if ( ! ATC_Partner::rate_ok( 'zone_suggest', 60 ) ) {
+						return new WP_Error( 'atc_suggest', 'Too many searches. Try again in a few minutes.', array( 'status' => 429 ) );
+					}
+					[ $list ] = ATC_Geo::shape_suggestions( $q . ( false === stripos( $q, (string) $a['city'] ) ? ', ' . $a['city'] : '' ), $a );
+					if ( ! $list ) {
+						[ $list ] = ATC_Geo::shape_suggestions( $q, $a );
+					}
+					$list = array_values( array_filter( $list, static function ( $c ) use ( $a ) {
+						$ring = (array) ( $c['polygon'] ?? array() );
+						return count( $ring ) >= 3 && ATC_Geo::km( (float) $a['lat'], (float) $a['lng'], array_sum( array_column( $ring, 0 ) ) / count( $ring ), array_sum( array_column( $ring, 1 ) ) / count( $ring ) ) <= 300;
+					} ) );
+					return rest_ensure_response( array( 'query' => $q, 'candidates' => array_slice( $list, 0, 6 ) ) );
+				},
+			)
+		);
+		self::route(
 			'/zones/(?P<id>\\d+)',
 			array(
 				'PUT'    => static function ( WP_REST_Request $r ) {
