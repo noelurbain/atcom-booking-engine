@@ -97,6 +97,8 @@
     if (parts[0] === 'meeting') return viewMeeting();
     if (parts[0] === 'payouts') return viewPayouts();
     if (parts[0] === 'coupons') return viewCoupons();
+    if (parts[0] === 'insights') return viewInsights();
+    if (parts[0] === 'report') return viewReport();
     if (parts[0] === 'tickets' && parts[1]) return viewTicket(parseInt(parts[1], 10));
     if (parts[0] === 'tickets') return viewTickets();
     if (parts[0] === 'affiliates' && parts[1]) return viewAffiliate(parseInt(parts[1], 10));
@@ -105,6 +107,136 @@
     if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
     if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
+  }
+
+  /* ---------- Searches (insights) ---------- */
+
+  function rangeBar(st, onChange, periods) {
+    var bar = h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Period' });
+    function draw() {
+      clear(bar);
+      periods.forEach(function (o) {
+        add(bar, h('button', { type: 'button', class: 'pe-pill' + (String(st.days) === String(o[0]) ? ' on' : ''), text: o[1], onclick: function () { st.days = o[0]; draw(); onChange(); } }));
+      });
+    }
+    draw();
+    return bar;
+  }
+
+  function viewInsights() {
+    clear(app);
+    var st = { days: 30 };
+    var body = h('div', { class: 'stack' });
+    add(app, [
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Where travelers are searching' }), h('p', { class: 'atc-muted', text: 'Every results page on our sites, without personal data (our team and robots don’t count). Airports with searches and no provider are your recruitment list.' }))),
+      h('div', { class: 'pe-bar' }, rangeBar(st, load, [[1, 'Today'], [7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '12 months']])),
+      body
+    ]);
+    function table(head, rows) {
+      return h('div', { class: 'scroll' }, h('table', null, h('thead', null, h('tr', null, head.map(function (t) { return h('th', { scope: 'col', text: t }); }))), h('tbody', null, rows)));
+    }
+    function load() {
+      clear(body); add(body, h('p', { class: 'atc-muted', text: 'Loading…' }));
+      api('GET', '/insights?days=' + st.days).then(function (r) {
+        clear(body);
+        var f = r.funnel, tv = r.travelers;
+        var max = Math.max.apply(null, r.per_day.map(function (d) { return d.searches; }).concat([1]));
+        var base = h('input', { type: 'number', min: 0, value: tv.base, style: 'max-width:160px' });
+        add(body, [
+          h('div', { class: 'stats' },
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Searches' }), h('span', { class: 'big', text: String(r.searches) }), h('span', { class: 'small atc-muted', text: r.from + ' to ' + r.to })),
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Unique visitors' }), h('span', { class: 'big', text: String(r.visitors) })),
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Searches with nothing to sell' }), h('span', { class: 'big', text: String(r.none) }), h('span', { class: 'small atc-muted', text: r.searches ? Math.round(100 * r.none / r.searches) + '%' : '' })),
+            h('div', { class: 'stat' + (r.no_provider_airports ? ' warn' : '') }, h('span', { class: 'small atc-muted strong', text: 'Airports searched with no provider' }), h('span', { class: 'big', text: String(r.no_provider_airports) })),
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Paid bookings' }), h('span', { class: 'big', text: String(f.paid) }), h('span', { class: 'small atc-muted', text: cash(f.sales) + (r.searches ? ' · ' + (100 * f.paid / r.searches).toFixed(1) + '% of searches' : '') }))),
+          r.per_day.length > 1 ? h('section', { class: 'card pad' }, h('h2', { text: 'Searches per day' }), h('div', { class: 'bars' }, r.per_day.map(function (d) { return h('span', { title: d.day + ': ' + d.searches + ' searches, ' + d.visitors + ' visitors', style: 'height:' + Math.max(2, Math.round(100 * d.searches / max)) + '%' }); }))) : null,
+          h('section', { class: 'card pad' }, h('h2', { text: 'Funnel' }), h('div', { class: 'funnel' },
+            [['Searches', f.searches], ['Checkout started', f.started], ['Details filled in', f.details], ['Paid', f.paid]].map(function (x, i, all) {
+              return h('div', null, h('strong', { text: String(x[1]) }), h('span', { class: 'small atc-muted', text: x[0] + (i && all[i - 1][1] ? ' · ' + Math.round(100 * x[1] / all[i - 1][1]) + '%' : '') }));
+            }))),
+          h('div', { class: 'pe-split' },
+            h('div', { class: 'pe-left' },
+              h('section', { class: 'card' }, h('div', { class: 'card-h' }, h('h2', { text: 'By airport' })), table(['Airport', 'Searches', 'Nothing to sell', 'Visitors', 'Ready providers'], r.airports.length ? r.airports.map(function (a) {
+                return h('tr', null, h('td', null, h('strong', { text: a.name }), ' ', h('span', { class: 'small atc-muted', text: a.iata })), h('td', { class: 'strong', text: String(a.searches) }), h('td', { text: String(a.none) }), h('td', { text: String(a.visitors) }),
+                  h('td', null, a.ready ? String(a.ready) : h('span', { class: 'chip orange', text: 'None yet' })));
+              }) : [h('tr', null, h('td', { colspan: 5, class: 'atc-muted', text: 'No searches yet in this period.' }))])),
+              r.unserved.length ? h('section', { class: 'card' }, h('div', { class: 'card-h' }, h('h2', { text: 'Airports we don’t serve' })), table(['Typed', 'Searches'], r.unserved.map(function (u) { return h('tr', null, h('td', { text: u.airport }), h('td', { class: 'strong', text: String(u.searches) })); }))) : null),
+            h('div', { class: 'bk-side' },
+              h('section', { class: 'card' }, h('div', { class: 'card-h' }, h('h2', { text: 'Top destinations' })), table(['Destination', 'Searches'], r.destinations.map(function (d) { return h('tr', null, h('td', null, d.dest, d.iata ? h('span', { class: 'small atc-muted', text: ' · ' + d.iata }) : null, d.none ? h('div', { class: 'small atc-muted', text: d.none + ' with nothing to sell' }) : null), h('td', { class: 'strong', text: String(d.searches) })); }))),
+              h('section', { class: 'card pad' }, h('h2', { text: 'Traveler count' }),
+                h('p', { class: 'small atc-muted', text: 'The figure on the homepage and checkout: this base, or the real number of people who searched in the last 30 days once that is higher. The pop-up uses a quarter of it for 7 days and a 30th for 24 hours.' }),
+                h('div', { class: 'stats' }, h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Searchers, 30 days' }), h('span', { class: 'big', text: String(tv.searchers) })), h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Public figure' }), h('span', { class: 'big', text: tv.public.toLocaleString('en-US') }))),
+                h('label', { class: 'field' }, h('span', { text: 'Base' }), base),
+                h('div', null, h('button', { class: 'btn dark', type: 'button', text: 'Save base', onclick: function (e) { e.target.disabled = true; api('POST', '/insights/base', { base: base.value }).then(function () { toast('Saved.'); load(); }).catch(function (x) { e.target.disabled = false; fail(x); }); } }))))),
+          h('div', { class: 'grid3' },
+            h('section', { class: 'card pad' }, h('h2', { text: 'Top airports (bookings)' }), r.top_airports.length ? h('table', { class: 'bare' }, h('tbody', null, r.top_airports.map(function (a) { return h('tr', null, h('th', { scope: 'row', text: a.name + ' (' + a.iata + ')' }), h('td', { text: String(a.bookings) })); }))) : h('p', { class: 'atc-muted small', text: 'None in this period.' })),
+            h('section', { class: 'card pad' }, h('h2', { text: 'Top providers' }), r.top_providers.length ? h('table', { class: 'bare' }, h('tbody', null, r.top_providers.map(function (a) { return h('tr', null, h('th', { scope: 'row', text: a.name }), h('td', { text: a.transfers + ' transfers' })); }))) : h('p', { class: 'atc-muted small', text: 'None in this period.' })),
+            h('section', { class: 'card pad' }, h('h2', { text: 'Top affiliates' }), r.top_affiliates.length ? h('table', { class: 'bare' }, h('tbody', null, r.top_affiliates.map(function (a) { return h('tr', null, h('th', { scope: 'row', text: a.name }), h('td', { text: a.bookings + ' · ' + cash(a.sales) })); }))) : h('p', { class: 'atc-muted small', text: 'No affiliate bookings in this period.' })))
+        ]);
+      }).catch(fail);
+    }
+    load();
+  }
+
+  /* ---------- Money report ---------- */
+
+  function viewReport() {
+    clear(app);
+    var st = { period: 'day', date: new Date().toISOString().slice(0, 10), basis: 'trip' };
+    var body = h('div', { class: 'stack' });
+    var date = h('input', { type: 'date', value: st.date, style: 'max-width:180px' });
+    var basis = h('select', { style: 'max-width:200px' }, h('option', { value: 'trip', text: 'By trip date' }), h('option', { value: 'booked', text: 'By booking date' }));
+    var pills = h('div', { class: 'pe-pills', role: 'group' });
+    function drawPills() { clear(pills); [['day', 'Day'], ['week', 'Week'], ['month', 'Month']].forEach(function (o) { add(pills, h('button', { type: 'button', class: 'pe-pill' + (st.period === o[0] ? ' on' : ''), text: o[1], onclick: function () { st.period = o[0]; drawPills(); load(); } })); }); }
+    function qs() { return '?period=' + st.period + '&date=' + date.value + '&basis=' + basis.value; }
+    date.addEventListener('change', load); basis.addEventListener('change', load);
+    var dl = h('button', { class: 'btn', type: 'button', text: 'Download for Excel', onclick: function () {
+      api('GET', '/report/csv' + qs()).then(function (r) {
+        var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' })); a.download = 'money-report-' + st.period + '-' + date.value + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+      }).catch(fail);
+    } });
+    add(app, [
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Money report' }), h('p', { class: 'atc-muted', text: 'Every paid booking with all its fees: what the traveler paid, Stripe’s fee, the affiliate’s commission, refunds, what the provider gets and what we keep. In USD. Bookings from the old site are left out (settled there).' })), dl),
+      h('div', { class: 'pe-bar' }, pills, date, basis),
+      body
+    ]);
+    drawPills();
+    var cols = [['Reservation', null], ['Status', null], ['Provider', null], ['Channel', null], ['Price', 'price'], ['Discount', 'discount'], ['Extras', 'extras'], ['Charged', 'charged'], ['Stripe fee', 'fee'], ['Affiliate', 'affiliate'], ['Refunded', 'refunded'], ['Provider gets', 'provider_cost'], ['We keep', 'margin']];
+    function m(c) { return c === null || c === undefined ? '–' : (c < 0 ? '− ' : '') + cash(Math.abs(c)); }
+    function tbl(rows, tot, title) {
+      return h('section', { class: 'card' }, h('div', { class: 'card-h' }, h('h2', { text: title + ' · ' + tot.count })),
+        h('div', { class: 'scroll' }, h('table', { class: 'report' },
+          h('thead', null, h('tr', null, cols.map(function (c) { return h('th', { scope: 'col', class: c[1] ? 'num' : '', text: c[0] }); }))),
+          h('tbody', null, rows.length ? rows.map(function (x) {
+            return h('tr', null,
+              h('td', { class: 'rep-ref' }, bookingLink(x.number), h('div', { class: 'small atc-muted', text: x.date + ' ' + x.time + ' · ' + x.traveler }), h('div', { class: 'small atc-muted', text: x.route + ' · ' + x.vehicle + ' · ' + x.trip })),
+              h('td', { text: x.status }), h('td', { text: x.provider }), h('td', null, x.channel, h('div', { class: 'small atc-muted', text: x.method + (x.coupon ? ' · ' + x.coupon : '') })),
+              cols.slice(4).map(function (c) { return h('td', { class: 'num' + (c[1] === 'margin' ? ' strong' : '') + (c[1] === 'margin' && x.margin < 0 ? ' neg' : ''), text: m(x[c[1]]) }); }));
+          }) : h('tr', null, h('td', { colspan: cols.length, class: 'atc-muted', text: 'None.' }))),
+          rows.length ? h('tfoot', null, h('tr', null, h('th', { colspan: 4, text: 'Total' }), cols.slice(4).map(function (c) { return h('th', { class: 'num', text: m(tot[c[1]]) }); }))) : null)));
+    }
+    function load() {
+      clear(body); add(body, h('p', { class: 'atc-muted', text: 'Loading…' }));
+      api('GET', '/report' + qs()).then(function (r) {
+        clear(body);
+        var a = r.all;
+        add(body, [
+          h('p', { class: 'atc-muted', text: (r.from === r.to ? r.from : r.from + ' to ' + r.to) + ' · ' + (r.basis === 'booked' ? 'by booking date' : 'by trip date') }),
+          h('div', { class: 'stats' },
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Charged' }), h('span', { class: 'big', text: cash(a.charged) }), h('span', { class: 'small atc-muted', text: a.count + ' bookings' })),
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Providers get' }), h('span', { class: 'big', text: cash(a.provider_cost) })),
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Stripe fees' }), h('span', { class: 'big', text: cash(a.fee) }), r.fee_missing ? h('span', { class: 'small atc-muted', text: r.fee_missing + ' without the fee saved (paid before 0.13)' }) : null),
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'Affiliates and refunds' }), h('span', { class: 'big', text: cash(a.affiliate + a.refunded) })),
+            h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: 'We keep' }), h('span', { class: 'big' + (a.margin < 0 ? ' neg' : ''), text: m(a.margin) }), h('span', { class: 'small atc-muted', text: a.charged ? Math.round(100 * a.margin / a.charged) + '% of charged' : '' }))),
+          r.period !== 'day' && r.by_day.length > 1 ? h('section', { class: 'card' }, h('div', { class: 'card-h' }, h('h2', { text: 'Per day' })), h('div', { class: 'scroll' }, h('table', { class: 'report' },
+            h('thead', null, h('tr', null, ['Day', 'Bookings', 'Charged', 'Stripe fee', 'Affiliate', 'Refunded', 'Provider gets', 'We keep'].map(function (t, i) { return h('th', { class: i ? 'num' : '', text: t }); }))),
+            h('tbody', null, r.by_day.map(function (d) { return h('tr', null, h('td', { text: d.day }), h('td', { class: 'num', text: String(d.count) }), ['charged', 'fee', 'affiliate', 'refunded', 'provider_cost', 'margin'].map(function (k) { return h('td', { class: 'num', text: m(d[k]) }); })); }))))) : null,
+          tbl(r.rows, r.totals, 'Bookings'),
+          tbl(r.other, r.other_totals, 'Cancelled, refunded and no-show')
+        ]);
+      }).catch(fail);
+    }
+    load();
   }
 
   /* ---------- Discount codes ---------- */

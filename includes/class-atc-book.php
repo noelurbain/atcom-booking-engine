@@ -155,6 +155,7 @@ final class ATC_Book {
 		$q   = ATC_Search::parse( $_GET ); // phpcs:ignore WordPress.Security.NonceVerification -- a public search.
 		$res = ATC_Search::run( $q );
 		if ( 'search' === $view ) {
+			ATC_Insights::log( $res );
 			$reason = $res['reason'] ?? '';
 			if ( 'no_airport' === $reason && '' !== $q['airport'] ) {
 				ATC_Search::log_miss( 'airport', $q['airport'] );
@@ -230,6 +231,7 @@ final class ATC_Book {
 			echo $html; // phpcs:ignore -- escaped inside.
 		} else {
 			get_header();
+			echo ATC_Analytics::purchase_tag( $b ); // phpcs:ignore -- built from our own values, JSON-encoded.
 			echo self::reservation( $b, $key ); // phpcs:ignore -- escaped inside.
 		}
 		get_footer();

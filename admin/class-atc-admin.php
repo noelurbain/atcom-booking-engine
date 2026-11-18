@@ -154,6 +154,14 @@ define( 'ATC_MAPS_SERVER_KEY', 'AIza…' );</pre>
 					<tr><th scope="row"><label for="invite_test_to">Test mode: send provider invitations to</label></th><td><input type="email" id="invite_test_to" class="regular-text" name="<?php echo esc_attr( $n ); ?>[invite_test_to]" value="<?php echo esc_attr( $o['invite_test_to'] ); ?>"><p class="description">While this has an address, invitations go there instead of to the providers. Empty it on the live site to invite providers for real.</p></td></tr>
 					<tr><th scope="row"><label for="from_email">Send emails from</label></th><td><input type="email" id="from_email" class="regular-text" name="<?php echo esc_attr( $n ); ?>[from_email]" value="<?php echo esc_attr( $o['from_email'] ); ?>"></td></tr>
 				</table>
+				<h2>Analytics</h2>
+				<table class="form-table" role="presentation">
+					<tr><th scope="row"><label for="posthog_key">PostHog project key</label></th><td><input type="text" id="posthog_key" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[posthog_key]" value="<?php echo esc_attr( $o['posthog_key'] ); ?>" placeholder="phc_…">
+						<select name="<?php echo esc_attr( $n ); ?>[posthog_region]"><option value="us" <?php selected( $o['posthog_region'], 'us' ); ?>>US cloud</option><option value="eu" <?php selected( $o['posthog_region'], 'eu' ); ?>>EU cloud</option></select></td></tr>
+					<tr><th scope="row"><label for="ga4_id">GA4 Measurement ID</label></th><td><input type="text" id="ga4_id" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ga4_id]" value="<?php echo esc_attr( $o['ga4_id'] ); ?>" placeholder="G-…"></td></tr>
+					<tr><th scope="row"><label for="ads_id">Google Ads conversion</label></th><td><input type="text" id="ads_id" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ads_id]" value="<?php echo esc_attr( $o['ads_id'] ); ?>" placeholder="AW-…"> / <input type="text" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ads_label]" value="<?php echo esc_attr( $o['ads_label'] ); ?>" placeholder="conversion label"><p class="description">Sent once per paid booking, with its value in USD.</p></td></tr>
+					<?php $num( 'traveler_base', 'Traveler count base', 'people (the public figure starts here and grows with real searches)' ); ?>
+				</table>
 				<?php submit_button(); ?>
 			</form>
 		</div>

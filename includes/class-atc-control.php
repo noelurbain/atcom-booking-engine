@@ -124,6 +124,10 @@ final class ATC_Control {
 		<a href="<?php echo esc_url( home_url( '/control/meeting/' ) ); ?>" data-view="meeting">Meeting your driver</a>
 		<a href="<?php echo esc_url( home_url( '/control/payouts/' ) ); ?>" data-view="payouts">Payouts</a>
 		<a href="<?php echo esc_url( home_url( '/control/coupons/' ) ); ?>" data-view="coupons">Discount codes</a>
+		<a href="<?php echo esc_url( home_url( '/control/insights/' ) ); ?>" data-view="insights">Searches</a>
+		<?php if ( current_user_can( 'atc_payouts' ) ) : ?>
+			<a href="<?php echo esc_url( home_url( '/control/report/' ) ); ?>" data-view="report">Money report</a>
+		<?php endif; ?>
 		<?php $waiting = ATC_Tickets::count_waiting(); ?>
 		<a href="<?php echo esc_url( home_url( '/control/tickets/' ) ); ?>" data-view="tickets">Tickets<?php echo $waiting ? ' <i class="count">' . (int) $waiting . '</i>' : ''; ?></a>
 		<a href="https://app.crisp.chat/" target="_blank" rel="noopener">Crisp inbox ↗</a>

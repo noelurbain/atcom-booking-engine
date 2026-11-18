@@ -29,6 +29,14 @@ final class ATC_Settings {
 			'from_email'             => 'hello@airporttransportation.com',
 			// While this is set, provider invitations go to this address instead of the providers (test site).
 			'invite_test_to'         => 'hello@airporttransportation.com',
+			// Analytics (all public ids, not secrets).
+			'posthog_key'            => '',
+			'posthog_region'         => 'us',     // us | eu
+			'ga4_id'                 => '',
+			'ads_id'                 => '',
+			'ads_label'              => '',
+			// The public traveler count starts from this base.
+			'traveler_base'          => 1821,
 		);
 	}
 
@@ -79,6 +87,13 @@ final class ATC_Settings {
 
 		$test                  = isset( $in['invite_test_to'] ) ? sanitize_email( $in['invite_test_to'] ) : '';
 		$out['invite_test_to'] = is_email( $test ) ? $test : '';
+
+		$out['posthog_key']    = isset( $in['posthog_key'] ) && preg_match( '/^phc_[A-Za-z0-9]{20,}$/', trim( (string) $in['posthog_key'] ) ) ? trim( (string) $in['posthog_key'] ) : '';
+		$out['posthog_region'] = isset( $in['posthog_region'] ) && 'eu' === $in['posthog_region'] ? 'eu' : 'us';
+		$out['ga4_id']         = isset( $in['ga4_id'] ) && preg_match( '/^G-[A-Z0-9]{4,}$/', strtoupper( trim( (string) $in['ga4_id'] ) ) ) ? strtoupper( trim( (string) $in['ga4_id'] ) ) : '';
+		$out['ads_id']         = isset( $in['ads_id'] ) && preg_match( '/^AW-\d{6,}$/', strtoupper( trim( (string) $in['ads_id'] ) ) ) ? strtoupper( trim( (string) $in['ads_id'] ) ) : '';
+		$out['ads_label']      = isset( $in['ads_label'] ) ? substr( preg_replace( '/[^A-Za-z0-9_\-]/', '', (string) $in['ads_label'] ), 0, 60 ) : '';
+		$out['traveler_base']  = isset( $in['traveler_base'] ) ? max( 0, min( 10000000, (int) $in['traveler_base'] ) ) : $d['traveler_base'];
 
 		// Live mode is refused until a live secret key exists in wp-config.php.
 		if ( 'live' === $out['stripe_mode'] && ! self::has_secret( 'live' ) ) {

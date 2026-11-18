@@ -1,5 +1,21 @@
 === ATCOM Booking Engine ===
-Version: 0.15.2 (discount code on step 2)
+Version: 0.16.0 (searches, money report, analytics)
+
+New in 0.16.0:
+- Every results page is logged (airport, destination, offers found; visitor as a monthly-rotating hash, no personal
+  data; our team and robots left out). Control → Searches: searches, unique visitors, searches with nothing to
+  sell, airports searched with no provider, per day, funnel (searches → checkout → details → paid), by airport
+  with ready providers ("None yet"), top destinations, airports we don't serve, top airports, providers and
+  affiliates by bookings. 1 / 7 / 30 / 90 / 365 days.
+- Traveler count: a base (Settings or Control → Searches) or the real 30-day searchers once higher; for the theme
+  atc_traveler_count() / atc_traveler_count('7d'|'24h') and the shortcode [atc_travelers].
+- Control → Money report (finance only): day, week or month, by trip or booking date. Per booking: price,
+  discount and code, extra payments, charged, Stripe fee, affiliate commission, refunded, provider gets, we keep;
+  cancelled/refunded/no-show apart; totals and per day; download for Excel (CSV).
+- Analytics (Settings → Analytics): PostHog (no cookies, page views + server events atcom_transfer_searched,
+  atcom_booking_placed, atcom_payment_captured), GA4 page views and purchase, Google Ads conversion with value,
+  once per booking on the confirmation. Signed-in staff are not tracked.
+
 
 New in 0.15.2:
 - Discount code field on step 2 (Flight and details), applied when the traveler continues: the payment page

@@ -208,3 +208,18 @@ ol.timeline li{display:grid;grid-template-columns:150px 1fr;gap:12px}
 .thread .msg.internal{background:#FFF8E1;border-style:dashed}
 .thread .msg.system{background:#F1F4F8}
 .thread .msg .body{white-space:pre-wrap;font-size:14px}
+/* Searches and money report */
+.atc-main .stack{display:flex;flex-direction:column;gap:16px}
+.atc-main .bars{display:flex;align-items:flex-end;gap:3px;height:120px}
+.atc-main .bars span{flex:1;background:#F5A33A;border-radius:3px 3px 0 0;min-height:2px}
+.atc-main .funnel{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.atc-main .funnel div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.atc-main .funnel strong{font-size:22px}
+.atc-main .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.atc-main .stat.warn{border-color:#FAD7A8;background:#FFF8EE}
+table.report td.num,table.report th.num{text-align:right;white-space:nowrap}
+table.report tfoot th{background:#F7F5F0;font-weight:800}
+.atc-main .card-h{padding:16px 20px 6px}
+.atc-main .card-h h2{margin:0}
+table.report td.rep-ref{min-width:230px}
+table.report{min-width:1150px}

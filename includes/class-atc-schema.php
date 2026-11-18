@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches',
 		);
 	}
 
@@ -414,6 +414,27 @@ final class ATC_Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY kind_airport_term (kind,airport_id,term),
   KEY last_at (last_at)
+) $c;";
+
+		// Every search on the results page (no personal data: the visitor is a monthly-rotating hash).
+		$sql[] = "CREATE TABLE {$p}searches (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  created_at datetime NOT NULL,
+  site varchar(60) NOT NULL DEFAULT '',
+  airport_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  airport_text varchar(120) NOT NULL DEFAULT '',
+  dest varchar(190) NOT NULL DEFAULT '',
+  zone_id bigint(20) unsigned NULL,
+  results int(11) NOT NULL DEFAULT 0,
+  reason varchar(20) NULL,
+  trip varchar(20) NOT NULL DEFAULT 'one_way',
+  pax int(11) NOT NULL DEFAULT 0,
+  lead_days int(11) NULL,
+  visitor char(16) NOT NULL DEFAULT '',
+  affiliate_id bigint(20) unsigned NULL,
+  PRIMARY KEY  (id),
+  KEY created_at (created_at),
+  KEY airport_created (airport_id,created_at)
 ) $c;";
 
 		// Affiliate link clicks, counted per affiliate, day and landing page (no personal data).

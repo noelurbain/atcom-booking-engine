@@ -120,6 +120,22 @@ final class ATC_REST_Control {
 			)
 		);
 
+		// Insights and the money report.
+		self::route( '/insights', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Insights::report( $r->get_query_params() ) ) ) );
+		self::route( '/insights/base', array( 'POST' => static fn( WP_REST_Request $r ) => current_user_can( 'atc_settings' ) ? self::out( ATC_Insights::save_base( (int) ( self::body( $r )['base'] ?? 0 ) ) ) : new WP_Error( 'atc_forbidden', 'Only admins can change it.', array( 'status' => 403 ) ) ) );
+		self::route( '/report', array( 'GET' => static fn( WP_REST_Request $r ) => current_user_can( 'atc_payouts' ) ? rest_ensure_response( ATC_Report::build( $r->get_query_params() ) ) : new WP_Error( 'atc_forbidden', 'Only finance can see the money report.', array( 'status' => 403 ) ) ) );
+		self::route(
+			'/report/csv',
+			array(
+				'GET' => static function ( WP_REST_Request $r ) {
+					if ( ! current_user_can( 'atc_payouts' ) ) {
+						return new WP_Error( 'atc_forbidden', 'Only finance can download the money report.', array( 'status' => 403 ) );
+					}
+					return rest_ensure_response( array( 'csv' => ATC_Report::csv( $r->get_query_params() ) ) );
+				},
+			)
+		);
+
 		// Discount codes.
 		self::route( '/coupons', array( 'GET' => static fn() => rest_ensure_response( ATC_Coupons::list() ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ) ) ) ) );
 		self::route( '/coupons/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ), (int) $r['id'] ) ) ) );

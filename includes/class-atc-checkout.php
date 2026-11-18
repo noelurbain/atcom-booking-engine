@@ -219,6 +219,7 @@ final class ATC_Checkout {
 			'whatsapp' => $c['whatsapp'],
 			'phone_country' => $c['country'],
 			'step'     => 'contact',
+			'visitor'  => ATC_Insights::visitor(),
 		);
 		$total = (int) $o['retail'];
 		$wpdb->insert(
@@ -251,6 +252,7 @@ final class ATC_Checkout {
 		}
 		self::write_legs( $id, $o, $s, $q, array() );
 		ATC_Affiliates::attach( $id );
+		ATC_Analytics::placed( self::find( '', $id ) );
 		ATC_Install::log( 'booking', $id, 'started', array( 'service' => $o['service_id'], 'total' => $total ) );
 		return array( 'number' => $number, 'key' => $key );
 	}
