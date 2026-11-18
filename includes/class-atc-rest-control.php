@@ -120,6 +120,10 @@ final class ATC_REST_Control {
 			)
 		);
 
+		// Discount codes.
+		self::route( '/coupons', array( 'GET' => static fn() => rest_ensure_response( ATC_Coupons::list() ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ) ) ) ) );
+		self::route( '/coupons/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ), (int) $r['id'] ) ) ) );
+
 		// Affiliates.
 		self::route( '/affiliates', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Affiliates::list( (string) $r['status'] ) ) ) );
 		self::route( '/affiliates/(?P<id>\\d+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::get( (int) $r['id'] ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::save( (int) $r['id'], self::body( $r ) ) ) ) );

@@ -107,6 +107,7 @@ final class ATC_REST {
 			'/booking/cancel' => $open( 'booking_cancel', static fn( $p, $n, $k ) => ATC_Manage::cancel( $n, $k ) ),
 			'/booking/review' => $open( 'booking_review', static fn( $p, $n, $k ) => ATC_Manage::review( $n, $k, (int) ( $p['rating'] ?? 0 ), (string) ( $p['comment'] ?? '' ) ) ),
 			'/booking/find'   => $open( 'booking_find', static fn( $p, $n, $k ) => ATC_Manage::lookup( $n, (string) ( $p['email'] ?? '' ) ) ),
+			'/checkout/coupon' => $open( 'checkout_coupon', static fn( $p, $n, $k ) => ATC_Coupons::apply( $n, $k, (string) ( $p['code'] ?? '' ) ) ),
 			'/booking/ticket' => $open( 'booking_ticket', static fn( $p, $n, $k ) => ATC_Manage::ticket( $n, $k, $p ) ),
 		);
 		foreach ( $routes as $path => $cb ) {

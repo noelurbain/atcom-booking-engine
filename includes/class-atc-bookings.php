@@ -193,6 +193,9 @@ final class ATC_Bookings {
 		$paid   = in_array( $b['status'], array( 'confirmed', 'completed' ), true );
 		$total  = (int) $b['total_cents'];
 		$money  = array( array( 'Traveler paid (Suggested retail price)', $paid ? ( ! empty( $snap['method'] ) ? 'with ' . ucfirst( (string) $snap['method'] ) : 'captured' ) : 'not paid', $paid ? $total : 0 ) );
+		if ( (int) $b['discount_cents'] > 0 ) {
+			$money[] = array( 'Discount code ' . $b['coupon_code'], 'affiliate' === ( $snap['coupon']['owner'] ?? '' ) ? 'from the affiliate’s commission · price was ' . ATC_Book::money( (int) $b['retail_cents'] ) : 'from our share · price was ' . ATC_Book::money( (int) $b['retail_cents'] ), -(int) $b['discount_cents'] );
+		}
 		if ( $paid ) {
 			$money[] = array( 'Provider (Amount you will get paid)', $legacy ? 'old site, ' . ( $total ? round( 100 * $prov / $total ) : 0 ) . '% · settled there' : 'pending until completed', $prov );
 			$aff_lines = $legacy ? array() : $wpdb->get_results( $wpdb->prepare( 'SELECT x.role, x.amount_cents, x.status, p.name FROM ' . self::t( 'ledger' ) . ' x LEFT JOIN ' . self::t( 'parties' ) . " p ON p.id = x.party_id WHERE x.booking_id = %d AND x.role IN ('affiliate','referrer') AND x.status <> 'cancelled'", (int) $b['id'] ), ARRAY_A );

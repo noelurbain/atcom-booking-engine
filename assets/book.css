@@ -301,3 +301,7 @@
 .ab-thread li.is-you{background:#fff;border:1px solid var(--line,#e6e1d8)}
 .ab-thread p{margin:4px 0 0;white-space:pre-wrap}
 .ab-help h2 .ab-chip{font-size:12px;font-weight:700;background:#F1F4F8;border-radius:999px;padding:2px 8px;vertical-align:middle;margin-left:6px}
+.ab-coupon details summary{cursor:pointer;font-size:14px;text-decoration:underline;color:var(--muted,#6b6b6b);padding:4px 0}
+.ab-coupon-row{display:flex;gap:8px;margin-top:8px}
+.ab-coupon-row input{flex:1;min-width:0}
+.ab-coupon .ab-alert{margin-top:8px}

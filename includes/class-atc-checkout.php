@@ -439,6 +439,7 @@ final class ATC_Checkout {
 			),
 			array( 'id' => (int) $b['id'] )
 		);
+		ATC_Coupons::reapply( (int) $b['id'] );
 		ATC_Install::log( 'booking', (int) $b['id'], 'details_saved' );
 		return array( 'pay_url' => self::pay_url( $b['number'], $key ) );
 	}
@@ -457,7 +458,7 @@ final class ATC_Checkout {
 			return $got;
 		}
 		$o = $got['offer'];
-		if ( (int) $o['retail'] !== (int) $b['total_cents'] ) {
+		if ( (int) $o['retail'] !== (int) $b['retail_cents'] ) {
 			self::write_legs( (int) $b['id'], $o, $got['search'], $q, (array) ( $b['snap']['details'] ?? array() ) );
 		}
 		$wpdb->update(
@@ -465,6 +466,7 @@ final class ATC_Checkout {
 			array( 'retail_cents' => (int) $o['retail'], 'total_cents' => (int) $o['retail'], 'hold_expires_at' => gmdate( 'Y-m-d H:i:s', time() + 60 * self::HOLD_MINUTES ), 'updated_at' => self::now() ),
 			array( 'id' => (int) $b['id'] )
 		);
+		ATC_Coupons::reapply( (int) $b['id'] );
 		return self::load( $b['number'], $key );
 	}
 
@@ -606,6 +608,7 @@ final class ATC_Checkout {
 			$wpdb->insert( $l, array( 'booking_id' => (int) $b['id'], 'leg_id' => (int) $leg['id'], 'party_id' => (int) $leg['party_id'], 'role' => 'provider', 'amount_cents' => (int) $leg['provider_cents'], 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		}
 		$b   = self::find( '', (int) $b['id'] );
+		ATC_Coupons::used( $b );
 		$aff = ATC_Affiliates::on_paid( $b );
 		$wpdb->insert( $l, array( 'booking_id' => (int) $b['id'], 'party_id' => null, 'role' => 'platform', 'amount_cents' => (int) $b['total_cents'] - $prov - $aff, 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'note' => 'Before Stripe fees', 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		ATC_Install::log( 'booking', (int) $b['id'], 'paid', array( 'amount' => (int) $pi['amount_received'], 'payment_intent' => $pi['id'] ) );

@@ -96,6 +96,7 @@
     if (parts[0] === 'zones') return viewZones();
     if (parts[0] === 'meeting') return viewMeeting();
     if (parts[0] === 'payouts') return viewPayouts();
+    if (parts[0] === 'coupons') return viewCoupons();
     if (parts[0] === 'tickets' && parts[1]) return viewTicket(parseInt(parts[1], 10));
     if (parts[0] === 'tickets') return viewTickets();
     if (parts[0] === 'affiliates' && parts[1]) return viewAffiliate(parseInt(parts[1], 10));
@@ -104,6 +105,71 @@
     if (parts[0] === 'bookings' && parts[1]) return viewBooking(parts[1]);
     if (parts[0] === 'bookings') return viewBookings();
     return viewDashboard();
+  }
+
+  /* ---------- Discount codes ---------- */
+
+  function viewCoupons() {
+    clear(app);
+    var tbody = h('tbody');
+    var affs = [];
+    function couponForm(c, done) {
+      c = c || {};
+      var code = h('input', { type: 'text', value: c.code || '', maxlength: 30, style: 'text-transform:uppercase', placeholder: 'SUMMER10' });
+      var kind = h('select', null, h('option', { value: 'percent', selected: c.amount === null || c.amount === undefined, text: 'Percent off' }), h('option', { value: 'amount', selected: c.amount !== null && c.amount !== undefined, text: 'Amount off (USD)' }));
+      var val = h('input', { type: 'number', min: 1, step: '0.01', value: c.percent !== null && c.percent !== undefined ? c.percent : (c.amount ? (c.amount / 100).toFixed(2) : ''), style: 'max-width:140px' });
+      var owner = h('select', null, h('option', { value: 'platform', selected: c.owner !== 'affiliate', text: 'Ours (out of our share)' }), h('option', { value: 'affiliate', selected: c.owner === 'affiliate', text: 'An affiliate’s (out of its commission)' }));
+      var aff = h('select', null, h('option', { value: '', text: 'Choose the affiliate' }), affs.map(function (a) { return h('option', { value: a.id, selected: a.id === c.party_id, text: a.name + ' · ' + a.code + ' · ' + pctBp(a.rate) }); }));
+      var affRow = h('label', { class: 'field' }, h('span', { text: 'Affiliate' }), aff);
+      var min = h('input', { type: 'number', min: 0, step: '1', value: c.min ? c.min / 100 : '', placeholder: 'none', style: 'max-width:140px' });
+      var from = h('input', { type: 'date', value: c.from || '' }), to = h('input', { type: 'date', value: c.to || '' });
+      var max = h('input', { type: 'number', min: 1, step: '1', value: c.max_uses || '', placeholder: 'no limit', style: 'max-width:140px' });
+      var note = h('input', { type: 'text', value: c.note || '', maxlength: 190, placeholder: 'Where it is used (for us)' });
+      var status = h('select', null, h('option', { value: 'active', selected: c.status !== 'off', text: 'On' }), h('option', { value: 'off', selected: c.status === 'off', text: 'Off' }));
+      function sync() { affRow.hidden = owner.value !== 'affiliate'; if (owner.value === 'affiliate') kind.value = 'percent'; kind.disabled = owner.value === 'affiliate'; }
+      owner.addEventListener('change', sync); sync();
+      var btn = h('button', { class: 'btn dark', type: 'submit', text: c.id ? 'Save' : 'Create code' });
+      return h('form', { class: 'card pad', style: 'gap:10px', onsubmit: function (e) {
+        e.preventDefault(); btn.disabled = true;
+        var body = { code: code.value, owner: owner.value, party_id: aff.value, min: min.value, from: from.value, to: to.value, max_uses: max.value, note: note.value, status: status.value };
+        if (kind.value === 'percent') body.percent = val.value; else body.amount = val.value;
+        api('POST', '/coupons' + (c.id ? '/' + c.id : ''), body).then(function () { toast(c.id ? 'Saved.' : 'Code created.'); done(); }).catch(function (x) { btn.disabled = false; fail(x); });
+      } },
+        h('strong', { text: c.id ? 'Edit ' + c.code : 'New discount code' }),
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Code' }), code), h('label', { class: 'field' }, h('span', { text: 'Who pays the discount' }), owner)),
+        affRow,
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Discount' }), h('div', { class: 'atc-actions' }, kind, val)), h('label', { class: 'field' }, h('span', { text: 'Minimum booking (USD)' }), min)),
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Valid from' }), from), h('label', { class: 'field' }, h('span', { text: 'Valid until' }), to)),
+        h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Uses allowed' }), max), h('label', { class: 'field' }, h('span', { text: 'Status' }), status)),
+        h('label', { class: 'field' }, h('span', { text: 'Note' }), note),
+        h('p', { class: 'small atc-muted', text: 'Ours: up to 20% or a fixed amount; the provider is paid the same and an affiliate still earns its rate on what the traveler paid. An affiliate’s: up to its own rate, taken from its commission, and the booking counts as theirs.' }),
+        h('div', null, btn));
+    }
+    var formBox = h('div');
+    function load() {
+      api('GET', '/coupons').then(function (rows) {
+        clear(tbody);
+        if (!rows.length) add(tbody, h('tr', null, h('td', { colspan: 6, class: 'atc-muted', text: 'No codes yet.' })));
+        rows.forEach(function (c) {
+          add(tbody, h('tr', null,
+            h('td', null, h('code', { class: 'strong', text: c.code }), c.note ? h('div', { class: 'small atc-muted', text: c.note }) : null),
+            h('td', { text: c.percent !== null ? c.percent + '%' : cash(c.amount) }),
+            h('td', null, c.owner === 'affiliate' ? h('a', { href: C.base + 'affiliates/' + c.party_id + '/', 'data-go': 'affiliates/' + c.party_id, text: c.party }) : 'Ours'),
+            h('td', { class: 'small', text: [c.min ? 'from ' + cash(c.min) : null, c.from ? 'starts ' + c.from : null, c.to ? 'until ' + c.to : null].filter(Boolean).join(' · ') || '–' }),
+            h('td', { text: c.uses + (c.max_uses ? ' of ' + c.max_uses : '') }),
+            h('td', null, h('span', { class: 'chip ' + (c.state === 'Active' ? 'green' : 'grey'), text: c.state }), ' ', h('button', { class: 'link', type: 'button', text: 'Edit', onclick: function () { clear(formBox); add(formBox, couponForm(c, function () { clear(formBox); load(); })); window.scrollTo(0, 0); } }))));
+        });
+      }).catch(fail);
+    }
+    add(app, [
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Discount codes' }), h('p', { class: 'atc-muted', text: 'Codes travelers type on the payment step. Each use is counted when the booking is paid.' })),
+        h('button', { class: 'btn dark', type: 'button', text: 'New code', onclick: function () { clear(formBox); add(formBox, couponForm(null, function () { clear(formBox); load(); })); } })),
+      formBox,
+      h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+        h('thead', null, h('tr', null, ['Code', 'Discount', 'Paid by', 'Conditions', 'Uses', 'Status'].map(function (t) { return h('th', { scope: 'col', text: t }); }))), tbody)))
+    ]);
+    api('GET', '/affiliates?status=live').then(function (r) { affs = r; }).catch(function () {});
+    load();
   }
 
   /* ---------- Tickets ---------- */

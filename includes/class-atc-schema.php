@@ -360,13 +360,17 @@ final class ATC_Schema {
   party_id bigint(20) unsigned NULL,
   percent_bp int(11) NULL,
   amount_cents bigint(20) NULL,
+  min_cents bigint(20) NULL,
   valid_from date NULL,
   valid_to date NULL,
   max_uses int(11) NULL,
   uses int(11) NOT NULL DEFAULT 0,
+  note varchar(190) NULL,
   status varchar(20) NOT NULL DEFAULT 'active',
+  created_at datetime NULL,
   PRIMARY KEY  (id),
-  UNIQUE KEY code (code)
+  UNIQUE KEY code (code),
+  KEY party_id (party_id)
 ) $c;";
 
 		// A provider's own names for our zones and vehicle types ("Zona 1", "Van 10"), so uploads match by themselves.

@@ -1,5 +1,15 @@
 === ATCOM Booking Engine ===
-Version: 0.14.1 (our brand on sign-in)
+Version: 0.15.0 (discount codes)
+
+New in 0.15.0:
+- Discount codes on the payment step ("Have a discount code?"); the total, the Stripe amount and the pay button
+  follow. Kept when the hold is renewed (dropped if it no longer applies). Each use counts when paid.
+- Control → Discount codes: ours (1–20% or a fixed amount, out of our share; minimum booking, dates, number of
+  uses, on/off) and affiliates' codes.
+- Affiliate panel → Discount codes: up to 5 codes of up to their own rate; the discount comes out of their
+  commission (5% code on an 8% rate leaves 3%), and a booking with their code is theirs even without a click.
+- Bookings show the code and who paid the discount.
+
 
 New in 0.14.1:
 - wp-login.php and signed-out visits to wp-admin go to /login. The pages that stay there (forgot password,

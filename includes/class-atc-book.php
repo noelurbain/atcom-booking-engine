@@ -762,6 +762,17 @@ final class ATC_Book {
 						echo $row( 'Lead traveler', esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . $b['email'] . ' · ' . $b['phone'] ), $edit ); // phpcs:ignore
 						echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $one['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $one['carry_ons'] ?? 0 ) . ' carry-ons' ), $edit ); // phpcs:ignore
 						?>
+						<div class="ab-coupon" data-ab-coupon data-number="<?php echo esc_attr( $b['number'] ); ?>" data-key="<?php echo esc_attr( $key ); ?>">
+							<?php if ( ! empty( $b['coupon_code'] ) ) : ?>
+								<div class="ab-rev"><span class="ab-k">Discount</span><span><strong><?php echo esc_html( $b['coupon_code'] ); ?></strong> · −<?php echo esc_html( self::money( (int) $b['discount_cents'] ) ); ?> <span class="ab-muted">(was <?php echo esc_html( self::money( (int) $b['retail_cents'] ) ); ?>)</span></span><button type="button" class="ab-link" data-ab-coupon-remove>Remove</button></div>
+							<?php else : ?>
+								<details>
+									<summary>Have a discount code?</summary>
+									<div class="ab-coupon-row"><input type="text" name="coupon" aria-label="Discount code" autocomplete="off" placeholder="Code" maxlength="30" style="text-transform:uppercase" data-ab-coupon-code><button type="button" class="ab-btn" data-ab-coupon-apply>Apply</button></div>
+								</details>
+							<?php endif; ?>
+							<div class="ab-alert" role="alert" hidden data-ab-coupon-error></div>
+						</div>
 						<label class="ab-check"><input type="checkbox" name="agree" required data-ab-agree> <span>I agree to the <a href="<?php echo esc_url( home_url( '/reservation-policies/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="reservation-policies">reservation policies</a> and the <a href="<?php echo esc_url( home_url( '/privacy-policy/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="privacy-policy">privacy policy</a>.</span></label>
 						<div class="ab-alert" role="alert" hidden data-ab-error></div>
 						<button type="submit" class="ab-btn is-accent is-block ab-paybtn" data-ab-submit disabled>Pay <?php echo esc_html( self::money( (int) $b['total_cents'] ) ); ?> and book</button>

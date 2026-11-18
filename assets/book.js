@@ -278,6 +278,19 @@
     return fetch(url, { method: 'POST', headers: hd, credentials: 'same-origin', body: JSON.stringify(body) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) { var e = new Error(d.message || 'Something went wrong. Please try again.'); e.data = d; throw e; } return d; }); });
   }
+  var cpn = document.querySelector('[data-ab-coupon]');
+  if (cpn) {
+    var cpnSend = function (code) {
+      var err = cpn.querySelector('[data-ab-coupon-error]');
+      return post(C.api + 'checkout/coupon', { number: cpn.getAttribute('data-number'), key: cpn.getAttribute('data-key'), code: code })
+        .then(function () { location.reload(); })
+        .catch(function (x) { showError(err, x.message); });
+    };
+    var ap = cpn.querySelector('[data-ab-coupon-apply]'), inp = cpn.querySelector('[data-ab-coupon-code]'), rm = cpn.querySelector('[data-ab-coupon-remove]');
+    if (ap) ap.addEventListener('click', function () { if (inp.value.trim()) { ap.disabled = true; cpnSend(inp.value.trim()).then(function () { ap.disabled = false; }); } });
+    if (inp) inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ap.click(); } });
+    if (rm) rm.addEventListener('click', function () { rm.disabled = true; cpnSend(''); });
+  }
   var sendBox = document.querySelector('[data-ab-sendlink]');
   if (sendBox) {
     var sendBtn = sendBox.querySelector('[data-ab-send]');

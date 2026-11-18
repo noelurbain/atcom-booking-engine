@@ -40,6 +40,8 @@ final class ATC_REST_Affiliate {
 		self::route( '/bookings', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Affiliates::bookings( self::aid(), max( 1, (int) $r['page'] ) ) ) ) );
 		self::route( '/clicks', array( 'GET' => static fn() => rest_ensure_response( ATC_Affiliates::clicks( self::aid() ) ) ) );
 		self::route( '/link', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Affiliates::make_link( self::aid(), (string) ( self::body( $r )['url'] ?? '' ) ) ) ) );
+		self::route( '/coupons', array( 'GET' => static fn() => rest_ensure_response( ATC_Coupons::for_party( self::aid() ) ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ), 0, self::aid() ) ) ) );
+		self::route( '/coupons/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ), (int) $r['id'], self::aid() ) ) ) );
 		self::route( '/payout', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::save_payout( self::aid(), self::body( $r ) ) ) ) );
 		self::route( '/payouts/(?P<id>\\d+)/lines', array( 'GET' => static function ( WP_REST_Request $r ) {
 			global $wpdb;

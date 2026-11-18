@@ -166,8 +166,11 @@ final class ATC_Affiliates {
 		if ( empty( $b['affiliate_id'] ) || ! $a || $paid <= 0 ) {
 			return array( 'affiliate' => 0, 'referrer' => 0 );
 		}
+		// The affiliate's own discount code comes out of its commission (rate on the full price, minus the discount).
+		$own = (array) ( $b['snap']['coupon'] ?? array() );
+		$off = 'affiliate' === ( $own['owner'] ?? '' ) && (int) ( $own['party_id'] ?? 0 ) === (int) $b['affiliate_id'] ? (int) ( $own['discount'] ?? 0 ) : 0;
 		return array(
-			'affiliate' => intdiv( $paid * (int) ( $a['bp'] ?? 0 ), ATC_Money::BP ),
+			'affiliate' => max( 0, intdiv( ( $paid + $off ) * (int) ( $a['bp'] ?? 0 ), ATC_Money::BP ) - $off ),
 			'referrer'  => empty( $b['referrer_id'] ) ? 0 : intdiv( $paid * (int) ( $a['ref_bp'] ?? 0 ), ATC_Money::BP ),
 		);
 	}

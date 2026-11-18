@@ -61,7 +61,7 @@
 
   /* ---------- routing ---------- */
 
-  var VIEWS = [['', 'Overview'], ['links', 'Links'], ['book', 'Book for a client'], ['bookings', 'Bookings'], ['referrals', 'Invite affiliates'], ['payouts', 'Payouts'], ['account', 'Account']];
+  var VIEWS = [['', 'Overview'], ['links', 'Links'], ['coupons', 'Discount codes'], ['book', 'Book for a client'], ['bookings', 'Bookings'], ['referrals', 'Invite affiliates'], ['payouts', 'Payouts'], ['account', 'Account']];
   function path() {
     var base = new URL(C.base).pathname;
     var p = location.pathname.indexOf(base) === 0 ? location.pathname.slice(base.length) : '';
@@ -78,7 +78,7 @@
   function route() {
     if (!me) return;
     nav(); clear(app);
-    ({ '': viewHome, links: viewLinks, book: viewBook, bookings: viewBookings, referrals: viewReferrals, payouts: viewPayouts, account: viewAccount }[path()] || viewHome)();
+    ({ '': viewHome, links: viewLinks, coupons: viewCoupons, book: viewBook, bookings: viewBookings, referrals: viewReferrals, payouts: viewPayouts, account: viewAccount }[path()] || viewHome)();
   }
 
   /* ---------- Overview ---------- */
@@ -130,6 +130,36 @@
       } }, h('h2', { text: 'Link to a page' }), field('Paste the page address', url), h('div', { class: 'atc-actions' }, btn), out),
       h('section', { class: 'card pad' }, h('h2', { text: 'Booking widget' }), h('p', { class: 'atc-muted', text: 'A booking box for your own site is coming soon. Until then, link to any of our airport or destination pages.' }))
     ]);
+  }
+
+  /* ---------- Discount codes ---------- */
+
+  function viewCoupons() {
+    var max = me.rate / 100;
+    var code = h('input', { type: 'text', maxlength: 30, style: 'text-transform:uppercase', placeholder: 'e.g. ' + (me.name || 'MYSITE').replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toUpperCase() + '5' });
+    var pct = h('input', { type: 'number', min: 1, max: max, step: '0.5', value: Math.min(5, max), style: 'max-width:120px' });
+    var left = h('strong');
+    function sync() { var p = +pct.value || 0; left.textContent = 'With a ' + p + '% code you keep ' + Math.max(0, max - p) + '% of each booking.'; }
+    pct.addEventListener('input', sync); sync();
+    var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Create code' });
+    var list = h('section', { class: 'card pad' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, [
+      head('Discount codes', 'Give your audience a discount of up to ' + max + '%. It comes out of your commission, and every booking with your code is yours, even without a click on your link.'),
+      h('form', { class: 'card pad', onsubmit: function (e) {
+        e.preventDefault(); btn.disabled = true;
+        api('POST', '/coupons', { code: code.value, percent: pct.value }).then(function () { toast('Code created.'); route(); }).catch(function (x) { btn.disabled = false; fail(x); });
+      } }, h('h2', { text: 'New code' }), h('div', { class: 'grid2' }, field('Code', code), field('Discount (%)', pct)), h('p', null, left), h('div', { class: 'atc-actions' }, btn)),
+      list
+    ]);
+    api('GET', '/coupons').then(function (rows) {
+      clear(list); add(list, h('h2', { text: 'Your codes' }));
+      if (!rows.length) { add(list, h('p', { class: 'atc-muted', text: 'No codes yet.' })); return; }
+      add(list, h('table', { class: 'bare' }, h('tbody', null, rows.map(function (c) {
+        return h('tr', null, h('td', null, h('code', { class: 'strong', text: c.code }), h('div', { class: 'small atc-muted', text: c.percent + '% off · used ' + c.uses + ' times' })),
+          h('td', null, h('span', { class: 'chip ' + (c.state === 'Active' ? 'green' : 'grey'), text: c.state }), ' ',
+            h('button', { class: 'link', type: 'button', text: c.status === 'active' ? 'Turn off' : 'Turn on', onclick: function () { api('POST', '/coupons/' + c.id, { status: c.status === 'active' ? 'off' : 'active', percent: c.percent }).then(function () { route(); }).catch(fail); } })));
+      }))));
+    }).catch(fail);
   }
 
   /* ---------- Book for a client ---------- */
