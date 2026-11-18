@@ -1,5 +1,8 @@
 === ATCOM Booking Engine ===
-Version: 0.20.0 (price list upload first; zones found by name)
+Version: 0.20.1 (price list upload first; zones found by name)
+
+New in 0.20.1:
+- New photos: Coach and Mini Coach (every vehicle category now has its picture).
 
 New in 0.20.0:
 - Portal → Upload price list (also offered on the Setup page, before Vehicles): one file sets up vehicles,
