@@ -58,7 +58,7 @@ final class ATC_Catalog {
 			array_push( $args, $w, $like, $like );
 		}
 		$code = strtoupper( $words[0] );
-		$sql  = "SELECT id, iata, name, city, country FROM {$t} WHERE status = 'active' AND " . implode( ' AND ', $where ) . ' ORDER BY (iata = %s) DESC, city, name LIMIT %d';
+		$sql  = "SELECT id, iata, name, city, country, lat, lng FROM {$t} WHERE status = 'active' AND " . implode( ' AND ', $where ) . ' ORDER BY (iata = %s) DESC, city, name LIMIT %d';
 		array_push( $args, $code, $limit );
 		return $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A ); // phpcs:ignore
 	}

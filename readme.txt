@@ -1,5 +1,10 @@
 === ATCOM Booking Engine ===
-Version: 0.15.0 (discount codes)
+Version: 0.15.1 (fix: hotels near the airport)
+
+New in 0.15.1:
+- Fix: the airport search did not send the airport's position, so the drop-off field said "Choose your airport
+  first" even with an airport chosen. Hotel suggestions now come from around the chosen airport again.
+
 
 New in 0.15.0:
 - Discount codes on the payment step ("Have a discount code?"); the total, the Stripe amount and the pay button
