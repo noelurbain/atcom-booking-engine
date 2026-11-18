@@ -131,7 +131,7 @@
         h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), types.map(function (t) { return h('th', { scope: 'col' }, h('div', { class: 'strong', text: t.name }), h('small', { class: 'atc-muted', text: 'up to ' + t.max_passengers + (t.offered && t.offered !== 'live' ? ' · ' + t.offered : '') })); }))),
         h('tbody', null, rows.map(function (z) {
           return h('tr', null,
-            h('th', { scope: 'row' }, h('div', { text: z.name }), z.status === 'proposed' ? h('span', { class: 'chip orange', text: 'Zone pending' }) : (!z.shaped ? h('span', { class: 'chip grey', text: 'Shape coming' }) : null)),
+            h('th', { scope: 'row' }, h('div', { text: z.name }), z.status === 'proposed' ? h('span', { class: 'chip orange', text: 'Zone pending' }) : (!z.shaped ? h('span', { class: 'chip grey', text: 'Shape coming' }) : (z.own ? h('span', { class: 'chip green', text: 'Drawn by ' + (who === 'staff' ? 'them' : 'you') }) : null))),
             types.map(function (t) {
               var c = cell(z.id, t.id);
               var on = sel && sel.zone.id === z.id && sel.type.id === t.id;

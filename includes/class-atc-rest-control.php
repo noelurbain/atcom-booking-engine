@@ -220,7 +220,7 @@ final class ATC_REST_Control {
 		self::route(
 			'/zones',
 			array(
-				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Catalog::zones( (int) $r['airport_id'] ) ),
+				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Catalog::zones( (int) $r['airport_id'], false, (int) $r['party_id'] ?: null ) ),
 				'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Catalog::save_zone( self::body( $r ) ) ),
 			)
 		);

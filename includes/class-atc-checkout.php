@@ -36,7 +36,7 @@ final class ATC_Checkout {
 		foreach ( $res['offers'] as $o ) {
 			if ( $o['service_id'] === $service_id ) {
 				$dir   = 'round_trip' === $q['trip'] ? 'round_trip' : 'one_way';
-				$price = $wpdb->get_row( $wpdb->prepare( 'SELECT retail_cents, provider_cents FROM ' . self::t( 'prices' ) . ' WHERE service_id = %d AND zone_id = %d AND direction = %s AND valid_from IS NULL', $service_id, (int) $res['destination']['zone_id'], $dir ), ARRAY_A );
+				$price = $wpdb->get_row( $wpdb->prepare( 'SELECT retail_cents, provider_cents FROM ' . self::t( 'prices' ) . ' WHERE service_id = %d AND zone_id = %d AND direction = %s AND valid_from IS NULL', $service_id, (int) ( $o['zone_id'] ?? $res['destination']['zone_id'] ), $dir ), ARRAY_A );
 				if ( ! $price ) {
 					break;
 				}
@@ -212,7 +212,7 @@ final class ATC_Checkout {
 			'timezone' => $s['airport']['timezone'],
 			'airport'  => $s['airport']['name'],
 			'to'       => $s['destination']['label'],
-			'zone'     => $s['destination']['zone'],
+			'zone'     => ! empty( $o['zone_id'] ) && (int) $o['zone_id'] !== (int) $s['destination']['zone_id'] ? (string) ( ATC_Catalog::zone( (int) $o['zone_id'] )['name'] ?? $s['destination']['zone'] ) : $s['destination']['zone'],
 			'vehicle'  => $o['name'],
 			'slug'     => $o['slug'],
 			'provider' => $o['provider'],
@@ -307,7 +307,7 @@ final class ATC_Checkout {
 					'booking_id'     => $booking_id,
 					'service_id'     => (int) $o['service_id'],
 					'party_id'       => (int) $o['party_id'],
-					'zone_id'        => (int) $s['destination']['zone_id'] ?: null,
+					'zone_id'        => (int) ( $o['zone_id'] ?? $s['destination']['zone_id'] ) ?: null,
 					'retail_cents'   => $last ? $o['retail'] - intdiv( $o['retail'], $n ) * ( $n - 1 ) : intdiv( $o['retail'], $n ),
 					'provider_cents' => $last ? $o['provider'] - intdiv( $o['provider'], $n ) * ( $n - 1 ) : intdiv( $o['provider'], $n ),
 					'status'         => 'held',

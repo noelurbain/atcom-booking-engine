@@ -107,6 +107,7 @@ final class ATC_Schema {
 		$sql[] = "CREATE TABLE {$p}zones (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   airport_id bigint(20) unsigned NOT NULL,
+  party_id bigint(20) unsigned NULL,
   name varchar(190) NOT NULL,
   slug varchar(190) NOT NULL,
   polygon longtext NULL,
@@ -114,7 +115,8 @@ final class ATC_Schema {
   sort int(11) NOT NULL DEFAULT 0,
   status varchar(20) NOT NULL DEFAULT 'active',
   PRIMARY KEY  (id),
-  UNIQUE KEY airport_slug (airport_id,slug)
+  UNIQUE KEY airport_slug (airport_id,slug),
+  KEY airport_party (airport_id,party_id)
 ) $c;";
 
 		// Hotels and addresses, matched to a zone.

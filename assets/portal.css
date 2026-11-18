@@ -67,3 +67,11 @@ h2.section{margin:8px 0 0;font-size:18px}
 .card.warn.row{border:1px solid #FAD7A8;background:#FFF8EE}
 .atc-main table.bare td:first-child{text-align:left;font-weight:500;white-space:normal}
 .card.warn.row{flex-direction:row;justify-content:space-between}
+.zd-tools{display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:#FFF8EE}
+.zd-tools.hidden{display:none}
+.zd-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.zd-bar input{flex:1 1 200px;min-width:0}
+.zd-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.zd-row.on{background:#FFF8EE}
+.zd-swatch{width:14px;height:14px;border-radius:4px;background:#2E9E55;opacity:.7;border:2px solid #1F6B35;flex:0 0 14px}
+.zd-acts{margin-left:auto;display:flex;gap:12px}

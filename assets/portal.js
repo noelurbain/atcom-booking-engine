@@ -65,7 +65,7 @@
     ['directory', 'Directory profile', 'directory'],
     ['vehicles', 'Vehicles', 'vehicles'],
     ['coverage', 'Zones you serve', 'coverage'],
-    ['prices', 'Prices', null],
+    ['prices', 'Prices', 'prices'],
     ['extras', 'Extras', null],
     ['meeting', 'Meeting travelers', null],
     ['documents', 'Documents', 'documents'],
@@ -319,7 +319,7 @@
 
   function viewSetup() {
     var p = me.provider, s = me.steps;
-    var keys = ['company', 'directory', 'vehicles', 'coverage', 'documents', 'payout', 'agreement', 'approval'];
+    var keys = ['company', 'directory', 'vehicles', 'coverage', 'prices', 'documents', 'payout', 'agreement', 'approval'];
     var done = keys.filter(function (k) { return s[k].state === 'done'; }).length;
     var welcome = /welcome=1/.test(location.search);
     add(app, [
@@ -343,7 +343,8 @@
             company: 'Next: complete your company details.',
             directory: 'Next: add your logo and a short description to your directory profile.',
             vehicles: 'Next: tick the vehicle categories you sell and add your vehicles.',
-            coverage: 'Next: pick the zones you serve on the map.',
+            coverage: 'Next: draw the zones you serve on the map.',
+            prices: 'Next: set a price for each zone and vehicle category.',
             documents: 'Next: upload your permit and your liability insurance.',
             payout: 'Next: tell us where to send your money.',
             agreement: 'Next: read and accept the provider agreement.'
@@ -590,7 +591,9 @@
   function viewCoverage() {
     var airport = me.airport;
     var offered = me.services.filter(function (s) { return s.status !== 'paused' && s.airport_id == airport.id; });
-    add(app, head('Zones you serve', 'Tick every zone where you pick up or drop off travelers. You need a price for each zone you tick.'));
+    var ours = me.zones.filter(function (z) { return !z.own; });
+    var mine = me.zones.filter(function (z) { return z.own; });
+    add(app, head('Zones you serve', 'Draw the areas where you pick up and drop off travelers. Each zone gets its own price on the next step.' + (ours.length ? ' You can also tick the zones we already drew.' : '')));
     if (!offered.length) {
       add(app, h('section', { class: 'card pad' }, h('p', { text: 'First tick the vehicle categories you sell.' }),
         h('div', { class: 'atc-actions' }, h('a', { class: 'btn dark', href: C.base + 'vehicles/', 'data-go': 'vehicles', text: 'Go to Vehicles' }))));
@@ -599,62 +602,182 @@
     var chosen = {};
     offered.forEach(function (s) { s.zone_ids.forEach(function (z) { chosen[z] = true; }); });
 
+    var map = null, polys = {}, labels = [];
+    var mode = null; // null | {draw: pts, line, dots} | {edit: id}
     var mapBox = h('div', { class: 'atc-map' });
-    var list = h('div', { class: 'ticks col' });
-    var saveBtn = h('button', { class: 'btn dark', type: 'button', text: 'Save zones' });
-    var count = h('span', { class: 'atc-muted' });
-    function refreshCount() { count.textContent = Object.keys(chosen).filter(function (k) { return chosen[k]; }).length + ' of ' + me.zones.length + ' zones'; }
-
-    me.zones.forEach(function (z) {
-      var cb = h('input', { type: 'checkbox', checked: !!chosen[z.id] });
-      cb.addEventListener('change', function () { chosen[z.id] = cb.checked; paint(); refreshCount(); });
-      z._cb = cb;
-      add(list, h('label', { class: 'tick' }, cb, z.name));
-    });
-    saveBtn.addEventListener('click', function () {
-      saveBtn.disabled = true;
-      api('PUT', '/coverage', { airport_id: airport.id, zone_ids: Object.keys(chosen).filter(function (k) { return chosen[k]; }).map(Number) })
-        .then(function (d) { saved(d, 'Zones saved.'); }).catch(fail).then(function () { saveBtn.disabled = false; });
-    });
-    refreshCount();
+    var tools = h('div', { class: 'zd-tools' });
+    var side = h('section', { class: 'card pad atc-col' });
 
     add(app, h('div', { class: 'atc-split' },
-      h('section', { class: 'card atc-mapcard' }, mapBox, h('p', { class: 'atc-note', text: 'Click a zone on the map or in the list to add or remove it.' })),
-      h('section', { class: 'card pad atc-col' },
-        h('div', { class: 'atc-actions' }, h('button', { class: 'link', type: 'button', onclick: function () { me.zones.forEach(function (z) { chosen[z.id] = true; z._cb.checked = true; }); paint(); refreshCount(); }, text: 'All' }),
-          h('button', { class: 'link', type: 'button', onclick: function () { chosen = {}; me.zones.forEach(function (z) { z._cb.checked = false; }); paint(); refreshCount(); }, text: 'None' }), count),
-        list, h('div', { class: 'atc-actions' }, saveBtn))));
+      h('section', { class: 'card atc-mapcard' }, tools, mapBox),
+      side));
 
-    if (!me.zones.length) { clear(list); add(list, h('p', { class: 'atc-muted', text: 'Our team is still drawing the zones for this airport.' })); }
+    /* ----- side panel ----- */
+    function drawSide() {
+      clear(side);
+      add(side, h('div', { class: 'row-flat' }, h('h2', { text: 'Your zones' }),
+        h('button', { class: 'btn dark', type: 'button', text: 'Draw a zone', disabled: !!mode || !map, onclick: startDraw })));
+      if (!mine.length) add(side, h('p', { class: 'atc-muted', text: ours.length ? 'None yet. Draw your own zones, or tick ours below.' : 'None yet. Press “Draw a zone” and click around the area on the map.' }));
+      mine.forEach(function (z) {
+        add(side, h('div', { class: 'zd-row' + (mode && mode.edit === z.id ? ' on' : '') },
+          h('span', { class: 'zd-swatch' }), h('strong', { text: z.name }),
+          h('span', { class: 'zd-acts' },
+            h('button', { class: 'link', type: 'button', text: 'Rename', disabled: !!mode, onclick: function () { rename(z); } }),
+            h('button', { class: 'link', type: 'button', text: 'Reshape', disabled: !!mode || !map, onclick: function () { startEdit(z); } }),
+            h('button', { class: 'link', type: 'button', text: 'Delete', disabled: !!mode, onclick: function () { removeZone(z); } }))));
+      });
+      if (ours.length) {
+        var list = h('div', { class: 'ticks col' });
+        ours.forEach(function (z) {
+          var cb = h('input', { type: 'checkbox', checked: !!chosen[z.id] });
+          cb.addEventListener('change', function () { chosen[z.id] = cb.checked; paint(); });
+          z._cb = cb;
+          add(list, h('label', { class: 'tick' }, cb, z.name));
+        });
+        var saveBtn = h('button', { class: 'btn', type: 'button', text: 'Save the zones I ticked', onclick: function () {
+          saveBtn.disabled = true;
+          var ids = Object.keys(chosen).filter(function (k) { return chosen[k]; }).map(Number);
+          mine.forEach(function (z) { if (ids.indexOf(z.id) < 0) ids.push(z.id); });
+          api('PUT', '/coverage', { airport_id: airport.id, zone_ids: ids }).then(function (d) { saved(d, 'Zones saved.'); }).catch(fail).then(function () { saveBtn.disabled = false; });
+        } });
+        add(side, [h('h2', { text: 'Our zones', style: 'margin-top:18px' }),
+          h('p', { class: 'small atc-muted', text: 'Already drawn by us. Tick the ones you serve too. Where one of your zones covers an address, travelers get your price for your zone.' }),
+          h('div', { class: 'atc-actions' },
+            h('button', { class: 'link', type: 'button', text: 'All', onclick: function () { ours.forEach(function (z) { chosen[z.id] = true; z._cb.checked = true; }); paint(); } }),
+            h('button', { class: 'link', type: 'button', text: 'None', onclick: function () { ours.forEach(function (z) { chosen[z.id] = false; z._cb.checked = false; }); paint(); } })),
+          list, h('div', { class: 'atc-actions' }, saveBtn)]);
+      }
+      if (mine.length || Object.keys(chosen).some(function (k) { return chosen[k]; })) {
+        add(side, h('div', { class: 'atc-actions', style: 'margin-top:18px' }, h('a', { class: 'btn dark', href: C.base + 'prices/', 'data-go': 'prices', text: 'Next: set your prices →' })));
+      }
+    }
+
+    /* ----- toolbar over the map while drawing or reshaping ----- */
+    function drawTools() {
+      clear(tools);
+      if (!mode) { tools.className = 'zd-tools hidden'; return; }
+      tools.className = 'zd-tools';
+      if (mode.draw) {
+        var n = mode.draw.length;
+        var name = h('input', { type: 'text', maxlength: 100, placeholder: 'Zone name, e.g. Hotel Zone', value: mode.name || '' });
+        name.addEventListener('input', function () { mode.name = name.value; save.disabled = n < 3 || !name.value.trim(); });
+        var save = h('button', { class: 'btn dark', type: 'button', text: 'Save zone', disabled: n < 3 || !(mode.name || '').trim(), onclick: function () {
+          save.disabled = true;
+          api('POST', '/zones', { name: name.value, polygon: mode.draw.map(function (p) { return [p.lat(), p.lng()]; }) })
+            .then(function (d) { stopMode(); saved(d, name.value + ' saved. Now give it a price.'); }).catch(function (e) { save.disabled = false; fail(e); });
+        } });
+        add(tools, [h('strong', { text: n < 3 ? 'Click on the map around the area (' + n + ' of at least 3 points)' : n + ' points. Keep clicking to follow the edge, then name it and save.' }),
+          h('div', { class: 'zd-bar' }, name,
+            h('button', { class: 'btn', type: 'button', text: 'Undo point', disabled: !n, onclick: undoPoint }),
+            h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: stopMode }), save)]);
+        if (n >= 3) setTimeout(function () { if (!name.value) name.focus(); }, 0);
+      } else if (mode.edit) {
+        add(tools, [h('strong', { text: 'Drag the white points to move the edge. Drag a small middle point to add a corner.' }),
+          h('div', { class: 'zd-bar' },
+            h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: function () { stopMode(); paintAll(); } }),
+            h('button', { class: 'btn dark', type: 'button', text: 'Save shape', onclick: function () {
+              var pts = polys[mode.edit].getPath().getArray().map(function (p) { return [p.lat(), p.lng()]; });
+              api('PUT', '/zones/' + mode.edit, { polygon: pts }).then(function (d) { stopMode(); saved(d, 'Shape saved.'); }).catch(fail);
+            } }))]);
+      }
+    }
+
+    function startDraw() {
+      mode = { draw: [], name: '', line: new google.maps.Polyline({ map: map, strokeColor: '#E07A1F', strokeWeight: 3, clickable: false }), dots: [] };
+      map.setOptions({ draggableCursor: 'crosshair' });
+      Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: false }); });
+      drawTools(); drawSide();
+    }
+    function addPoint(p) {
+      mode.draw.push(p);
+      mode.line.setPath(mode.draw.concat(mode.draw.length > 2 ? [mode.draw[0]] : []));
+      mode.dots.push(new google.maps.Marker({ map: map, position: p, clickable: false,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: '#E07A1F', fillOpacity: 1, strokeColor: '#FFFFFF', strokeWeight: 1 } }));
+      drawTools();
+    }
+    function undoPoint() {
+      if (!mode || !mode.draw || !mode.draw.length) return;
+      mode.draw.pop();
+      var d = mode.dots.pop(); if (d) d.setMap(null);
+      mode.line.setPath(mode.draw.concat(mode.draw.length > 2 ? [mode.draw[0]] : []));
+      drawTools();
+    }
+    function startEdit(z) {
+      mode = { edit: z.id };
+      polys[z.id].setOptions({ editable: true, zIndex: 9 });
+      var b = new google.maps.LatLngBounds();
+      z.polygon.forEach(function (p) { b.extend({ lat: p[0], lng: p[1] }); });
+      map.fitBounds(b, 60);
+      drawTools(); drawSide();
+    }
+    function stopMode() {
+      if (mode && mode.line) { mode.line.setMap(null); mode.dots.forEach(function (d) { d.setMap(null); }); }
+      if (mode && mode.edit && polys[mode.edit]) polys[mode.edit].setOptions({ editable: false });
+      mode = null;
+      if (map) { map.setOptions({ draggableCursor: null }); Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: true }); }); }
+      drawTools(); drawSide();
+    }
+    function rename(z) {
+      var n = window.prompt('New name for ' + z.name, z.name);
+      if (!n || n.trim() === z.name) return;
+      api('PUT', '/zones/' + z.id, { name: n }).then(function (d) { saved(d, 'Renamed.'); }).catch(fail);
+    }
+    function removeZone(z) {
+      if (!window.confirm('Delete ' + z.name + '? Travelers will no longer find you there.')) return;
+      api('DELETE', '/zones/' + z.id).then(function (d) { saved(d, z.name + ' deleted.'); }).catch(fail);
+    }
 
     function paint() {
-      Object.keys(polys).forEach(function (id) {
-        var on = !!chosen[id];
-        polys[id].setOptions({ fillColor: on ? '#FBA53E' : '#FFFFFF', fillOpacity: on ? 0.5 : 0.25, strokeWeight: on ? 2 : 1 });
+      ours.forEach(function (z) {
+        if (!polys[z.id]) return;
+        var on = !!chosen[z.id];
+        polys[z.id].setOptions({ fillColor: on ? '#FBA53E' : '#FFFFFF', fillOpacity: on ? 0.45 : 0.2, strokeWeight: on ? 2 : 1, strokeColor: '#15171C' });
       });
     }
-    loadMaps().then(function () {
-      map = new google.maps.Map(mapBox, { center: { lat: parseFloat(airport.lat), lng: parseFloat(airport.lng) }, zoom: 9, mapTypeControl: false, streetViewControl: false, clickableIcons: false, gestureHandling: 'greedy' });
-      polys = {};
+    function paintAll() {
+      Object.keys(polys).forEach(function (id) { polys[id].setMap(null); });
+      labels.forEach(function (l) { l.setMap(null); });
+      polys = {}; labels = [];
       var b = new google.maps.LatLngBounds();
       me.zones.forEach(function (z) {
         var path = z.polygon.map(function (p) { return { lat: p[0], lng: p[1] }; });
         path.forEach(function (p) { b.extend(p); });
-        var poly = new google.maps.Polygon({ map: map, paths: path, strokeColor: '#15171C', strokeOpacity: 0.9 });
-        poly.addListener('click', function () { chosen[z.id] = !chosen[z.id]; z._cb.checked = chosen[z.id]; paint(); refreshCount(); });
+        var poly = new google.maps.Polygon(z.own
+          ? { map: map, paths: path, strokeColor: '#1F6B35', strokeWeight: 2, fillColor: '#2E9E55', fillOpacity: 0.35, zIndex: 3 }
+          : { map: map, paths: path, strokeColor: '#15171C', strokeOpacity: 0.9, zIndex: 1 });
+        if (!z.own) poly.addListener('click', function () { if (mode) return; chosen[z.id] = !chosen[z.id]; if (z._cb) z._cb.checked = chosen[z.id]; paint(); });
+        poly.addListener('click', function (e) { if (mode && mode.draw) addPoint(e.latLng); });
         polys[z.id] = poly;
+        if (z.own) {
+          var c = path.reduce(function (a, p) { return { lat: a.lat + p.lat / path.length, lng: a.lng + p.lng / path.length }; }, { lat: 0, lng: 0 });
+          labels.push(new google.maps.Marker({ map: map, position: c, clickable: false, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 }, label: { text: z.name, color: '#15171C', fontSize: '12px', fontWeight: '700' } }));
+        }
       });
       if (!b.isEmpty()) map.fitBounds(b, 30);
       paint();
+    }
+
+    drawSide(); drawTools();
+    loadMaps().then(function () {
+      map = new google.maps.Map(mapBox, { center: { lat: parseFloat(airport.lat), lng: parseFloat(airport.lng) }, zoom: 10, mapTypeControl: false, streetViewControl: false, clickableIcons: false, gestureHandling: 'greedy' });
+      map.addListener('click', function (e) { if (mode && mode.draw) addPoint(e.latLng); });
+      paintAll(); drawSide();
     }).catch(function (e) {
       clear(mapBox);
-      add(mapBox, h('div', { class: 'atc-nomap' }, h('p', { text: e.message === 'nokey' ? 'The map is not available right now. Use the list.' : e.message })));
+      add(mapBox, h('div', { class: 'atc-nomap' }, h('p', { text: e.message === 'nokey' ? 'The map is not available right now. Please try again later.' : e.message })));
     });
   }
 
   /* ---------- Prices ---------- */
 
   function viewPrices() {
+    var ps = me.steps.prices;
+    if (ps && ps.missing) {
+      add(app, h('section', { class: 'card pad warn' }, h('h2', { text: ps.missing + ' one-way price' + (ps.missing === 1 ? '' : 's') + ' still missing' }),
+        h('p', { class: 'small', text: 'Every zone you serve needs a price for every vehicle category you sell. Travelers can only book where there is a price.' }),
+        h('ul', { class: 'small', style: 'margin:0;padding-left:18px' }, ps.missing_list.map(function (m) { return h('li', { text: m.zone + ' · ' + m.vehicle }); })),
+        ps.missing > ps.missing_list.length ? h('p', { class: 'small atc-muted', text: 'and ' + (ps.missing - ps.missing_list.length) + ' more.' }) : null));
+    }
     var box = h('div', { class: 'pe-root' });
     add(app, box);
     window.ATCPrices.mount(box, {

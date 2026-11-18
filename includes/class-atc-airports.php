@@ -25,7 +25,7 @@ final class ATC_Airports {
 			$where = 'WHERE a.iata LIKE %s OR a.name LIKE %s OR a.city LIKE %s OR a.country = %s';
 			$args  = array( $like, $like, $like, strtoupper( $q ) );
 		}
-		$sql  = "SELECT a.*, (SELECT COUNT(*) FROM {$z} WHERE airport_id = a.id) zones, (SELECT COUNT(DISTINCT party_id) FROM {$s} WHERE airport_id = a.id) providers FROM {$t} a {$where} ORDER BY (a.iata IS NULL) DESC, a.country, a.city LIMIT 300";
+		$sql  = "SELECT a.*, (SELECT COUNT(*) FROM {$z} WHERE airport_id = a.id AND party_id IS NULL) zones, (SELECT COUNT(DISTINCT party_id) FROM {$s} WHERE airport_id = a.id) providers FROM {$t} a {$where} ORDER BY (a.iata IS NULL) DESC, a.country, a.city LIMIT 300";
 		$rows = $args ? $wpdb->get_results( $wpdb->prepare( $sql, ...$args ), ARRAY_A ) : $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore
 		foreach ( $rows as &$r ) {
 			$r['id']        = (int) $r['id'];

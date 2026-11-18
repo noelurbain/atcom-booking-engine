@@ -4,6 +4,8 @@
  *
  * Pricing rule (requirements): a hand-placed hotel wins; otherwise the zone shape that contains
  * the address; otherwise nothing to sell (we say so and show the nearest places we serve).
+ * Providers can also draw zones of their own: where the address sits inside one, that provider is priced
+ * by its own zone (the smallest one, if several), and by ours otherwise.
  * Only live providers with live services that serve the zone and have a price for the direction.
  * Every provider's offer is shown (two providers with a Minivan = two cards), with the provider's
  * name and stars (from 3 traveler reviews). Sorted by price, or by stars when the traveler asks.
@@ -129,6 +131,62 @@ final class ATC_Search {
 		);
 	}
 
+	/**
+	 * Zones that providers drew for themselves and that contain the point: party id => zone (id, name),
+	 * the smallest one per provider. Live providers only.
+	 */
+	private static function own_zones_at( int $airport_id, float $lat, float $lng ): array {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT z.id, z.name, z.polygon, z.party_id FROM ' . self::t( 'zones' ) . ' z
+				JOIN ' . self::t( 'parties' ) . " p ON p.id = z.party_id AND p.status = 'live'
+				WHERE z.airport_id = %d AND z.status = 'active' AND z.party_id IS NOT NULL",
+				$airport_id
+			),
+			ARRAY_A
+		);
+		$out = array();
+		foreach ( $rows as $r ) {
+			$poly = json_decode( (string) $r['polygon'], true );
+			if ( ! is_array( $poly ) || ! ATC_Geo::point_in_polygon( $lat, $lng, $poly ) ) {
+				continue;
+			}
+			$area = ATC_Geo::area_km2( $poly );
+			$pid  = (int) $r['party_id'];
+			if ( ! isset( $out[ $pid ] ) || $area < $out[ $pid ]['area'] ) {
+				$out[ $pid ] = array( 'id' => (int) $r['id'], 'name' => $r['name'], 'area' => $area );
+			}
+		}
+		return $out;
+	}
+
+	/** Offers at the address: providers' own zones first, then ours for everyone else. Each offer keeps its zone. */
+	private static function offers_at( int $airport_id, ?int $shared_zone, array $own, string $direction ): array {
+		$out  = array();
+		$seen = array();
+		foreach ( $own as $pid => $z ) {
+			foreach ( self::raw_offers( $airport_id, (int) $z['id'], $direction ) as $o ) {
+				if ( (int) $o['party_id'] === (int) $pid ) {
+					$o['zone_id']                    = (int) $z['id'];
+					$out[]                           = $o;
+					$seen[ (int) $o['service_id'] ] = true;
+				}
+			}
+		}
+		if ( $shared_zone ) {
+			foreach ( self::raw_offers( $airport_id, $shared_zone, $direction ) as $o ) {
+				// A provider with its own zone here prices this address by that zone only.
+				if ( ! isset( $seen[ (int) $o['service_id'] ] ) && ! isset( $own[ (int) $o['party_id'] ] ) ) {
+					$o['zone_id'] = $shared_zone;
+					$out[]        = $o;
+				}
+			}
+		}
+		usort( $out, static fn( $a, $b ) => (int) $a['sort'] <=> (int) $b['sort'] ?: (int) $a['retail_cents'] <=> (int) $b['retail_cents'] );
+		return $out;
+	}
+
 	/** Zone polygon center, for "nearest places we serve". */
 	private static function center( array $poly ): ?array {
 		if ( ! $poly ) {
@@ -216,13 +274,20 @@ final class ATC_Search {
 			$res['reason'] = 'no_destination';
 			return $res;
 		}
-		$at                 = ATC_Catalog::zone_at( (int) $airport['id'], $lat, $lng, $pid );
+		$at  = ATC_Catalog::zone_at( (int) $airport['id'], $lat, $lng, $pid );
+		$own = self::own_zones_at( (int) $airport['id'], $lat, $lng );
+		if ( ! $at['zone_id'] && $own ) {
+			// Outside our zones but inside a provider's: name the place by that zone.
+			$first        = reset( $own );
+			$at['zone_id'] = null;
+			$at['zone']    = $first['name'];
+		}
 		$res['destination'] = array( 'label' => $to, 'lat' => $lat, 'lng' => $lng, 'pid' => $pid, 'zone_id' => $at['zone_id'], 'zone' => $at['zone'] );
 
 		$utc              = self::pickup_utc( $q, $airport );
 		$res['pickup']    = array( 'utc' => $utc, 'date' => $q['date'], 'time' => $q['time'] );
 		$direction        = 'round_trip' === $q['trip'] ? 'round_trip' : 'one_way';
-		if ( ! $at['zone_id'] ) {
+		if ( ! $at['zone_id'] && ! $own ) {
 			$res['reason']  = 'coverage';
 			$res['nearest'] = self::nearest_served( $airport, $lat, $lng, $direction );
 			return $res;
@@ -231,7 +296,7 @@ final class ATC_Search {
 		$pax       = (int) $q['adults'] + (int) $q['children'];
 		$now       = time();
 		$lead      = null === $utc ? null : ( strtotime( $utc . ' UTC' ) - $now ) / 60;
-		$raw       = self::raw_offers( (int) $airport['id'], (int) $at['zone_id'], $direction );
+		$raw       = self::offers_at( (int) $airport['id'], $at['zone_id'] ? (int) $at['zone_id'] : null, $own, $direction );
 		$offers    = array();
 		$too_small = 0;
 		$too_soon  = array();
@@ -250,6 +315,7 @@ final class ATC_Search {
 			$offers[] = array(
 					'service_id'      => (int) $o['service_id'],
 					'party_id'        => (int) $o['party_id'],
+					'zone_id'         => (int) $o['zone_id'],
 					'vehicle_type_id' => (int) $o['vehicle_type_id'],
 					'provider'        => $o['provider'],
 					'rating'          => $rated ? round( (float) $o['rating_avg'], 1 ) : null,

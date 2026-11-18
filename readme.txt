@@ -1,5 +1,16 @@
 === ATCOM Booking Engine ===
-Version: 0.18.1 (directory profiles, automatic link-back check)
+Version: 0.19.0 (providers draw their own zones; prices required)
+
+New in 0.19.0:
+- Providers draw their own zones on the map (portal → Zones you serve → Draw a zone): click around the area,
+  name it, save. No approval: it is served at once by all their vehicle categories and needs prices next.
+  Rename, reshape (drag the points) or delete. They can still tick the zones we drew.
+- Search: where an address is inside a provider's own zone, that provider is priced by it (its smallest zone
+  if several); everyone else by our zones. Addresses outside our zones but inside a provider's zone now sell.
+  The booking keeps the zone it was priced by.
+- Prices is a setup step: done when every zone they serve has a one-way price for every vehicle category they
+  sell. The portal lists what is missing; Control warns before approving a provider that is not finished.
+- Control → provider: their own zones show in the zone list, marked "drawn by them".
 
 New in 0.18.1:
 - Provider websites show on their directory profile only while their site links back to us. Checked

@@ -58,14 +58,17 @@ final class ATC_Prices {
 		global $wpdb;
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT id, name, slug, sort, status, (polygon IS NOT NULL AND polygon <> \'\' AND polygon <> \'[]\') AS shaped FROM ' . self::t( 'zones' ) . "
-				WHERE airport_id = %d AND (status = 'active' OR (status = 'proposed' AND source = %s)) ORDER BY sort, name",
+				'SELECT id, name, slug, sort, status, party_id, (polygon IS NOT NULL AND polygon <> \'\' AND polygon <> \'[]\') AS shaped FROM ' . self::t( 'zones' ) . "
+				WHERE airport_id = %d AND ((status = 'active' AND (party_id IS NULL OR party_id = %d)) OR (status = 'proposed' AND source = %s)) ORDER BY party_id IS NOT NULL, sort, name",
 				$airport_id,
+				$party_id,
 				'provider:' . $party_id
 			),
 			ARRAY_A
 		);
 		foreach ( $rows as &$r ) {
+			$r['own']    = null !== $r['party_id'];
+			unset( $r['party_id'] );
 			$r['id']     = (int) $r['id'];
 			$r['shaped'] = (bool) $r['shaped'];
 		}

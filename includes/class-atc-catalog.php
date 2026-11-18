@@ -155,15 +155,22 @@ final class ATC_Catalog {
 
 	/* ---------- Zones ---------- */
 
-	public static function zones( int $airport_id, bool $with_archived = false ): array {
+	/**
+	 * An airport's zones. Ours (shared by every provider) by default; with $party_id, ours plus the ones that
+	 * provider drew for itself (own = true).
+	 */
+	public static function zones( int $airport_id, bool $with_archived = false, ?int $party_id = null ): array {
 		global $wpdb;
-		$z   = self::t( 'zones' );
-		$p   = self::t( 'places' );
-		$sql = "SELECT z.id, z.airport_id, z.name, z.slug, z.polygon, z.sort, z.status,
+		$z     = self::t( 'zones' );
+		$p     = self::t( 'places' );
+		$owner = $party_id ? $wpdb->prepare( ' AND (z.party_id IS NULL OR z.party_id = %d)', $party_id ) : ' AND z.party_id IS NULL';
+		$sql   = "SELECT z.id, z.airport_id, z.party_id, z.name, z.slug, z.polygon, z.sort, z.status,
 				(SELECT COUNT(*) FROM {$p} p WHERE p.zone_id = z.id AND p.status = 'active') AS places
-			FROM {$z} z WHERE z.airport_id = %d" . ( $with_archived ? '' : " AND z.status = 'active'" ) . ' ORDER BY z.sort, z.id';
+			FROM {$z} z WHERE z.airport_id = %d" . ( $with_archived ? '' : " AND z.status = 'active'" ) . $owner . ' ORDER BY z.party_id IS NOT NULL, z.sort, z.id';
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $airport_id ), ARRAY_A ); // phpcs:ignore
 		foreach ( $rows as &$r ) {
+			$r['own']      = null !== $r['party_id'];
+			$r['party_id'] = null === $r['party_id'] ? null : (int) $r['party_id'];
 			$r['polygon'] = json_decode( (string) $r['polygon'], true ) ?: array();
 			$r['places']  = (int) $r['places'];
 			$r['id']      = (int) $r['id'];
@@ -258,7 +265,7 @@ final class ATC_Catalog {
 	/** Re-run zone matching for places matched by address (hand-placed ones stay). Returns how many changed. */
 	public static function rematch_places( int $airport_id ): int {
 		global $wpdb;
-		$zones  = $wpdb->get_results( $wpdb->prepare( 'SELECT id, polygon, sort FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active'", $airport_id ), ARRAY_A );
+		$zones  = $wpdb->get_results( $wpdb->prepare( 'SELECT id, polygon, sort FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active' AND party_id IS NULL", $airport_id ), ARRAY_A );
 		$places = $wpdb->get_results( $wpdb->prepare( 'SELECT id, zone_id, lat, lng FROM ' . self::t( 'places' ) . " WHERE airport_id = %d AND status = 'active' AND (matched_by IS NULL OR matched_by <> 'manual') AND lat IS NOT NULL AND lng IS NOT NULL", $airport_id ), ARRAY_A );
 		$moved  = 0;
 		foreach ( $places as $p ) {
@@ -325,7 +332,7 @@ final class ATC_Catalog {
 			}
 		}
 
-		$zones = $wpdb->get_results( $wpdb->prepare( 'SELECT id, polygon, sort FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active'", $airport_id ), ARRAY_A );
+		$zones = $wpdb->get_results( $wpdb->prepare( 'SELECT id, polygon, sort FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active' AND party_id IS NULL", $airport_id ), ARRAY_A );
 		$zone  = ATC_Geo::match_zone( $lat, $lng, $zones );
 
 		$wpdb->insert(
@@ -469,7 +476,7 @@ final class ATC_Catalog {
 			}
 			$listed = (bool) $row;
 		}
-		$zones = $wpdb->get_results( $wpdb->prepare( 'SELECT id, polygon, sort FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active'", $airport_id ), ARRAY_A );
+		$zones = $wpdb->get_results( $wpdb->prepare( 'SELECT id, polygon, sort FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active' AND party_id IS NULL", $airport_id ), ARRAY_A );
 		$id    = ATC_Geo::match_zone( $lat, $lng, $zones );
 		$z     = $id ? self::zone( $id ) : null;
 		return array( 'zone_id' => $id, 'zone' => $z ? $z['name'] : null, 'how' => $id ? 'inside the shape' : 'outside every zone', 'listed' => ! empty( $listed ) );
@@ -647,12 +654,19 @@ final class ATC_Catalog {
 				if ( $sibling ) {
 					$in['zone_ids'] = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT zone_id FROM ' . self::t( 'service_zones' ) . ' WHERE service_id = %d', $sibling ) ) );
 				}
+				// No other category yet: the zones the provider drew itself.
+				if ( ! $sibling ) {
+					$own = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'zones' ) . " WHERE party_id = %d AND airport_id = %d AND status = 'active'", $party_id, $airport_id ) ) );
+					if ( $own ) {
+						$in['zone_ids'] = $own;
+					}
+				}
 			}
 			ATC_Install::log( 'service', $id, 'created', array( 'party_id' => $party_id, 'vehicle_type' => $type['name'] ) );
 		}
 
 		if ( isset( $in['zone_ids'] ) && is_array( $in['zone_ids'] ) ) {
-			$valid = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active'", $airport_id ) ) );
+			$valid = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active' AND (party_id IS NULL OR party_id = %d)", $airport_id, $party_id ) ) );
 			$want  = array_values( array_intersect( array_map( 'intval', $in['zone_ids'] ), $valid ) );
 			$sz    = self::t( 'service_zones' );
 			$wpdb->delete( $sz, array( 'service_id' => $id ) );

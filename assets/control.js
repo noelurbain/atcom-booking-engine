@@ -2100,7 +2100,7 @@
   function viewProvider(id) {
     clear(app);
     add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
-    Promise.all([api('GET', '/providers/' + id), api('GET', '/zones?airport_id=' + state.airportId)]).then(function (res) {
+    Promise.all([api('GET', '/providers/' + id), api('GET', '/zones?airport_id=' + state.airportId + '&party_id=' + id)]).then(function (res) {
       var d = res[0], zones = res[1], p = d.provider;
       clear(app);
 
@@ -2142,7 +2142,8 @@
         h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: p.name }), h('p', { class: 'atc-muted', text: 'Provider since ' + (p.created_at || '').slice(0, 10) + (p.contact_name ? ' · ' + p.contact_name : '') })),
           h('div', { class: 'atc-actions' }, statusChip(p.status),
             p.status !== 'live' ? h('button', { class: 'btn dark', type: 'button', onclick: function () {
-              if (!confirm('Set ' + p.name + ' live? Their offered vehicle categories become bookable and they get an email.')) return;
+              var notReady = ['company', 'vehicles', 'coverage', 'prices'].filter(function (k) { return d.steps[k] && d.steps[k].state !== 'done'; }).map(function (k) { return d.steps[k].name + ' (' + d.steps[k].label + ')'; });
+              if (!confirm((notReady.length ? 'Not finished yet: ' + notReady.join(', ') + '.\n\n' : '') + 'Set ' + p.name + ' live? Their offered vehicle categories become bookable and they get an email.')) return;
               api('PUT', '/providers/' + id, { status: 'live' }).then(function () { toast('Live.'); viewProvider(id); }).catch(fail);
             }, text: 'Approve and set live' }) : null)),
         h('div', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('strong', { text: 'Portal' }), portalCell({ id: id, name: p.name, email: p.email, portal: d.portal }, function () { viewProvider(id); }))),
@@ -2162,7 +2163,7 @@
   }
 
   function setupCard(d) {
-    var keys = ['company', 'directory', 'vehicles', 'coverage', 'documents', 'payout', 'agreement', 'approval'];
+    var keys = ['company', 'directory', 'vehicles', 'coverage', 'prices', 'documents', 'payout', 'agreement', 'approval'];
     var pay = d.payout;
     return h('section', { class: 'card pad' },
       h('h2', { text: 'Setup in the provider portal' }),
@@ -2216,7 +2217,7 @@
       var notice = h('input', { type: 'number', min: 0, step: '0.5', value: s ? s.min_notice_minutes / 60 : 24 });
       var zoneBoxes = zones.map(function (z) {
         var cb = h('input', { type: 'checkbox', value: z.id, checked: !!s && s.zone_ids.indexOf(z.id) !== -1 });
-        return h('label', { class: 'tick' }, cb, z.name);
+        return h('label', { class: 'tick' }, cb, z.name + (z.own ? ' (drawn by them)' : ''));
       });
       var body = h('div', { class: 'svc-body' + (offered.checked ? '' : ' hidden') },
         h('div', { class: 'grid5' },

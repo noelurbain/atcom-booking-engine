@@ -381,6 +381,15 @@ final class ATC_Partner {
 			'company'   => array( 'name' => 'Company details' ) + $st( $p['name'] && $p['phone'] && $p['email'] && $p['languages'], 'Done' ),
 			'vehicles'  => array( 'name' => 'Vehicles' ) + $st( $offered && $vehicles, 'Done' ),
 			'coverage'  => array( 'name' => 'Zones you serve' ) + $st( (bool) $zones, 'Done' ),
+			'prices'    => array( 'name' => 'Prices' ) + ( function () use ( $party_id, $st ) {
+				$mp = self::missing_prices( $party_id );
+				$ok = $mp['total'] > 0 && 0 === $mp['missing'];
+				$out = $st( $ok, 'Done' );
+				if ( ! $ok && $mp['missing'] ) {
+					$out['label'] = $mp['missing'] . ' missing';
+				}
+				return $out + array( 'missing' => $mp['missing'], 'total' => $mp['total'], 'missing_list' => $mp['list'] );
+			} )(),
 			'documents' => array( 'name' => 'Documents' ) + $st( $all_approved, 'Approved', $all_sent ),
 			'payout'    => array( 'name' => 'Payout details' ) + $st( ! empty( $raw ), 'Done' ),
 			'directory' => array( 'name' => 'Directory profile' ) + $st( ATC_Directory::step_done( $party_id ), 'Done' ),
@@ -616,6 +625,128 @@ final class ATC_Partner {
 		return array( 'accepted_at' => self::now() );
 	}
 
+	/* ---------- Zones a provider draws for itself ---------- */
+
+	const OWN_ZONES_MAX = 80;
+
+	/** The provider's main airport, where it draws. */
+	private static function home_airport( int $party_id ): ?array {
+		$p = ATC_Catalog::party( $party_id );
+		return $p && $p['home_airport_id'] ? ATC_Catalog::airport( (int) $p['home_airport_id'] ) : null;
+	}
+
+	/**
+	 * Creates or changes one of the provider's own zones. No approval: it is live for the provider at once,
+	 * and a new zone is served by all of its vehicle categories at that airport (it still needs prices).
+	 */
+	public static function save_own_zone( int $party_id, array $in, ?int $id = null ) {
+		global $wpdb;
+		$t    = self::t( 'zones' );
+		$zone = null;
+		if ( $id ) {
+			$zone = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE id = %d AND party_id = %d AND status = 'active'", $id, $party_id ), ARRAY_A );
+			if ( ! $zone ) {
+				return new WP_Error( 'atc_zone', 'That zone is not yours or no longer exists.', array( 'status' => 404 ) );
+			}
+			$airport = ATC_Catalog::airport( (int) $zone['airport_id'] );
+		} else {
+			$airport = self::home_airport( $party_id );
+			if ( ! $airport ) {
+				return new WP_Error( 'atc_zone', 'Set your main airport first.', array( 'status' => 400 ) );
+			}
+			$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$t} WHERE party_id = %d AND airport_id = %d AND status = 'active'", $party_id, (int) $airport['id'] ) );
+			if ( $count >= self::OWN_ZONES_MAX ) {
+				return new WP_Error( 'atc_zone', 'You have ' . self::OWN_ZONES_MAX . ' zones. Join or delete some before drawing more.', array( 'status' => 400 ) );
+			}
+		}
+		$data = array();
+		if ( ! $id || isset( $in['name'] ) ) {
+			$name = trim( sanitize_text_field( (string) ( $in['name'] ?? '' ) ) );
+			if ( '' === $name || mb_strlen( $name ) > 100 ) {
+				return new WP_Error( 'atc_zone_name', 'Give the zone a name travelers know, like "Hotel Zone" or "Playa del Carmen" (up to 100 characters).', array( 'status' => 400 ) );
+			}
+			$dupe = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE party_id = %d AND airport_id = %d AND status = 'active' AND name = %s AND id <> %d", $party_id, (int) $airport['id'], $name, (int) $id ) );
+			if ( $dupe ) {
+				return new WP_Error( 'atc_zone_name', 'You already have a zone called ' . $name . '.', array( 'status' => 400 ) );
+			}
+			$data['name'] = $name;
+		}
+		if ( ! $id || array_key_exists( 'polygon', $in ) ) {
+			$poly = ATC_Geo::clean_polygon( $in['polygon'] ?? null );
+			if ( ! $poly ) {
+				return new WP_Error( 'atc_zone_polygon', 'Draw the zone with at least 3 points on the map.', array( 'status' => 400 ) );
+			}
+			$area = ATC_Geo::area_km2( $poly );
+			if ( $area < 0.01 ) {
+				return new WP_Error( 'atc_zone_polygon', 'That zone is too small. Draw around the whole area.', array( 'status' => 400 ) );
+			}
+			if ( $area > 30000 ) {
+				return new WP_Error( 'atc_zone_polygon', 'That zone is too big. Draw smaller zones, each with its own price.', array( 'status' => 400 ) );
+			}
+			$clat = array_sum( array_column( $poly, 0 ) ) / count( $poly );
+			$clng = array_sum( array_column( $poly, 1 ) ) / count( $poly );
+			if ( null !== $airport['lat'] && ATC_Geo::km( (float) $airport['lat'], (float) $airport['lng'], $clat, $clng ) > 400 ) {
+				return new WP_Error( 'atc_zone_polygon', 'That zone is more than 400 km from ' . ATC_Catalog::airport_label( $airport ) . '.', array( 'status' => 400 ) );
+			}
+			$data['polygon'] = wp_json_encode( $poly );
+		}
+		if ( $id ) {
+			if ( $data ) {
+				$wpdb->update( $t, $data, array( 'id' => $id ) );
+				ATC_Install::log( 'zone', $id, 'updated', array( 'party_id' => $party_id, 'name' => $data['name'] ?? $zone['name'], 'reshaped' => isset( $data['polygon'] ) ) );
+			}
+			return array( 'id' => $id );
+		}
+		$base = 'p' . $party_id . '-' . ( sanitize_title( $data['name'] ) ?: 'zone' );
+		$slug = $base;
+		for ( $i = 2; $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE airport_id = %d AND slug = %s", (int) $airport['id'], $slug ) ); $i++ ) {
+			$slug = $base . '-' . $i;
+		}
+		$sort = 1000 + (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$t} WHERE party_id = %d", $party_id ) );
+		$wpdb->insert( $t, $data + array( 'airport_id' => (int) $airport['id'], 'party_id' => $party_id, 'slug' => $slug, 'source' => 'provider', 'sort' => $sort, 'status' => 'active' ) );
+		$id = (int) $wpdb->insert_id;
+		foreach ( ATC_Catalog::services( $party_id ) as $s ) {
+			if ( (int) $s['airport_id'] === (int) $airport['id'] && 'paused' !== $s['status'] ) {
+				$wpdb->replace( self::t( 'service_zones' ), array( 'service_id' => (int) $s['id'], 'zone_id' => $id ) );
+			}
+		}
+		ATC_Install::log( 'zone', $id, 'drawn', array( 'party_id' => $party_id, 'name' => $data['name'] ) );
+		return array( 'id' => $id );
+	}
+
+	/** Deletes one of the provider's own zones: it stops being served; its prices stay in the history. */
+	public static function delete_own_zone( int $party_id, int $id ) {
+		global $wpdb;
+		$t = self::t( 'zones' );
+		if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE id = %d AND party_id = %d AND status = 'active'", $id, $party_id ) ) ) {
+			return new WP_Error( 'atc_zone', 'That zone is not yours or no longer exists.', array( 'status' => 404 ) );
+		}
+		$wpdb->update( $t, array( 'status' => 'archived' ), array( 'id' => $id ) );
+		$wpdb->delete( self::t( 'service_zones' ), array( 'zone_id' => $id ) );
+		ATC_Install::log( 'zone', $id, 'archived', array( 'party_id' => $party_id ) );
+		return array( 'id' => $id );
+	}
+
+	/** Prices still missing: one-way, for each vehicle category the provider sells × each zone it serves. */
+	public static function missing_prices( int $party_id ): array {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT z.name zone, v.name vehicle FROM ' . self::t( 'services' ) . ' s
+				JOIN ' . self::t( 'service_zones' ) . ' sz ON sz.service_id = s.id
+				JOIN ' . self::t( 'zones' ) . " z ON z.id = sz.zone_id AND z.status = 'active'
+				JOIN " . self::t( 'vehicle_types' ) . ' v ON v.id = s.vehicle_type_id
+				LEFT JOIN ' . self::t( 'prices' ) . " pr ON pr.service_id = s.id AND pr.zone_id = sz.zone_id AND pr.direction = 'one_way' AND pr.valid_from IS NULL AND pr.retail_cents > 0
+				WHERE s.party_id = %d AND s.status <> 'paused' AND pr.service_id IS NULL
+				ORDER BY z.sort, z.name, v.sort",
+				$party_id
+			),
+			ARRAY_A
+		);
+		$total = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . self::t( 'services' ) . ' s JOIN ' . self::t( 'service_zones' ) . ' sz ON sz.service_id = s.id JOIN ' . self::t( 'zones' ) . " z ON z.id = sz.zone_id AND z.status = 'active' WHERE s.party_id = %d AND s.status <> 'paused'", $party_id ) );
+		return array( 'total' => $total, 'missing' => count( $rows ), 'list' => array_slice( $rows, 0, 12 ) );
+	}
+
 	/* ---------- Coverage ---------- */
 
 	/** Applies one set of zones to all of the provider's vehicle categories at an airport. */
@@ -625,7 +756,7 @@ final class ATC_Partner {
 		if ( ! $services ) {
 			return new WP_Error( 'atc_coverage', 'Add your vehicle categories first.', array( 'status' => 400 ) );
 		}
-		$valid = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active' AND polygon IS NOT NULL", $airport_id ) ) );
+		$valid = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active' AND polygon IS NOT NULL AND (party_id IS NULL OR party_id = %d)", $airport_id, $party_id ) ) );
 		$want  = array_values( array_intersect( array_map( 'intval', $zone_ids ), $valid ) );
 		$sz    = self::t( 'service_zones' );
 		foreach ( $services as $s ) {

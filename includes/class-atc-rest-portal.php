@@ -48,7 +48,7 @@ final class ATC_REST_Portal {
 			$all     = ATC_Catalog::airports();
 			$airport = $all ? $all[0] : null;
 		}
-		$zones = $airport ? array_values( array_filter( ATC_Catalog::zones( (int) $airport['id'] ), static fn( $z ) => ! empty( $z['polygon'] ) ) ) : array();
+		$zones = $airport ? array_values( array_filter( ATC_Catalog::zones( (int) $airport['id'], false, $pid ), static fn( $z ) => ! empty( $z['polygon'] ) ) ) : array();
 		foreach ( $zones as &$z ) {
 			unset( $z['places'] );
 		}
@@ -195,6 +195,30 @@ final class ATC_REST_Portal {
 		};
 		// Bookings: the provider's rides.
 		self::route( '/bookings', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Trips::list( self::pid(), (string) $r['filter'], max( 1, (int) $r['page'] ), ! empty( $r['all'] ) ) ) ) );
+		// Zones the provider draws itself (no approval).
+		self::route(
+			'/zones',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Partner::save_own_zone( self::pid(), self::body( $r ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( array( 'zone_id' => $res['id'] ) + self::me() );
+				},
+			)
+		);
+		self::route(
+			'/zones/(?P<id>\\d+)',
+			array(
+				'PUT'    => static function ( WP_REST_Request $r ) {
+					$res = ATC_Partner::save_own_zone( self::pid(), self::body( $r ), (int) $r['id'] );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( self::me() );
+				},
+				'DELETE' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Partner::delete_own_zone( self::pid(), (int) $r['id'] );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( self::me() );
+				},
+			)
+		);
+
 		// The provider's directory profile.
 		self::route(
 			'/directory',
