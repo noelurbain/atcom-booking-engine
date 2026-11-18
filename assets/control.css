@@ -227,3 +227,5 @@ table.report{min-width:1150px}
 .dir-check{display:flex;gap:8px;align-items:center;font-weight:600}
 .dir-hits{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .dir-hit{display:flex;gap:12px;align-items:center;justify-content:space-between;border:1px solid var(--line,#E6E1D8);border-radius:12px;padding:10px 12px;flex-wrap:wrap}
+.dir-bl{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line2);border-radius:14px;padding:14px 16px;background:var(--bg)}
+.dir-snip{display:flex;gap:10px;align-items:center}.dir-snip input{flex:1 1 auto;min-width:0}

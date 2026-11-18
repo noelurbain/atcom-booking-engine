@@ -37,6 +37,9 @@ final class ATC_Settings {
 			'ads_label'              => '',
 			// The public traveler count starts from this base.
 			'traveler_base'          => 1821,
+			// Directory: provider websites show only while they link back to one of these domains.
+			'dir_backlink_required'  => 1,
+			'backlink_domains'       => 'airporttransportation.com, airporttransportations.com',
 		);
 	}
 
@@ -94,6 +97,16 @@ final class ATC_Settings {
 		$out['ads_id']         = isset( $in['ads_id'] ) && preg_match( '/^AW-\d{6,}$/', strtoupper( trim( (string) $in['ads_id'] ) ) ) ? strtoupper( trim( (string) $in['ads_id'] ) ) : '';
 		$out['ads_label']      = isset( $in['ads_label'] ) ? substr( preg_replace( '/[^A-Za-z0-9_\-]/', '', (string) $in['ads_label'] ), 0, 60 ) : '';
 		$out['traveler_base']  = isset( $in['traveler_base'] ) ? max( 0, min( 10000000, (int) $in['traveler_base'] ) ) : $d['traveler_base'];
+		$out['dir_backlink_required'] = empty( $in['dir_backlink_required'] ) ? 0 : 1;
+		$doms = array();
+		foreach ( preg_split( '/[\s,]+/', strtolower( (string) ( $in['backlink_domains'] ?? $d['backlink_domains'] ) ) ) as $dom ) {
+			$dom = preg_replace( '#^(https?://)?(www\.)?#', '', trim( $dom ) );
+			$dom = preg_replace( '#/.*$#', '', $dom );
+			if ( preg_match( '/^[a-z0-9.-]+\.[a-z]{2,}$/', $dom ) ) {
+				$doms[] = $dom;
+			}
+		}
+		$out['backlink_domains'] = $doms ? implode( ', ', array_unique( $doms ) ) : $d['backlink_domains'];
 
 		// Live mode is refused until a live secret key exists in wp-config.php.
 		if ( 'live' === $out['stripe_mode'] && ! self::has_secret( 'live' ) ) {

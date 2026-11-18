@@ -151,6 +151,7 @@ final class ATC_REST_Control {
 				'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Directory::save( (int) $r['id'], self::body( $r ), true ) ),
 			)
 		);
+		self::route( '/providers/(?P<id>\\d+)/directory/check', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Directory::check_now( (int) $r['id'] ) ) ) );
 		self::route( '/providers/(?P<id>\\d+)/directory/link', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Directory::link( (int) $r['id'], (int) ( self::body( $r )['post_id'] ?? 0 ) ) ) ) );
 		self::route(
 			'/providers/(?P<id>\\d+)/directory/logo',

@@ -203,6 +203,7 @@ final class ATC_REST_Portal {
 				'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Directory::save( self::pid(), self::body( $r ) ) ),
 			)
 		);
+		self::route( '/directory/check', array( 'POST' => static fn() => self::out( ATC_Directory::check_now( self::pid() ) ) ) );
 		self::route(
 			'/directory/logo',
 			array(

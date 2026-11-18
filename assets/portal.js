@@ -398,6 +398,7 @@
     api('GET', '/directory').then(function (d) { dirEditor(box, d, {
       save: function (b) { return api('PUT', '/directory', b); },
       logo: function (fd) { return api('POST', '/directory/logo', fd, true); },
+      check: function () { return api('POST', '/directory/check'); },
       after: function () { api('GET', '/me').then(function (m) { me = m; nav(); }).catch(function () {}); },
       staff: false
     }); }).catch(fail);
@@ -416,7 +417,8 @@
       phone: h('input', { type: 'tel', value: d.phone || sug.phone || '' }),
       whatsapp: h('input', { type: 'tel', value: d.whatsapp || sug.phone || '' }),
       address: h('input', { type: 'text', maxlength: 190, value: d.address || '' }),
-      website: h('input', { type: 'url', placeholder: 'https://', value: d.website || sug.website || '' })
+      website: h('input', { type: 'url', placeholder: 'https://', value: d.website || sug.website || '' }),
+      blpage: h('input', { type: 'url', placeholder: 'https://', value: (d.backlink && d.backlink.page) || '' })
     };
     var count = h('small', { text: (f.summary.value.length) + ' / 300' });
     f.summary.addEventListener('input', function () { count.textContent = f.summary.value.length + ' / 300'; });
@@ -439,7 +441,32 @@
     file.addEventListener('change', function () { if (file.files.length) upBtn.click(); });
 
     var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Save profile' });
-    var showSite = o.staff ? h('input', { type: 'checkbox', checked: !!d.show_website }) : null;
+    var bl = d.backlink || { required: false, mode: 'auto', status: 'unchecked' };
+    var siteMode = o.staff ? h('select', null, [['auto', 'Automatic (follow the link check)'], ['always', 'Always show their website'], ['never', 'Never show their website']].map(function (x) { return h('option', { value: x[0], selected: bl.mode === x[0], text: x[1] }); })) : null;
+    var day = function (t) { return t ? t.slice(0, 16).replace('T', ' ') + ' UTC' : ''; };
+    var blText = !d.website ? 'No website yet.' : {
+      found: 'Link to us found' + (bl.nofollow ? ' (marked nofollow)' : '') + ' · checked ' + day(bl.checked),
+      missing: 'No link to us found on ' + (bl.page || d.website) + ' · checked ' + day(bl.checked),
+      error: 'We could not open ' + (bl.page || d.website) + (bl.error ? ': ' + bl.error : '') + ' · tried ' + day(bl.checked),
+      unchecked: 'Not checked yet.'
+    }[bl.status] || '';
+    var copyBtn = h('button', { class: 'btn', type: 'button', text: 'Copy', onclick: function () {
+      (navigator.clipboard ? navigator.clipboard.writeText(bl.snippet) : Promise.reject()).then(function () { toast('Copied.'); }).catch(function () { snip.select(); });
+    } });
+    var snip = h('input', { type: 'text', readonly: true, value: bl.snippet || '', style: 'font-family:monospace;font-size:13px', onfocus: function () { snip.select(); } });
+    var checkBtn = d.website && o.check ? h('button', { class: 'btn', type: 'button', text: 'Check now', onclick: function () {
+      checkBtn.disabled = true; checkBtn.textContent = 'Checking…';
+      o.check().then(function (nd) { toast(nd.backlink && nd.backlink.status === 'found' ? 'Link to us found.' : 'Checked.'); dirEditor(box, nd, o); }).catch(function (e) { checkBtn.disabled = false; checkBtn.textContent = 'Check now'; fail(e); });
+    } }) : null;
+    var blBox = h('div', { class: 'dir-bl' },
+      h('div', { class: 'row-flat' }, h('strong', { text: 'Your website on the profile' }),
+        h('span', { class: 'chip ' + (d.show_website ? 'green' : 'grey'), text: d.show_website ? 'Shown' : 'Not shown' })),
+      bl.required || o.staff ? h('p', { class: 'small', style: 'margin:0', text: blText }) : null,
+      bl.required && !o.staff ? h('p', { class: 'small atc-muted', style: 'margin:0', text: 'Your website shows on your profile while your site links to Airport Transportation. We check it every day. Add this link to your home page or to the page you name below:' }) : null,
+      bl.required ? h('div', { class: 'dir-snip' }, snip, copyBtn) : null,
+      bl.required || o.staff ? field('Page on your site with the link to us (optional)', f.blpage, 'Leave it empty if the link is on your home page.') : null,
+      o.staff ? field('Their website on the profile', siteMode, bl.required ? 'Automatic: shown while the link to us is there.' : 'The link check is off in Settings, so Automatic shows every website.') : null,
+      checkBtn ? h('div', { class: 'atc-actions' }, checkBtn, h('small', { class: 'atc-muted', text: 'Checks the website and page as saved.' })) : null);
     add(box, [
       h('section', { class: 'card pad' }, state,
         h('div', { class: 'row-flat', style: 'gap:16px;justify-content:flex-start' }, logoImg,
@@ -447,8 +474,8 @@
       h('form', { class: 'card pad', onsubmit: function (e) {
         e.preventDefault(); btn.disabled = true;
         var body = { title: f.title.value, summary: f.summary.value, about: f.about.value, services: f.services.value, destinations: f.destinations.value,
-          phone: f.phone.value, whatsapp: f.whatsapp.value, address: f.address.value, website: f.website.value };
-        if (showSite) body.show_website = showSite.checked ? 1 : 0;
+          phone: f.phone.value, whatsapp: f.whatsapp.value, address: f.address.value, website: f.website.value, backlink_page: f.blpage.value };
+        if (siteMode) body.site_mode = siteMode.value;
         o.save(body).then(function (nd) { toast(nd.url ? 'Saved. Your profile is updated.' : 'Saved.'); o.after ? o.after(nd) : null; dirEditor(box, nd, o); }).catch(function (e2) { btn.disabled = false; fail(e2); });
       } },
         h('h2', { text: 'What travelers read' }),
@@ -460,8 +487,8 @@
         h('h2', { text: 'Contact' }),
         h('p', { class: 'small atc-muted', text: 'Travelers see your phone and WhatsApp only when they tap "See phone" or "See WhatsApp".' }),
         h('div', { class: 'grid2' }, field('Phone', f.phone), field('WhatsApp', f.whatsapp), field('Address', f.address),
-          h('label', { class: 'field' }, h('span', { text: 'Website' }), f.website, h('small', { text: o.staff ? '' : (d.show_website ? 'Shows on your profile.' : 'Your website shows on your profile once your site links to Airport Transportation. Tell us at ' + C.support + ' when it does.') }))),
-        showSite ? h('label', { class: 'dir-check' }, showSite, h('span', { text: ' Show their website on the profile (they link back to us)' })) : null,
+          field('Website', f.website)),
+        blBox,
         d.location ? h('p', { class: 'small atc-muted', text: 'Listed in ' + d.location + (d.airport ? ' · main airport ' + d.airport : '') + '.' }) : null,
         h('div', { class: 'atc-actions' }, btn))
     ]);

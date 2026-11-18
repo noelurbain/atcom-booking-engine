@@ -1,5 +1,15 @@
 === ATCOM Booking Engine ===
-Version: 0.18.0 (directory profiles)
+Version: 0.18.1 (directory profiles, automatic link-back check)
+
+New in 0.18.1:
+- Provider websites show on their directory profile only while their site links back to us. Checked
+  automatically: every profile once a day (15 an hour), and right away when the website or the link page changes.
+  A link to any of our domains counts (Settings → Directory; subdomains too, nofollow too, flagged in Control).
+- Switch it on or off in Settings → Directory (on by default; off = every website shows). Per provider, Control
+  can force "always show" or "never show".
+- If a link that was there goes missing, the website comes off after two checks in a row; a site that does not
+  answer changes nothing. Profiles not checked yet keep what they show today.
+- Portal and Control: the link to copy, an optional "page with the link to us", the last check, and Check now.
 
 New in 0.18.0:
 - Each provider is linked to its company profile in the directory (/directory/company/...). On the first page
@@ -10,7 +20,7 @@ New in 0.18.0:
   New step "Directory profile" in the setup list.
 - New sign-ups get a draft profile (or are linked to their existing one); approving them publishes it.
 - Control → provider: Directory profile card (view, edit as them, link another profile, unlink, make one).
-  Their website shows on the profile only when our team ticks it (they link back to us).
+  Their website follows the automatic link-back check (0.18.1).
 
 New in 0.17.0:
 - Extras catalog (Control → Extras): infant, child and booster seats, a supermarket stop, beers, water and sodas,

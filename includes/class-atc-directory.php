@@ -7,8 +7,10 @@
  *   stays a draft until we approve them (approval publishes it). Profiles that were already public stay public.
  * - Providers edit their profile in the portal (Directory profile); our team can edit it, link it to another
  *   profile or unlink it from the provider page in Control.
- * - Contacts follow the theme's rules: phone and WhatsApp sit behind "See phone" / "See WhatsApp". The
- *   website shows only once our team switches it on (we ask for a link back to us).
+ * - Contacts follow the theme's rules: phone and WhatsApp sit behind "See phone" / "See WhatsApp".
+ * - The website shows only while their site links back to us (Settings → Directory, on by default): every
+ *   profile is checked once a day, and right away when the website changes. Our team can override it per
+ *   profile (always show / never show).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -23,6 +25,16 @@ final class ATC_Directory {
 		add_action( 'init', array( __CLASS__, 'maybe_link_all' ), 99 );
 		add_action( 'atc_provider_signed_up', array( __CLASS__, 'on_signup' ) );
 		add_action( 'atc_provider_live', array( __CLASS__, 'on_live' ) );
+		add_action( 'atc_hourly', array( __CLASS__, 'hourly' ) );
+		add_action( 'update_option_' . ATC_Settings::OPTION, array( __CLASS__, 'settings_changed' ), 10, 2 );
+	}
+
+	public static function settings_changed( $old, $new ): void {
+		$old = is_array( $old ) ? $old : array();
+		$new = is_array( $new ) ? $new : array();
+		if ( ( $old['dir_backlink_required'] ?? null ) !== ( $new['dir_backlink_required'] ?? null ) || ( $old['backlink_domains'] ?? null ) !== ( $new['backlink_domains'] ?? null ) ) {
+			self::apply_all();
+		}
 	}
 
 	private static function t( string $n ): string {
@@ -59,11 +71,7 @@ final class ATC_Directory {
 		}
 		if ( $post_id ) {
 			update_post_meta( $post_id, self::LINK, $party_id );
-			$m = self::meta( $post_id );
-			// A website already on a public profile was approved before: keep showing it.
-			if ( ! empty( $m['website'] ) && '' === (string) get_post_meta( $post_id, '_atc_site_show', true ) ) {
-				update_post_meta( $post_id, '_atc_site_show', '1' );
-			}
+			self::apply( $post_id );
 		}
 		ATC_Install::log( 'party', $party_id, $post_id ? 'directory_linked' : 'directory_unlinked', array( 'post_id' => $post_id ?: $old ) );
 		return self::profile( $party_id );
@@ -315,7 +323,7 @@ final class ATC_Directory {
 		}
 		$post = get_post( $pid );
 		$m    = self::meta( $pid );
-		$site = (string) get_post_meta( $pid, '_atc_site', true );
+		$site = self::site( $pid );
 		return $out + array(
 			'status'       => $post->post_status,
 			'url'          => 'publish' === $post->post_status ? get_permalink( $pid ) : '',
@@ -329,8 +337,9 @@ final class ATC_Directory {
 			'phone'        => (string) ( $m['phone'] ?? '' ),
 			'whatsapp'     => (string) ( $m['whatsapp'] ?? '' ),
 			'address'      => (string) ( $m['address'] ?? '' ),
-			'website'      => $site ?: (string) ( $m['website'] ?? '' ),
-			'show_website' => '1' === (string) get_post_meta( $pid, '_atc_site_show', true ),
+			'website'      => $site,
+			'show_website' => ! empty( $m['website'] ),
+			'backlink'     => self::backlink( $pid ),
 			'location'     => (string) ( $m['location'] ?? '' ),
 			'src'          => (string) get_post_meta( $pid, '_atc_src', true ),
 		);
@@ -382,27 +391,34 @@ final class ATC_Directory {
 		if ( isset( $in['address'] ) ) {
 			$m['address'] = mb_substr( sanitize_text_field( (string) $in['address'] ), 0, 190 );
 		}
+		$recheck = false;
 		if ( isset( $in['website'] ) ) {
-			$w = trim( (string) $in['website'] );
-			$w    = '' === $w ? '' : esc_url_raw( false === strpos( $w, '//' ) ? 'https://' . $w : $w, array( 'http', 'https' ) );
-			$was  = (string) get_post_meta( $pid, '_atc_site', true ) ?: (string) ( $m['website'] ?? '' );
+			$w   = self::url_in( (string) $in['website'] );
+			$was = self::site( $pid );
 			update_post_meta( $pid, '_atc_site', $w );
-			// A provider moving the link to another site needs our check again.
-			if ( ! $staff && self::host( $w ) !== self::host( $was ) ) {
-				update_post_meta( $pid, '_atc_site_show', '0' );
+			if ( $w !== $was ) {
+				$recheck = true;
+				if ( self::host( $w ) !== self::host( $was ) ) {
+					// Another site: what we knew about the old one no longer counts.
+					foreach ( array( '_atc_bl_status', '_atc_bl_found', '_atc_bl_ever', '_atc_bl_miss', '_atc_bl_checked', '_atc_bl_nofollow' ) as $k ) {
+						delete_post_meta( $pid, $k );
+					}
+				}
 			}
 		}
-		if ( $staff && isset( $in['show_website'] ) ) {
-			update_post_meta( $pid, '_atc_site_show', ! empty( $in['show_website'] ) ? '1' : '0' );
+		if ( isset( $in['backlink_page'] ) ) {
+			$bp   = self::url_in( (string) $in['backlink_page'] );
+			$site = isset( $in['website'] ) ? self::url_in( (string) $in['website'] ) : self::site( $pid );
+			if ( '' !== $bp && self::host( $bp ) !== self::host( $site ) ) {
+				return new WP_Error( 'atc_bl_page', 'The page with the link to us has to be on your own website (' . ( self::host( $site ) ?: 'add your website first' ) . ').', array( 'status' => 400 ) );
+			}
+			if ( $bp !== (string) get_post_meta( $pid, '_atc_bl_page', true ) ) {
+				update_post_meta( $pid, '_atc_bl_page', $bp );
+				$recheck = true;
+			}
 		}
-		$site = (string) get_post_meta( $pid, '_atc_site', true );
-		if ( '' === $site && ! empty( $m['website'] ) ) {
-			$site = (string) $m['website'];
-		}
-		if ( '1' === (string) get_post_meta( $pid, '_atc_site_show', true ) && '' !== $site ) {
-			$m['website'] = $site;
-		} else {
-			unset( $m['website'] );
+		if ( $staff && isset( $in['site_mode'] ) && in_array( $in['site_mode'], array( 'auto', 'always', 'never' ), true ) ) {
+			update_post_meta( $pid, '_atc_site_mode', $in['site_mode'] );
 		}
 		if ( empty( $m['category'] ) ) {
 			$m['category'] = 'Ground Transportation';
@@ -420,7 +436,216 @@ final class ATC_Directory {
 			self::place( $pid, $party_id );
 		}
 		self::refresh_seo( $pid );
+		$recheck && '' !== self::site( $pid ) ? self::check( $pid ) : self::apply( $pid );
 		ATC_Install::log( 'party', $party_id, 'directory_saved', array( 'post_id' => $pid, 'by' => $staff ? 'team' : 'provider' ) );
+		return self::profile( $party_id );
+	}
+
+	/* ---------- Website and the link back to us ---------- */
+
+	private static function url_in( string $u ): string {
+		$u = trim( $u );
+		return '' === $u ? '' : (string) esc_url_raw( false === strpos( $u, '//' ) ? 'https://' . $u : $u, array( 'http', 'https' ) );
+	}
+
+	/** The provider's website (kept apart from the profile, which shows it only when allowed). */
+	public static function site( int $pid ): string {
+		$s = (string) get_post_meta( $pid, '_atc_site', true );
+		if ( '' === $s ) {
+			$m = self::meta( $pid );
+			if ( ! empty( $m['website'] ) ) {
+				$s = (string) $m['website'];
+				update_post_meta( $pid, '_atc_site', $s );
+			}
+		}
+		return $s;
+	}
+
+	/** The domains a link must point to, from Settings. */
+	public static function our_domains(): array {
+		$list = preg_split( '/[\s,]+/', strtolower( (string) ATC_Settings::get( 'backlink_domains' ) ) );
+		$list = array_merge( $list, array( self::host( home_url( '/' ) ) ) );
+		return array_values( array_unique( array_filter( array_map( static fn( $d ) => preg_replace( '/^www\./', '', trim( $d ) ), $list ) ) ) );
+	}
+
+	/** The link we suggest providers add. */
+	public static function link_snippet(): string {
+		$d = self::our_domains()[0] ?? 'airporttransportation.com';
+		return '<a href="https://' . $d . '/">Airport transfers with Airport Transportation</a>';
+	}
+
+	public static function mode( int $pid ): string {
+		$m = (string) get_post_meta( $pid, '_atc_site_mode', true );
+		return in_array( $m, array( 'always', 'never' ), true ) ? $m : 'auto';
+	}
+
+	public static function backlink( int $pid ): array {
+		return array(
+			'required' => (bool) ATC_Settings::get( 'dir_backlink_required' ),
+			'mode'     => self::mode( $pid ),
+			'status'   => (string) get_post_meta( $pid, '_atc_bl_status', true ) ?: 'unchecked', // found | missing | error | unchecked
+			'checked'  => (string) get_post_meta( $pid, '_atc_bl_checked', true ),
+			'found'    => (string) get_post_meta( $pid, '_atc_bl_found', true ),
+			'nofollow' => '1' === (string) get_post_meta( $pid, '_atc_bl_nofollow', true ),
+			'page'     => (string) get_post_meta( $pid, '_atc_bl_page', true ),
+			'error'    => (string) get_post_meta( $pid, '_atc_bl_error', true ),
+			'snippet'  => self::link_snippet(),
+		);
+	}
+
+	/**
+	 * Visits the provider's page (the one they named, or their home page) and looks for a link to us.
+	 * A page that does not answer counts as nothing: the website keeps its current state until a real answer.
+	 */
+	public static function check( int $pid ): array {
+		$site = self::site( $pid );
+		$url  = (string) get_post_meta( $pid, '_atc_bl_page', true ) ?: $site;
+		update_post_meta( $pid, '_atc_bl_checked', current_time( 'mysql', true ) );
+		if ( '' === $url ) {
+			update_post_meta( $pid, '_atc_bl_status', 'unchecked' );
+			self::apply( $pid );
+			return self::backlink( $pid );
+		}
+		$res = wp_safe_remote_get(
+			$url,
+			array(
+				'timeout'             => 8,
+				'redirection'         => 5,
+				'limit_response_size' => 2 * MB_IN_BYTES,
+				'user-agent'          => 'Mozilla/5.0 (compatible; AirportTransportationBot/1.0; +https://airporttransportation.com/directory/)',
+				'headers'             => array( 'Accept' => 'text/html' ),
+			)
+		);
+		$code = is_wp_error( $res ) ? 0 : (int) wp_remote_retrieve_response_code( $res );
+		if ( is_wp_error( $res ) || $code >= 400 || $code < 200 ) {
+			update_post_meta( $pid, '_atc_bl_status', 'error' );
+			update_post_meta( $pid, '_atc_bl_error', is_wp_error( $res ) ? mb_substr( $res->get_error_message(), 0, 160 ) : 'The page answered ' . $code . '.' );
+			self::apply( $pid );
+			return self::backlink( $pid );
+		}
+		delete_post_meta( $pid, '_atc_bl_error' );
+		$found = self::find_link( (string) wp_remote_retrieve_body( $res ) );
+		if ( $found ) {
+			update_post_meta( $pid, '_atc_bl_status', 'found' );
+			update_post_meta( $pid, '_atc_bl_found', $found['href'] );
+			update_post_meta( $pid, '_atc_bl_nofollow', $found['nofollow'] ? '1' : '0' );
+			update_post_meta( $pid, '_atc_bl_ever', '1' );
+			update_post_meta( $pid, '_atc_bl_miss', 0 );
+		} else {
+			update_post_meta( $pid, '_atc_bl_status', 'missing' );
+			update_post_meta( $pid, '_atc_bl_miss', (int) get_post_meta( $pid, '_atc_bl_miss', true ) + 1 );
+			delete_post_meta( $pid, '_atc_bl_found' );
+		}
+		self::apply( $pid );
+		return self::backlink( $pid );
+	}
+
+	/** The first <a href> in the HTML that points to one of our domains. */
+	public static function find_link( string $html ): ?array {
+		if ( ! preg_match_all( '/<a\b([^>]*)>/i', $html, $tags ) ) {
+			return null;
+		}
+		$ours = self::our_domains();
+		foreach ( $tags[1] as $attrs ) {
+			if ( ! preg_match( '/\bhref\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', $attrs, $h ) ) {
+				continue;
+			}
+			$href = html_entity_decode( trim( $h[1] . ( $h[2] ?? '' ) . ( $h[3] ?? '' ) ), ENT_QUOTES );
+			if ( 0 === strpos( $href, '//' ) ) {
+				$href = 'https:' . $href;
+			}
+			if ( ! preg_match( '#^https?://#i', $href ) ) {
+				continue;
+			}
+			$host = self::host( $href );
+			foreach ( $ours as $d ) {
+				if ( $host === $d || str_ends_with( $host, '.' . $d ) ) {
+					return array( 'href' => mb_substr( $href, 0, 300 ), 'nofollow' => (bool) preg_match( '/\brel\s*=\s*["\']?[^"\'>]*\b(nofollow|sponsored|ugc)\b/i', $attrs ) );
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Puts the website on the public profile or takes it off.
+	 * Always / never: our team decided. Automatic: shown when the link check is off in Settings; when it is on,
+	 * shown once the link to us is found, and taken off when it is missing (after two checks in a row if it
+	 * was there before, so one bad day on their site does not hide it). No answer from their site changes nothing.
+	 */
+	public static function apply( int $pid ): void {
+		$site = self::site( $pid );
+		$m    = self::meta( $pid );
+		$now  = ! empty( $m['website'] );
+		$mode = self::mode( $pid );
+		if ( '' === $site || 'never' === $mode ) {
+			$show = false;
+		} elseif ( 'always' === $mode || ! ATC_Settings::get( 'dir_backlink_required' ) ) {
+			$show = true;
+		} else {
+			$st = (string) get_post_meta( $pid, '_atc_bl_status', true );
+			if ( 'found' === $st ) {
+				$show = true;
+			} elseif ( 'missing' === $st ) {
+				$show = $now && get_post_meta( $pid, '_atc_bl_ever', true ) && (int) get_post_meta( $pid, '_atc_bl_miss', true ) < 2;
+			} else {
+				$show = $now; // not checked yet, or no answer
+			}
+		}
+		if ( $show && ( ! $now || $m['website'] !== $site ) ) {
+			$m['website'] = $site;
+			update_post_meta( $pid, '_atc', $m );
+		} elseif ( ! $show && $now ) {
+			unset( $m['website'] );
+			update_post_meta( $pid, '_atc', $m );
+		}
+	}
+
+	/** Every hour, a few profiles whose last check is older than a day (all of them get checked daily). */
+	public static function hourly(): void {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT l.post_id, c.meta_value AS checked FROM {$wpdb->postmeta} l
+				JOIN {$wpdb->posts} p ON p.ID = l.post_id AND p.post_type = %s AND p.post_status IN ('publish','draft')
+				LEFT JOIN {$wpdb->postmeta} c ON c.post_id = l.post_id AND c.meta_key = '_atc_bl_checked'
+				LEFT JOIN {$wpdb->postmeta} s ON s.post_id = l.post_id AND s.meta_key = '_atc_site'
+				LEFT JOIN {$wpdb->postmeta} a ON a.post_id = l.post_id AND a.meta_key = '_atc'
+				WHERE l.meta_key = %s AND ( s.meta_value <> '' OR a.meta_value LIKE %s )
+				AND ( c.meta_value IS NULL OR c.meta_value < %s )
+				ORDER BY c.meta_value IS NOT NULL, c.meta_value LIMIT 15",
+				self::PT,
+				self::LINK,
+				'%s:7:"website"%',
+				gmdate( 'Y-m-d H:i:s', time() - 20 * HOUR_IN_SECONDS )
+			),
+			ARRAY_A
+		);
+		foreach ( $rows as $r ) {
+			self::check( (int) $r['post_id'] );
+		}
+	}
+
+	/** Settings changed (the link check switched on or off, or the domains): update every profile, no visits. */
+	public static function apply_all(): void {
+		global $wpdb;
+		foreach ( $wpdb->get_col( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s", self::LINK ) ) as $pid ) {
+			self::apply( (int) $pid );
+		}
+	}
+
+	/** "Check now" from the portal or Control: once a minute per profile. */
+	public static function check_now( int $party_id ) {
+		$pid = self::post_id( $party_id );
+		if ( ! $pid || '' === self::site( $pid ) ) {
+			return new WP_Error( 'atc_bl_nosite', 'Add the website first.', array( 'status' => 400 ) );
+		}
+		$key = 'atc_blc_' . $pid;
+		if ( get_transient( $key ) ) {
+			return new WP_Error( 'atc_bl_wait', 'We just checked. Try again in a minute.', array( 'status' => 429 ) );
+		}
+		set_transient( $key, 1, MINUTE_IN_SECONDS );
+		self::check( $pid );
 		return self::profile( $party_id );
 	}
 

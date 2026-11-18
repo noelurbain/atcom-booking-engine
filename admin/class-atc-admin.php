@@ -162,6 +162,11 @@ define( 'ATC_MAPS_SERVER_KEY', 'AIza…' );</pre>
 					<tr><th scope="row"><label for="ads_id">Google Ads conversion</label></th><td><input type="text" id="ads_id" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ads_id]" value="<?php echo esc_attr( $o['ads_id'] ); ?>" placeholder="AW-…"> / <input type="text" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ads_label]" value="<?php echo esc_attr( $o['ads_label'] ); ?>" placeholder="conversion label"><p class="description">Sent once per paid booking, with its value in USD.</p></td></tr>
 					<?php $num( 'traveler_base', 'Traveler count base', 'people (the public figure starts here and grows with real searches)' ); ?>
 				</table>
+				<h2>Directory</h2>
+				<table class="form-table" role="presentation">
+					<tr><th scope="row">Provider websites</th><td><input type="hidden" name="<?php echo esc_attr( $n ); ?>[dir_backlink_required]" value="0"><label><input type="checkbox" name="<?php echo esc_attr( $n ); ?>[dir_backlink_required]" value="1" <?php checked( ! empty( $o['dir_backlink_required'] ) ); ?>> Show a provider's website on its directory profile only while their site links back to us</label><p class="description">Checked automatically once a day, and right away when a provider changes its website. Unticked, every website shows. Per provider, Control can still force always or never.</p></td></tr>
+					<tr><th scope="row"><label for="backlink_domains">A link to any of these counts</label></th><td><input type="text" id="backlink_domains" class="regular-text" name="<?php echo esc_attr( $n ); ?>[backlink_domains]" value="<?php echo esc_attr( $o['backlink_domains'] ); ?>"><p class="description">Domains, separated by commas. Subdomains count too.</p></td></tr>
+				</table>
 				<?php submit_button(); ?>
 			</form>
 		</div>
