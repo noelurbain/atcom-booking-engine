@@ -158,6 +158,7 @@ final class ATC_Partner {
 		$wpdb->insert( self::t( 'party_users' ), array( 'party_id' => $party_id, 'user_id' => $user_id, 'role' => 'owner' ) );
 		update_user_meta( $user_id, 'atc_password_set', time() );
 		ATC_Install::log( 'party', $party_id, 'signed_up', array( 'user_id' => $user_id ) );
+		do_action( 'atc_provider_signed_up', $party_id );
 
 		self::mail_welcome( $email, $contact, $company );
 		self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nMain airport: " . ATC_Catalog::airport_label( $airport ) . ( $new_airport ? "\n\nNEW AIRPORT, added from Google: {$airport['name']} ({$airport['city']}, {$airport['country']}, time zone {$airport['timezone']}). It has no IATA code and no zones yet." : '' ) . "\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) );
@@ -382,6 +383,7 @@ final class ATC_Partner {
 			'coverage'  => array( 'name' => 'Zones you serve' ) + $st( (bool) $zones, 'Done' ),
 			'documents' => array( 'name' => 'Documents' ) + $st( $all_approved, 'Approved', $all_sent ),
 			'payout'    => array( 'name' => 'Payout details' ) + $st( ! empty( $raw ), 'Done' ),
+			'directory' => array( 'name' => 'Directory profile' ) + $st( ATC_Directory::step_done( $party_id ), 'Done' ),
 			'agreement' => array( 'name' => 'Agreement' ) + $st( ! empty( $p['agreement_accepted_at'] ), 'Accepted' ),
 			'approval'  => array( 'name' => 'Our approval' ) + $st( 'live' === $p['status'], 'Live', 'pending' === $p['status'], 'Pending' ),
 		);

@@ -91,6 +91,7 @@
       a.classList.toggle('on', a.getAttribute('data-view') === (parts[0] === 'import' ? 'providers' : parts[0]));
     });
     if (parts[0] === 'providers' && parts[1] && parts[2] === 'extras') return viewProviderExtras(parseInt(parts[1], 10));
+    if (parts[0] === 'providers' && parts[1] && parts[2] === 'directory') return viewProviderDirectory(parseInt(parts[1], 10));
     if (parts[0] === 'providers' && parts[1]) return viewProvider(parseInt(parts[1], 10));
     if (parts[0] === 'extras') return viewExtrasCatalog();
     if (parts[0] === 'providers') return viewProviders();
@@ -1939,6 +1940,136 @@
     return h('label', { class: 'field' }, h('span', { text: label }), input, help ? h('small', { text: help }) : null);
   }
 
+  /* ---------- Directory profile ---------- */
+
+  function directoryCard(id) {
+    var card = h('section', { class: 'card pad' }, h('h2', { text: 'Directory profile' }), h('p', { class: 'atc-muted', text: 'Loading…' }));
+    function draw(d) {
+      clear(card);
+      add(card, h('div', { class: 'row-flat' }, h('h2', { text: 'Directory profile' }),
+        d.linked ? h('div', { class: 'atc-actions' },
+          d.url ? h('a', { class: 'btn', href: d.url, target: '_blank', rel: 'noopener', text: 'View profile ↗' }) : null,
+          h('a', { class: 'btn dark', href: C.base + 'providers/' + id + '/directory/', 'data-go': 'providers/' + id + '/directory', text: 'Edit profile' })) : null));
+      if (d.linked) {
+        var logo = h('span', { class: 'dir-logo', style: 'width:64px;height:64px;flex-basis:64px;border-radius:14px' });
+        if (d.logo) logo.style.backgroundImage = 'url("' + String(d.logo).replace(/["\\\n]/g, '') + '")';
+        add(card, h('div', { class: 'row-flat', style: 'justify-content:flex-start;gap:14px' }, logo,
+          h('div', null, h('strong', { text: d.title }), ' ', h('span', { class: 'chip ' + (d.status === 'publish' ? 'green' : 'orange'), text: d.status === 'publish' ? 'Public' : (d.provider_live ? 'Draft, goes public when saved' : 'Draft, goes public on approval') }),
+            h('div', { class: 'small atc-muted', text: [d.location, d.summary ? 'description ✓' : 'no description', d.logo ? 'logo ✓' : 'no logo', d.website ? (d.show_website ? 'website shown' : 'website hidden (waiting for their link back)') : 'no website', d.src === 'engine' ? 'made from their sign-up' : 'profile from the directory'].filter(Boolean).join(' · ') }))),
+          h('p', { class: 'small' }, h('button', { class: 'link', type: 'button', text: 'Unlink this profile', onclick: function () {
+            if (!confirm('Unlink “' + d.title + '” from this provider? The profile stays in the directory as it is.')) return;
+            api('POST', '/providers/' + id + '/directory/link', { post_id: 0 }).then(function (nd) { toast('Unlinked.'); draw(nd); }).catch(fail);
+          } })));
+        return;
+      }
+      add(card, h('p', { class: 'atc-muted', text: 'Not linked to a directory profile yet. Link the profile that is theirs, or make a new one from their details.' }));
+      if (d.match) add(card, h('div', { class: 'dir-hit' }, h('span', null, 'Looks like theirs: ', h('a', { href: d.match.url, target: '_blank', rel: 'noopener', text: d.match.title + ' ↗' })),
+        h('button', { class: 'btn dark', type: 'button', text: 'Link it', onclick: function () { linkTo(d.match.id); } })));
+      var q = h('input', { type: 'search', placeholder: 'Search the directory by company name' });
+      var hits = h('div', { class: 'dir-hits' });
+      var timer;
+      q.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          if (q.value.trim().length < 2) { clear(hits); return; }
+          api('GET', '/directory/search?q=' + encodeURIComponent(q.value.trim())).then(function (list) {
+            clear(hits);
+            if (!list.length) add(hits, h('p', { class: 'small atc-muted', text: 'No profile with that name.' }));
+            list.forEach(function (x) {
+              add(hits, h('div', { class: 'dir-hit' }, h('span', null, h('a', { href: x.url, target: '_blank', rel: 'noopener', text: x.title }), h('span', { class: 'small atc-muted', text: ' ' + [x.location, x.status === 'publish' ? '' : 'draft'].filter(Boolean).join(' · ') })),
+                x.owner_id ? h('span', { class: 'small atc-muted', text: 'Linked to ' + x.owner }) : h('button', { class: 'btn', type: 'button', text: 'Link', onclick: function () { linkTo(x.id); } })));
+            });
+          }).catch(fail);
+        }, 250);
+      });
+      add(card, [h('div', { class: 'grid2', style: 'margin-top:10px;align-items:end' }, field('Find their profile', q),
+        h('div', { class: 'atc-actions' }, h('button', { class: 'btn', type: 'button', text: 'Make a new profile', onclick: function () {
+          api('POST', '/providers/' + id + '/directory', {}).then(function (nd) { toast(nd.url ? 'Profile made and public.' : 'Profile made, as a draft until they are live.'); draw(nd); }).catch(fail);
+        } }))), hits]);
+    }
+    function linkTo(pid) { api('POST', '/providers/' + id + '/directory/link', { post_id: pid }).then(function (nd) { toast('Linked.'); draw(nd); }).catch(fail); }
+    api('GET', '/providers/' + id + '/directory').then(draw).catch(function (e) { clear(card); add(card, [h('h2', { text: 'Directory profile' }), h('p', { class: 'chip red', text: e.message })]); });
+    return card;
+  }
+
+  function viewProviderDirectory(id) {
+    clear(app);
+    var box = h('div', { class: 'stack' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, [h('a', { class: 'back', href: C.base + 'providers/' + id + '/', 'data-go': 'providers/' + id, text: '← Provider' }),
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Their directory profile' }), h('p', { class: 'atc-muted', text: 'The same page they edit in their portal. Their website shows only when you tick it (once they link back to us).' }))), box]);
+    api('GET', '/providers/' + id + '/directory').then(function (d) {
+      dirEditor(box, d, {
+        save: function (b) { return api('POST', '/providers/' + id + '/directory', b); },
+        logo: function (fd) { return api('POST', '/providers/' + id + '/directory/logo', fd, true); },
+        staff: true
+      });
+    }).catch(fail);
+  }
+
+  function dirEditor(box, d, o) {
+    clear(box);
+    var sug = d.suggest || {};
+    var listVal = function (a) { return (a || []).join(', '); };
+    var f = {
+      title: h('input', { type: 'text', maxlength: 120, value: d.title || '' }),
+      summary: h('textarea', { rows: 3, maxlength: 300, value: d.summary || '' }),
+      about: h('textarea', { rows: 6, maxlength: 3000, value: d.about || sug.about || '' }),
+      services: h('input', { type: 'text', value: listVal(d.services && d.services.length ? d.services : sug.services) }),
+      destinations: h('input', { type: 'text', value: listVal(d.destinations && d.destinations.length ? d.destinations : sug.destinations) }),
+      phone: h('input', { type: 'tel', value: d.phone || sug.phone || '' }),
+      whatsapp: h('input', { type: 'tel', value: d.whatsapp || sug.phone || '' }),
+      address: h('input', { type: 'text', maxlength: 190, value: d.address || '' }),
+      website: h('input', { type: 'url', placeholder: 'https://', value: d.website || sug.website || '' })
+    };
+    var count = h('small', { text: (f.summary.value.length) + ' / 300' });
+    f.summary.addEventListener('input', function () { count.textContent = f.summary.value.length + ' / 300'; });
+    function useBtn(input, list, label) {
+      return list && list.length ? h('button', { class: 'link', type: 'button', text: label, onclick: function () { input.value = list.join(', '); } }) : null;
+    }
+    var state = d.url
+      ? h('p', null, h('span', { class: 'chip green', text: 'Public' }), ' ', h('a', { href: d.url, target: '_blank', rel: 'noopener', text: 'See your profile ↗' }))
+      : h('p', null, h('span', { class: 'chip orange', text: 'Not public yet' }), ' ', h('span', { class: 'small atc-muted', text: d.provider_live ? 'Save to publish it.' : 'It goes public when we approve your company.' }));
+
+    var logoImg = h('span', { class: 'dir-logo' }, d.logo ? null : h('span', { class: 'small atc-muted', text: 'No logo' }));
+    if (d.logo) logoImg.style.backgroundImage = 'url("' + String(d.logo).replace(/["\\\n]/g, '') + '")';
+    var file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp' });
+    var upBtn = h('button', { class: 'btn', type: 'button', text: d.logo ? 'Replace logo' : 'Upload logo', onclick: function () {
+      if (!file.files.length) { file.click(); return; }
+      var fd = new FormData(); fd.append('file', file.files[0]);
+      upBtn.disabled = true; upBtn.textContent = 'Uploading…';
+      o.logo(fd).then(function (nd) { toast('Logo saved.'); o.after ? o.after(nd) : null; dirEditor(box, nd, o); }).catch(function (e) { upBtn.disabled = false; upBtn.textContent = 'Upload logo'; fail(e); });
+    } });
+    file.addEventListener('change', function () { if (file.files.length) upBtn.click(); });
+
+    var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Save profile' });
+    var showSite = o.staff ? h('input', { type: 'checkbox', checked: !!d.show_website }) : null;
+    add(box, [
+      h('section', { class: 'card pad' }, state,
+        h('div', { class: 'row-flat', style: 'gap:16px;justify-content:flex-start' }, logoImg,
+          h('div', { class: 'stack', style: 'gap:6px' }, h('strong', { text: 'Logo' }), h('small', { class: 'atc-muted', text: 'PNG, JPG or WebP, up to 2 MB. A square logo on a white or clear background looks best.' }), h('div', { class: 'atc-actions' }, file, upBtn)))),
+      h('form', { class: 'card pad', onsubmit: function (e) {
+        e.preventDefault(); btn.disabled = true;
+        var body = { title: f.title.value, summary: f.summary.value, about: f.about.value, services: f.services.value, destinations: f.destinations.value,
+          phone: f.phone.value, whatsapp: f.whatsapp.value, address: f.address.value, website: f.website.value };
+        if (showSite) body.show_website = showSite.checked ? 1 : 0;
+        o.save(body).then(function (nd) { toast(nd.url ? 'Saved. Your profile is updated.' : 'Saved.'); o.after ? o.after(nd) : null; dirEditor(box, nd, o); }).catch(function (e2) { btn.disabled = false; fail(e2); });
+      } },
+        h('h2', { text: 'What travelers read' }),
+        field('Company name', f.title),
+        h('label', { class: 'field' }, h('span', { text: 'Short description (shows under your name)' }), f.summary, count),
+        field('About your company', f.about, 'Your fleet, the areas you cover, years in business, languages your drivers speak.'),
+        h('label', { class: 'field' }, h('span', { text: 'Services (separate with commas)' }), f.services, h('small', null, 'For example: Private SUV, Minivan, Sprinter. ', useBtn(f.services, sug.services, 'Use my vehicle categories'))),
+        h('label', { class: 'field' }, h('span', { text: 'Destinations you serve (separate with commas)' }), f.destinations, h('small', null, useBtn(f.destinations, sug.destinations, 'Use my zones'))),
+        h('h2', { text: 'Contact' }),
+        h('p', { class: 'small atc-muted', text: 'Travelers see your phone and WhatsApp only when they tap "See phone" or "See WhatsApp".' }),
+        h('div', { class: 'grid2' }, field('Phone', f.phone), field('WhatsApp', f.whatsapp), field('Address', f.address),
+          h('label', { class: 'field' }, h('span', { text: 'Website' }), f.website, h('small', { text: o.staff ? '' : (d.show_website ? 'Shows on your profile.' : 'Your website shows on your profile once your site links to Airport Transportation. Tell us at ' + C.support + ' when it does.') }))),
+        showSite ? h('label', { class: 'dir-check' }, showSite, h('span', { text: ' Show their website on the profile (they link back to us)' })) : null,
+        d.location ? h('p', { class: 'small atc-muted', text: 'Listed in ' + d.location + (d.airport ? ' · main airport ' + d.airport : '') + '.' }) : null,
+        h('div', { class: 'atc-actions' }, btn))
+    ]);
+  }
+
   function viewProvider(id) {
     clear(app);
     add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
@@ -1989,6 +2120,7 @@
             }, text: 'Approve and set live' }) : null)),
         h('div', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('strong', { text: 'Portal' }), portalCell({ id: id, name: p.name, email: p.email, portal: d.portal }, function () { viewProvider(id); }))),
         setupCard(d),
+        directoryCard(id),
         p.about ? h('section', { class: 'card pad' }, h('h2', { text: 'About the company (from sign-up)' }), h('p', { class: 'prewrap', text: p.about })) : null,
         documentsCard(id, d),
         form,
@@ -2003,7 +2135,7 @@
   }
 
   function setupCard(d) {
-    var keys = ['company', 'vehicles', 'coverage', 'documents', 'payout', 'agreement', 'approval'];
+    var keys = ['company', 'directory', 'vehicles', 'coverage', 'documents', 'payout', 'agreement', 'approval'];
     var pay = d.payout;
     return h('section', { class: 'card pad' },
       h('h2', { text: 'Setup in the provider portal' }),

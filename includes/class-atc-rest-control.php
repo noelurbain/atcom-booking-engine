@@ -142,6 +142,26 @@ final class ATC_REST_Control {
 		self::route( '/providers/(?P<id>\\d+)/extras', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Extras::for_provider( (int) $r['id'] ) ) ) );
 		self::route( '/providers/(?P<id>\\d+)/extras/(?P<x>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Extras::save_offer( (int) $r['id'], (int) $r['x'], self::body( $r ) ) ) ) );
 
+		// Directory profiles: the provider's, linking one by hand, search.
+		self::route( '/directory/search', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Directory::search( (string) $r['q'] ) ) ) );
+		self::route(
+			'/providers/(?P<id>\\d+)/directory',
+			array(
+				'GET'  => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Directory::profile( (int) $r['id'] ) ),
+				'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Directory::save( (int) $r['id'], self::body( $r ), true ) ),
+			)
+		);
+		self::route( '/providers/(?P<id>\\d+)/directory/link', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Directory::link( (int) $r['id'], (int) ( self::body( $r )['post_id'] ?? 0 ) ) ) ) );
+		self::route(
+			'/providers/(?P<id>\\d+)/directory/logo',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$files = $r->get_file_params();
+					return empty( $files['file'] ) ? new WP_Error( 'atc_logo', 'Choose an image first.', array( 'status' => 400 ) ) : self::out( ATC_Directory::logo( (int) $r['id'], $files['file'] ) );
+				},
+			)
+		);
+
 		// Discount codes.
 		self::route( '/coupons', array( 'GET' => static fn() => rest_ensure_response( ATC_Coupons::list() ), 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ) ) ) ) );
 		self::route( '/coupons/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Coupons::save( self::body( $r ), (int) $r['id'] ) ) ) );

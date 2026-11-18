@@ -62,6 +62,7 @@
     ['', 'Setup', null],
     ['bookings', 'Bookings', null],
     ['company', 'Company', 'company'],
+    ['directory', 'Directory profile', 'directory'],
     ['vehicles', 'Vehicles', 'vehicles'],
     ['coverage', 'Zones you serve', 'coverage'],
     ['prices', 'Prices', null],
@@ -107,7 +108,7 @@
     if (p.indexOf('bookings/') === 0) return viewTrip(p.split('/')[1]);
     if (p.indexOf('tickets/') === 0) return viewTicket(parseInt(p.split('/')[1], 10));
     ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
-       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras }[p] || viewSetup)();
+       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras, directory: viewDirectory }[p] || viewSetup)();
   }
 
   function head(title, sub) {
@@ -318,7 +319,7 @@
 
   function viewSetup() {
     var p = me.provider, s = me.steps;
-    var keys = ['company', 'vehicles', 'coverage', 'documents', 'payout', 'agreement', 'approval'];
+    var keys = ['company', 'directory', 'vehicles', 'coverage', 'documents', 'payout', 'agreement', 'approval'];
     var done = keys.filter(function (k) { return s[k].state === 'done'; }).length;
     var welcome = /welcome=1/.test(location.search);
     add(app, [
@@ -340,6 +341,7 @@
         if (s[k].state === 'todo') {
           return {
             company: 'Next: complete your company details.',
+            directory: 'Next: add your logo and a short description to your directory profile.',
             vehicles: 'Next: tick the vehicle categories you sell and add your vehicles.',
             coverage: 'Next: pick the zones you serve on the map.',
             documents: 'Next: upload your permit and your liability insurance.',
@@ -384,6 +386,83 @@
           field('Mobile with WhatsApp', f.phone, 'Our team uses it on arrival days.'), field('Languages your drivers speak', f.languages),
           field('Website', f.website), field('Minimum notice before pickup', f.notice, 'The shorter your notice, the more bookings you get.')),
         field('About your company: fleet, areas you cover, years in business', f.about),
+        h('div', { class: 'atc-actions' }, btn))
+    ]);
+  }
+
+  /* ---------- Directory profile ---------- */
+
+  function viewDirectory() {
+    var box = h('div', { class: 'stack' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(app, [head('Directory profile', 'Your company page in the Airport Transportation directory, where travelers find transport companies by city.'), box]);
+    api('GET', '/directory').then(function (d) { dirEditor(box, d, {
+      save: function (b) { return api('PUT', '/directory', b); },
+      logo: function (fd) { return api('POST', '/directory/logo', fd, true); },
+      after: function () { api('GET', '/me').then(function (m) { me = m; nav(); }).catch(function () {}); },
+      staff: false
+    }); }).catch(fail);
+  }
+
+  function dirEditor(box, d, o) {
+    clear(box);
+    var sug = d.suggest || {};
+    var listVal = function (a) { return (a || []).join(', '); };
+    var f = {
+      title: h('input', { type: 'text', maxlength: 120, value: d.title || '' }),
+      summary: h('textarea', { rows: 3, maxlength: 300, value: d.summary || '' }),
+      about: h('textarea', { rows: 6, maxlength: 3000, value: d.about || sug.about || '' }),
+      services: h('input', { type: 'text', value: listVal(d.services && d.services.length ? d.services : sug.services) }),
+      destinations: h('input', { type: 'text', value: listVal(d.destinations && d.destinations.length ? d.destinations : sug.destinations) }),
+      phone: h('input', { type: 'tel', value: d.phone || sug.phone || '' }),
+      whatsapp: h('input', { type: 'tel', value: d.whatsapp || sug.phone || '' }),
+      address: h('input', { type: 'text', maxlength: 190, value: d.address || '' }),
+      website: h('input', { type: 'url', placeholder: 'https://', value: d.website || sug.website || '' })
+    };
+    var count = h('small', { text: (f.summary.value.length) + ' / 300' });
+    f.summary.addEventListener('input', function () { count.textContent = f.summary.value.length + ' / 300'; });
+    function useBtn(input, list, label) {
+      return list && list.length ? h('button', { class: 'link', type: 'button', text: label, onclick: function () { input.value = list.join(', '); } }) : null;
+    }
+    var state = d.url
+      ? h('p', null, h('span', { class: 'chip green', text: 'Public' }), ' ', h('a', { href: d.url, target: '_blank', rel: 'noopener', text: 'See your profile ↗' }))
+      : h('p', null, h('span', { class: 'chip orange', text: 'Not public yet' }), ' ', h('span', { class: 'small atc-muted', text: d.provider_live ? 'Save to publish it.' : 'It goes public when we approve your company.' }));
+
+    var logoImg = h('span', { class: 'dir-logo' }, d.logo ? null : h('span', { class: 'small atc-muted', text: 'No logo' }));
+    if (d.logo) logoImg.style.backgroundImage = 'url("' + String(d.logo).replace(/["\\\n]/g, '') + '")';
+    var file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp' });
+    var upBtn = h('button', { class: 'btn', type: 'button', text: d.logo ? 'Replace logo' : 'Upload logo', onclick: function () {
+      if (!file.files.length) { file.click(); return; }
+      var fd = new FormData(); fd.append('file', file.files[0]);
+      upBtn.disabled = true; upBtn.textContent = 'Uploading…';
+      o.logo(fd).then(function (nd) { toast('Logo saved.'); o.after ? o.after(nd) : null; dirEditor(box, nd, o); }).catch(function (e) { upBtn.disabled = false; upBtn.textContent = 'Upload logo'; fail(e); });
+    } });
+    file.addEventListener('change', function () { if (file.files.length) upBtn.click(); });
+
+    var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Save profile' });
+    var showSite = o.staff ? h('input', { type: 'checkbox', checked: !!d.show_website }) : null;
+    add(box, [
+      h('section', { class: 'card pad' }, state,
+        h('div', { class: 'row-flat', style: 'gap:16px;justify-content:flex-start' }, logoImg,
+          h('div', { class: 'stack', style: 'gap:6px' }, h('strong', { text: 'Logo' }), h('small', { class: 'atc-muted', text: 'PNG, JPG or WebP, up to 2 MB. A square logo on a white or clear background looks best.' }), h('div', { class: 'atc-actions' }, file, upBtn)))),
+      h('form', { class: 'card pad', onsubmit: function (e) {
+        e.preventDefault(); btn.disabled = true;
+        var body = { title: f.title.value, summary: f.summary.value, about: f.about.value, services: f.services.value, destinations: f.destinations.value,
+          phone: f.phone.value, whatsapp: f.whatsapp.value, address: f.address.value, website: f.website.value };
+        if (showSite) body.show_website = showSite.checked ? 1 : 0;
+        o.save(body).then(function (nd) { toast(nd.url ? 'Saved. Your profile is updated.' : 'Saved.'); o.after ? o.after(nd) : null; dirEditor(box, nd, o); }).catch(function (e2) { btn.disabled = false; fail(e2); });
+      } },
+        h('h2', { text: 'What travelers read' }),
+        field('Company name', f.title),
+        h('label', { class: 'field' }, h('span', { text: 'Short description (shows under your name)' }), f.summary, count),
+        field('About your company', f.about, 'Your fleet, the areas you cover, years in business, languages your drivers speak.'),
+        h('label', { class: 'field' }, h('span', { text: 'Services (separate with commas)' }), f.services, h('small', null, 'For example: Private SUV, Minivan, Sprinter. ', useBtn(f.services, sug.services, 'Use my vehicle categories'))),
+        h('label', { class: 'field' }, h('span', { text: 'Destinations you serve (separate with commas)' }), f.destinations, h('small', null, useBtn(f.destinations, sug.destinations, 'Use my zones'))),
+        h('h2', { text: 'Contact' }),
+        h('p', { class: 'small atc-muted', text: 'Travelers see your phone and WhatsApp only when they tap "See phone" or "See WhatsApp".' }),
+        h('div', { class: 'grid2' }, field('Phone', f.phone), field('WhatsApp', f.whatsapp), field('Address', f.address),
+          h('label', { class: 'field' }, h('span', { text: 'Website' }), f.website, h('small', { text: o.staff ? '' : (d.show_website ? 'Shows on your profile.' : 'Your website shows on your profile once your site links to Airport Transportation. Tell us at ' + C.support + ' when it does.') }))),
+        showSite ? h('label', { class: 'dir-check' }, showSite, h('span', { text: ' Show their website on the profile (they link back to us)' })) : null,
+        d.location ? h('p', { class: 'small atc-muted', text: 'Listed in ' + d.location + (d.airport ? ' · main airport ' + d.airport : '') + '.' }) : null,
         h('div', { class: 'atc-actions' }, btn))
     ]);
   }

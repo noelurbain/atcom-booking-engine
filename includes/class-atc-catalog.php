@@ -580,6 +580,7 @@ final class ATC_Catalog {
 			// Going live switches on the vehicle categories the provider offered.
 			if ( isset( $data['status'] ) && 'live' === $data['status'] && 'live' !== $before['status'] ) {
 				$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'services' ) . " SET status = 'live' WHERE party_id = %d AND status = 'draft'", $id ) );
+				do_action( 'atc_provider_live', $id );
 				if ( $before['email'] ) {
 					wp_mail( $before['email'], 'You are live on Airport Transportation', 'Good news: ' . $before['name'] . " is approved. Travelers can now book you in the zones and vehicles you set up.\n\n" . home_url( '/portal/' ), array( 'From: Airport Transportation <' . ATC_Settings::get( 'from_email' ) . '>' ) );
 				}

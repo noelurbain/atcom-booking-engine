@@ -1,5 +1,16 @@
 === ATCOM Booking Engine ===
-Version: 0.17.0 (extras)
+Version: 0.18.0 (directory profiles)
+
+New in 0.18.0:
+- Each provider is linked to its company profile in the directory (/directory/company/...). On the first page
+  load after the update, existing profiles are matched by name, website or phone (164 of 204 providers match);
+  the rest get a draft profile. Profiles that were public stay public; nothing is unpublished.
+- Provider portal → Directory profile: logo upload, company name, short description, about, services,
+  destinations (one tap to fill from their vehicle categories and zones), phone, WhatsApp, address, website.
+  New step "Directory profile" in the setup list.
+- New sign-ups get a draft profile (or are linked to their existing one); approving them publishes it.
+- Control → provider: Directory profile card (view, edit as them, link another profile, unlink, make one).
+  Their website shows on the profile only when our team ticks it (they link back to us).
 
 New in 0.17.0:
 - Extras catalog (Control → Extras): infant, child and booster seats, a supermarket stop, beers, water and sodas,

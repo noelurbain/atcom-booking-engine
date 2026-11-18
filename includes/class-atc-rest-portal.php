@@ -195,6 +195,23 @@ final class ATC_REST_Portal {
 		};
 		// Bookings: the provider's rides.
 		self::route( '/bookings', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Trips::list( self::pid(), (string) $r['filter'], max( 1, (int) $r['page'] ), ! empty( $r['all'] ) ) ) ) );
+		// The provider's directory profile.
+		self::route(
+			'/directory',
+			array(
+				'GET' => static fn() => rest_ensure_response( ATC_Directory::profile( self::pid() ) ),
+				'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Directory::save( self::pid(), self::body( $r ) ) ),
+			)
+		);
+		self::route(
+			'/directory/logo',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$files = $r->get_file_params();
+					return empty( $files['file'] ) ? new WP_Error( 'atc_logo', 'Choose an image first.', array( 'status' => 400 ) ) : self::out( ATC_Directory::logo( self::pid(), $files['file'] ) );
+				},
+			)
+		);
 		// Extras the provider offers.
 		self::route( '/extras', array( 'GET' => static fn() => rest_ensure_response( ATC_Extras::for_provider( self::pid() ) ) ) );
 		self::route( '/extras/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Extras::save_offer( self::pid(), (int) $r['id'], self::body( $r ) ) ) ) );
