@@ -441,6 +441,17 @@ final class ATC_Checkout {
 		);
 		ATC_Coupons::reapply( (int) $b['id'] );
 		ATC_Install::log( 'booking', (int) $b['id'], 'details_saved' );
+		// A code typed on this step: applied now, so the payment page opens with the right total.
+		$code = trim( (string) ( $in['coupon'] ?? '' ) );
+		$had  = (string) ( $b['coupon_code'] ?? '' );
+		if ( '' !== $code && strtoupper( $code ) !== $had ) {
+			$res = ATC_Coupons::apply( $b['number'], $key, $code );
+			if ( is_wp_error( $res ) ) {
+				return new WP_Error( 'atc_coupon', 'Discount code: ' . $res->get_error_message() . ' Remove it or try another to continue.', array( 'status' => 400 ) );
+			}
+		} elseif ( '' === $code && '' !== $had ) {
+			ATC_Coupons::apply( $b['number'], $key, '' );
+		}
 		return array( 'pay_url' => self::pay_url( $b['number'], $key ) );
 	}
 

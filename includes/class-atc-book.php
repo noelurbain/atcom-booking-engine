@@ -490,7 +490,7 @@ final class ATC_Book {
 					<span class="ab-muted"><?php echo esc_html( self::day( $q['date'] ) ); ?> · <?php echo (int) $pax; ?> passengers</span>
 				<?php endif; ?>
 			</div>
-			<div class="ab-total is-grand"><span>Total<small class="ab-muted"><?php echo esc_html( $o['name'] . ( $round ? ', round trip' : ', one way' ) ); ?> · taxes included</small></span><strong><?php echo esc_html( self::money( $total ) ); ?></strong></div>
+			<div class="ab-total is-grand"><span>Total<small class="ab-muted"><?php echo esc_html( $o['name'] . ( $round ? ', round trip' : ', one way' ) ); ?> · taxes included</small></span><strong data-ab-grand><?php echo esc_html( self::money( $total ) ); ?></strong></div>
 			<?php echo $cta; // phpcs:ignore -- built by the caller. ?>
 		</section>
 		<?php
@@ -649,6 +649,12 @@ final class ATC_Book {
 						<div class="ab-field"><label for="ab-notes" class="screen-reader-text">Notes for your driver</label><textarea id="ab-notes" name="notes" rows="3" maxlength="1000" placeholder="e.g. we travel with a stroller, or a child seat is needed"><?php echo esc_textarea( $v( 'notes' ) ); ?></textarea></div>
 					</section>
 
+					<section class="ab-card ab-pad" aria-labelledby="ab-h-code">
+						<h2 id="ab-h-code">Discount code <span class="ab-muted">(optional)</span></h2>
+						<div class="ab-field"><label for="ab-coupon" class="screen-reader-text">Discount code</label><input id="ab-coupon" name="coupon" type="text" maxlength="30" autocomplete="off" placeholder="If you have one" style="text-transform:uppercase" value="<?php echo esc_attr( (string) ( $b['coupon_code'] ?? '' ) ); ?>"></div>
+						<p class="ab-muted">You see the new total on the next step, before you pay.</p>
+					</section>
+
 					<div class="ab-actions ab-formend">
 						<a class="ab-btn is-line" href="<?php echo esc_url( $back ); ?>">← Back to vehicles</a>
 						<button type="submit" class="ab-btn is-accent" data-ab-submit>Continue to payment →</button>
@@ -762,7 +768,7 @@ final class ATC_Book {
 						echo $row( 'Lead traveler', esc_html( $b['first_name'] . ' ' . $b['last_name'] . ' · ' . $b['email'] . ' · ' . $b['phone'] ), $edit ); // phpcs:ignore
 						echo $row( 'Passengers', esc_html( self::pax_text( (int) $b['adults'], (int) $b['children'] ) . ' · ' . (int) ( $one['suitcases'] ?? 0 ) . ' suitcases, ' . (int) ( $one['carry_ons'] ?? 0 ) . ' carry-ons' ), $edit ); // phpcs:ignore
 						?>
-						<div class="ab-coupon" data-ab-coupon data-number="<?php echo esc_attr( $b['number'] ); ?>" data-key="<?php echo esc_attr( $key ); ?>">
+						<div class="ab-coupon" data-ab-coupon data-number="<?php echo esc_attr( $b['number'] ); ?>" data-key="<?php echo esc_attr( $key ); ?>"><div data-ab-coupon-body>
 							<?php if ( ! empty( $b['coupon_code'] ) ) : ?>
 								<div class="ab-rev"><span class="ab-k">Discount</span><span><strong><?php echo esc_html( $b['coupon_code'] ); ?></strong> · −<?php echo esc_html( self::money( (int) $b['discount_cents'] ) ); ?> <span class="ab-muted">(was <?php echo esc_html( self::money( (int) $b['retail_cents'] ) ); ?>)</span></span><button type="button" class="ab-link" data-ab-coupon-remove>Remove</button></div>
 							<?php else : ?>
@@ -771,6 +777,7 @@ final class ATC_Book {
 									<div class="ab-coupon-row"><input type="text" name="coupon" aria-label="Discount code" autocomplete="off" placeholder="Code" maxlength="30" style="text-transform:uppercase" data-ab-coupon-code><button type="button" class="ab-btn" data-ab-coupon-apply>Apply</button></div>
 								</details>
 							<?php endif; ?>
+							</div>
 							<div class="ab-alert" role="alert" hidden data-ab-coupon-error></div>
 						</div>
 						<label class="ab-check"><input type="checkbox" name="agree" required data-ab-agree> <span>I agree to the <a href="<?php echo esc_url( home_url( '/reservation-policies/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="reservation-policies">reservation policies</a> and the <a href="<?php echo esc_url( home_url( '/privacy-policy/' ) ); ?>" target="_blank" rel="noopener" data-ab-policy="privacy-policy">privacy policy</a>.</span></label>

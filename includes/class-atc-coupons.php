@@ -72,7 +72,8 @@ final class ATC_Coupons {
 		$retail = (int) $b['retail_cents'];
 		if ( '' === trim( $code ) ) {
 			self::write( $b, null, 0 );
-			return array( 'ok' => true, 'removed' => true );
+			self::sync_stripe( (int) $b['id'] );
+			return array( 'ok' => true, 'removed' => true, 'total' => $retail, 'retail' => $retail );
 		}
 		$c = self::find( $code );
 		if ( ! $c ) {
@@ -83,7 +84,8 @@ final class ATC_Coupons {
 			return $off;
 		}
 		self::write( $b, $c, $off );
-		return array( 'ok' => true, 'code' => $c['code'], 'discount' => $off, 'total' => $retail - $off );
+		self::sync_stripe( (int) $b['id'] );
+		return array( 'ok' => true, 'code' => $c['code'], 'discount' => $off, 'total' => $retail - $off, 'retail' => $retail );
 	}
 
 	/** Puts the code on the booking (or takes it off) and keeps the total in step. */
@@ -110,6 +112,14 @@ final class ATC_Coupons {
 		}
 		$wpdb->update( self::t( 'bookings' ), $set, array( 'id' => (int) $b['id'] ) );
 		ATC_Checkout::snapshot( (int) $b['id'], $snap );
+	}
+
+	/** The payment form is already open: the Stripe amount follows the new total, card details stay. */
+	private static function sync_stripe( int $booking_id ): void {
+		$b = ATC_Checkout::find( '', $booking_id );
+		if ( $b && ! empty( $b['stripe_payment_intent'] ) ) {
+			ATC_Checkout::payment_intent( $b );
+		}
 	}
 
 	/** After a re-hold re-priced the booking: the same code on the new price (dropped if it no longer applies). */

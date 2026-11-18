@@ -280,16 +280,47 @@
   }
   var cpn = document.querySelector('[data-ab-coupon]');
   if (cpn) {
-    var cpnSend = function (code) {
-      var err = cpn.querySelector('[data-ab-coupon-error]');
+    var usd = function (c) { return 'USD ' + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); };
+    var cpnErr = cpn.querySelector('[data-ab-coupon-error]');
+    // Applies or removes a code without reloading: the card details typed so far stay in the form.
+    var cpnSend = function (code, btn) {
+      if (btn) btn.disabled = true;
       return post(C.api + 'checkout/coupon', { number: cpn.getAttribute('data-number'), key: cpn.getAttribute('data-key'), code: code })
-        .then(function () { location.reload(); })
-        .catch(function (x) { showError(err, x.message); });
+        .then(function (d) {
+          var els = window.__abElements;
+          var after = function () { drawCoupon(d); };
+          if (els && els.fetchUpdates) return els.fetchUpdates().then(after); else { location.reload(); }
+        })
+        .catch(function (x) { if (btn) btn.disabled = false; showError(cpnErr, x.message); });
     };
-    var ap = cpn.querySelector('[data-ab-coupon-apply]'), inp = cpn.querySelector('[data-ab-coupon-code]'), rm = cpn.querySelector('[data-ab-coupon-remove]');
-    if (ap) ap.addEventListener('click', function () { if (inp.value.trim()) { ap.disabled = true; cpnSend(inp.value.trim()).then(function () { ap.disabled = false; }); } });
-    if (inp) inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ap.click(); } });
-    if (rm) rm.addEventListener('click', function () { rm.disabled = true; cpnSend(''); });
+    var drawCoupon = function (d) {
+      showError(cpnErr, '');
+      var box = cpn.querySelector('[data-ab-coupon-body]');
+      box.textContent = '';
+      if (d.code) {
+        var row = document.createElement('div'); row.className = 'ab-rev';
+        row.innerHTML = '<span class="ab-k">Discount</span><span><strong></strong> · −<span data-off></span> <span class="ab-muted">(was <span data-was></span>)</span></span><button type="button" class="ab-link">Remove</button>';
+        row.querySelector('strong').textContent = d.code;
+        row.querySelector('[data-off]').textContent = usd(d.discount);
+        row.querySelector('[data-was]').textContent = usd(d.retail);
+        row.querySelector('button').addEventListener('click', function (e) { cpnSend('', e.target); });
+        box.appendChild(row);
+      } else {
+        box.innerHTML = '<div class="ab-coupon-row"><input type="text" aria-label="Discount code" autocomplete="off" placeholder="Discount code" maxlength="30" style="text-transform:uppercase"><button type="button" class="ab-btn">Apply</button></div>';
+        wireInput(box);
+      }
+      var pb = document.querySelector('[data-ab-submit]'); if (pb && d.total) pb.textContent = 'Pay ' + usd(d.total) + ' and book';
+      document.querySelectorAll('[data-ab-grand]').forEach(function (g) { if (d.total) g.textContent = usd(d.total); });
+    };
+    var wireInput = function (scope) {
+      var inp = scope.querySelector('input'), ap = scope.querySelector('button');
+      if (!inp || !ap) return;
+      ap.addEventListener('click', function () { if (inp.value.trim()) cpnSend(inp.value.trim(), ap); });
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ap.click(); } });
+    };
+    wireInput(cpn);
+    var rm = cpn.querySelector('[data-ab-coupon-remove]');
+    if (rm) rm.addEventListener('click', function () { cpnSend('', rm); });
   }
   var sendBox = document.querySelector('[data-ab-sendlink]');
   if (sendBox) {
@@ -444,6 +475,7 @@
       el.textContent = '';
       var pe = elements.create('payment', { layout: 'tabs', defaultValues: { billingDetails: { name: P.name, email: P.email, phone: (P.phone || '').replace(/\s+/g, '') } } });
       pe.on('ready', function () { ready = true; canPay(); });
+      window.__abElements = elements;
       pe.mount(el);
     }
     if (window.Stripe) mount(); else window.addEventListener('load', function () {
