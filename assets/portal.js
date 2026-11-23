@@ -58,23 +58,50 @@
 
   /* ---------- routing ---------- */
 
-  var VIEWS = [
-    ['', 'Setup', null],
-    ['bookings', 'Bookings', null],
-    ['company', 'Company', 'company'],
-    ['directory', 'Directory profile', 'directory'],
-    ['pricelist', 'Upload price list', null],
-    ['vehicles', 'Vehicles', 'vehicles'],
-    ['coverage', 'Zones you serve', 'coverage'],
-    ['prices', 'Prices', 'prices'],
-    ['extras', 'Extras', null],
-    ['meeting', 'Meeting travelers', null],
-    ['documents', 'Documents', 'documents'],
-    ['payout', 'Payout details', 'payout'],
-    ['agreement', 'Agreement', 'agreement'],
-    ['tickets', 'Tickets', null],
-    ['account', 'Account', null]
+  // The setup steps, in the order a new provider does them.
+  var SETUP = [
+    ['company', 'Company details'],
+    ['vehicles', 'Vehicles'],
+    ['coverage', 'Zones you serve'],
+    ['prices', 'Prices'],
+    ['documents', 'Documents'],
+    ['payout', 'Payout details'],
+    ['agreement', 'Agreement'],
+    ['directory', 'Directory profile']
   ];
+  var MORE = [
+    ['airports', 'Your airports'],
+    ['pricelist', 'Upload price list'],
+    ['extras', 'Extras'],
+    ['meeting', 'Meeting travelers'],
+    ['tickets', 'Tickets'],
+    ['account', 'Account']
+  ];
+  function stepIndex(key) { for (var i = 0; i < SETUP.length; i++) if (SETUP[i][0] === key) return i; return -1; }
+  function nextTodo() {
+    for (var i = 0; i < SETUP.length; i++) if (me.steps[SETUP[i][0]].state === 'todo') return SETUP[i][0];
+    return null;
+  }
+
+  // What to do on each step, told before the provider does it.
+  var GUIDE = {
+    company: { why: 'Who you are: your company name, a WhatsApp number and the languages your drivers speak.',
+      todo: ['Check your company name, your name and your email.', 'Add a mobile number with WhatsApp and the languages your drivers speak.', 'Press Save.'] },
+    vehicles: { why: 'The vehicle categories you sell at your airport, and the cars you drive them with.',
+      todo: ['Tick each category you sell. Your car does not have to be the same model, but it must be similar and carry as many people.', 'Check the passengers, bags and free waiting time, then press Save.', 'Further down, add each of your cars: model, plate and seats.'] },
+    coverage: { why: 'The areas where you pick up and drop off travelers. Each zone gets its own price.',
+      todo: ['Type the name of an area (a town, a hotel zone) and press “Find on the map”. We draw it for you.', 'If the edge is not right, drag the white points. Then press “Save zone”. Do this for each area.', 'Not found? Press “Draw by hand” and click around the area on the map.'] },
+    prices: { why: 'One price per zone and vehicle. Travelers can only book where there is a price.',
+      todo: ['Click a box in the grid. Each row is a zone, each column a vehicle category.', 'Type the price the traveler pays, one way. We show what you get after our commission.', 'Press “Save price”, then the next box. Round trip prices are optional.'] },
+    documents: { why: 'Your transport permit and your liability insurance, so we can switch you on.',
+      todo: ['Upload each document as a PDF or a photo, with its expiry date.', 'We check them within two working days.'] },
+    payout: { why: 'Where we send your money for each ride.',
+      todo: ['Pick bank transfer or Wise, and your currency.', 'Type the account holder and the account details, then press Save.'] },
+    agreement: { why: 'The rules between you and us: commission, cancellations, payments.',
+      todo: ['Read the provider agreement.', 'Tick the box and press “Accept the agreement”.'] },
+    directory: { why: 'Your free company page in our directory, where travelers find transport companies by city.',
+      todo: ['Add your logo and a short description of your company.', 'Add your website: it shows on your page once your site links to us. We check this automatically.', 'Press Save.'] }
+  };
 
   function path() {
     var base = new URL(C.base).pathname;
@@ -88,17 +115,25 @@
     if (a) { e.preventDefault(); go(a.getAttribute('data-go')); }
   });
 
+  function navLink(key, label, extra) {
+    var cur = path();
+    return h('a', { href: C.base + key + (key ? '/' : ''), 'data-go': key, 'data-nav': key || 'home', class: cur === key || (key && cur.indexOf(key + '/') === 0) ? 'on' : '' }, extra && extra.num ? h('span', { class: 'num', text: extra.num }) : null,
+      h('span', { class: 'grow', text: label }),
+      key === 'bookings' && me.to_confirm ? h('i', { class: 'count', text: String(me.to_confirm), 'aria-label': me.to_confirm + ' to confirm' }) : null,
+      extra && extra.st ? h('i', { class: 'dot ' + extra.st.state, title: extra.st.label, 'aria-label': extra.st.label }) : null);
+  }
   function nav() {
     clear(side);
-    var cur = path();
-    VIEWS.forEach(function (v) {
-      var st = v[2] && me.steps[v[2]];
-      add(side, h('a', { href: C.base + v[0] + (v[0] ? '/' : ''), 'data-go': v[0], class: cur === v[0] || (v[0] && cur.indexOf(v[0] + '/') === 0) ? 'on' : '' },
-        h('span', { text: v[1] }),
-        v[0] === 'bookings' && me.to_confirm ? h('i', { class: 'count', text: String(me.to_confirm), 'aria-label': me.to_confirm + ' to confirm' }) : null,
-        st ? h('i', { class: 'dot ' + st.state, title: st.label, 'aria-label': st.label }) : null,
-        null));
+    var live = me.provider.status === 'live';
+    add(side, navLink('', live ? 'Overview' : 'Start here'));
+    add(side, navLink('bookings', 'Bookings'));
+    add(side, h('div', { class: 'side-h', 'data-nav': 'steps' }, h('span', { text: 'Set up, step by step' }),
+      SETUP.map(function (v, i) { return navLink(v[0], v[1], { num: String(i + 1), st: me.steps[v[0]] }); })));
+    add(side, h('div', { class: 'side-h' }, h('span', { text: 'More' })));
+    MORE.forEach(function (v) {
+      add(side, navLink(v[0], v[1] + (v[0] === 'airports' && me.airports.length > 1 ? ' (' + me.airports.length + ')' : '')));
     });
+    add(side, h('button', { class: 'side-help', type: 'button', 'data-nav': 'help', onclick: function () { welcomeTour(); } }, h('span', { class: 'q', text: '?' }), 'Show me around'));
   }
 
   function route() {
@@ -108,9 +143,252 @@
     clear(app);
     if (p.indexOf('bookings/') === 0) return viewTrip(p.split('/')[1]);
     if (p.indexOf('tickets/') === 0) return viewTicket(parseInt(p.split('/')[1], 10));
-    ({ '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
-       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras, directory: viewDirectory, pricelist: viewPriceList }[p] || viewSetup)();
+    var views = { '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
+       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras, directory: viewDirectory, pricelist: viewPriceList, airports: viewAirports };
+    var key = views[p] ? p : '';
+    views[key]();
+    if (stepIndex(key) >= 0) {
+      var top = app.firstChild && app.firstChild.classList && app.firstChild.classList.contains('atc-head') ? app.firstChild.nextSibling : app.firstChild;
+      app.insertBefore(stepBar(key), top);
+    }
+    if (stepIndex(key) >= 0) add(app, stepFooter(key));
+    autoTour(key);
   }
+
+  /* ---------- Step guide: where you are, what to do here, what comes next ---------- */
+
+  function stepBar(key) {
+    var i = stepIndex(key), st = me.steps[key], g = GUIDE[key];
+    return h('section', { class: 'card pad stepbar', 'data-tour': 'stepbar' },
+      h('div', { class: 'sb-top' },
+        h('span', { class: 'sb-kicker', text: 'STEP ' + (i + 1) + ' OF ' + SETUP.length }),
+        h('span', { class: 'chip ' + (st.state === 'done' ? 'green' : st.state === 'waiting' ? 'orange' : 'grey'), text: st.label }),
+        h('span', { class: 'sb-dots', 'aria-hidden': 'true' }, SETUP.map(function (s, j) {
+          return h('a', { href: C.base + s[0] + '/', 'data-go': s[0], tabindex: '-1', class: 'sb-dot ' + me.steps[s[0]].state + (j === i ? ' cur' : ''), title: (j + 1) + '. ' + s[1] });
+        }))),
+      h('p', { class: 'sb-why', text: g.why }),
+      h('p', { class: 'label', text: 'What to do here' }),
+      h('ol', { class: 'sb-todo' }, g.todo.map(function (t) { return h('li', { text: t }); })),
+      h('div', { class: 'atc-actions' },
+        h('button', { class: 'btn', type: 'button', onclick: function () { pageTour(key, true); } }, h('span', { class: 'q', text: '?' }), ' Show me how'),
+        nextBtn(key, false)));
+  }
+  function nextBtn(key, big) {
+    var i = stepIndex(key), next = SETUP[i + 1];
+    var done = me.steps[key].state !== 'todo';
+    if (!next) return h('a', { class: 'btn' + (done ? ' dark' : ''), href: C.base, 'data-go': '', 'data-tour': big ? 'next' : null, text: 'Back to the start page →' });
+    return h('a', { class: 'btn' + (done || big ? ' dark' : ''), href: C.base + next[0] + '/', 'data-go': next[0], 'data-tour': big ? 'next' : null,
+      text: (done || big ? 'Next step: ' : 'Skip to step ' + (i + 2) + ': ') + next[1] + ' →' });
+  }
+  function stepFooter(key) {
+    var i = stepIndex(key), prev = SETUP[i - 1];
+    return h('div', { class: 'stepfoot' },
+      prev ? h('a', { class: 'link', href: C.base + prev[0] + '/', 'data-go': prev[0], text: '← Step ' + i + ': ' + prev[1] }) : h('a', { class: 'link', href: C.base, 'data-go': '', text: '← Start page' }),
+      h('span', { class: 'grow' }),
+      h('span', { class: 'small atc-muted', text: me.steps[key].state === 'todo' ? 'When this step is done:' : 'This step is done.' }),
+      nextBtn(key, true));
+  }
+
+  /* ---------- Guided tour: pop-ups that explain each part before the provider uses it ---------- */
+
+  var tourEl = null, tourOff = null;
+  function endTour() {
+    if (tourEl) { tourEl.remove(); tourEl = null; }
+    if (tourOff) { tourOff(); tourOff = null; }
+  }
+  function findEl(sel) {
+    if (typeof sel === 'function') return sel();
+    var list = (Array.isArray(sel) ? sel : [sel]).map(function (q) { return typeof q === 'string' ? document.querySelector(q) : q; })
+      .filter(function (e) { return e && e.getClientRects().length; });
+    return list.length ? list : null;
+  }
+  function runTour(steps, onEnd) {
+    endTour();
+    steps = steps.filter(function (s) { return !s.el || findEl(s.el); });
+    if (!steps.length) { if (onEnd) onEnd(false); return; }
+    var i = 0;
+    var block = h('div', { class: 'tour-block' });
+    var hole = h('div', { class: 'tour-hole' });
+    var pop = h('div', { class: 'tour-pop', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tour-t' });
+    var wrap = h('div', { class: 'tour' }, block, hole, pop);
+    document.body.appendChild(wrap);
+    tourEl = wrap;
+    function show() {
+      var s = steps[i];
+      var last = i === steps.length - 1;
+      clear(pop);
+      add(pop, [
+        h('div', { class: 'tour-n' }, h('span', { text: s.kicker || (steps.length > 1 ? (i + 1) + ' of ' + steps.length : '') }),
+          h('span', { class: 'tour-bar' }, steps.map(function (x, j) { return h('i', { class: j <= i ? 'on' : '' }); }))),
+        h('h3', { id: 'tour-t', text: s.title }),
+        h('p', { text: s.text }),
+        s.list ? h('ol', { class: 'tour-list' }, s.list.map(function (t) { return h('li', { text: t }); })) : null,
+        h('div', { class: 'tour-acts' },
+          last ? null : h('button', { class: 'link', type: 'button', text: 'Skip', onclick: function () { finish(false); } }),
+          h('span', { class: 'grow' }),
+          i ? h('button', { class: 'btn', type: 'button', text: 'Back', onclick: function () { i--; show(); } }) : null,
+          h('button', { class: 'btn dark', type: 'button', 'data-next': '1', text: last ? (s.done || 'Got it') : 'Next →', onclick: next }))
+      ]);
+      var t = s.el ? findEl(s.el) : null;
+      if (t) {
+        var r = box(t);
+        if (r.top < 70 || r.bottom > window.innerHeight - 40) t[0].scrollIntoView({ block: r.height > window.innerHeight * 0.6 ? 'start' : 'center' });
+      }
+      place();
+      var b = pop.querySelector('[data-next]'); if (b) b.focus({ preventScroll: true });
+    }
+    function box(list) {
+      var r = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+      list.forEach(function (e) { var b = e.getBoundingClientRect(); r.left = Math.min(r.left, b.left); r.top = Math.min(r.top, b.top); r.right = Math.max(r.right, b.right); r.bottom = Math.max(r.bottom, b.bottom); });
+      r.width = r.right - r.left; r.height = r.bottom - r.top;
+      return r;
+    }
+    function place() {
+      if (!tourEl) return;
+      var s = steps[i], t = s.el ? findEl(s.el) : null;
+      var vw = document.documentElement.clientWidth, vh = window.innerHeight, gap = 14, pad = 6;
+      if (!t) {
+        wrap.className = 'tour center';
+        pop.style.left = Math.max(8, (vw - pop.offsetWidth) / 2) + 'px';
+        pop.style.top = Math.max(8, (vh - pop.offsetHeight) / 2) + 'px';
+        return;
+      }
+      wrap.className = 'tour';
+      var r = box(t);
+      var hr = { left: Math.max(4, r.left - pad), top: Math.max(4, r.top - pad), right: Math.min(vw - 4, r.right + pad), bottom: Math.min(vh - 4, r.bottom + pad) };
+      hole.style.left = hr.left + 'px'; hole.style.top = hr.top + 'px';
+      hole.style.width = Math.max(0, hr.right - hr.left) + 'px'; hole.style.height = Math.max(0, hr.bottom - hr.top) + 'px';
+      var pw = pop.offsetWidth, ph = pop.offsetHeight, left, top;
+      if (s.right && hr.right + gap + pw <= vw - 8) { left = hr.right + gap; top = Math.max(8, Math.min(vh - ph - 8, r.top - 10)); }
+      else if (hr.bottom + gap + ph <= vh - 8) { top = hr.bottom + gap; left = r.left; }
+      else if (hr.top - gap - ph >= 8) { top = hr.top - gap - ph; left = r.left; }
+      else if (hr.right + gap + pw <= vw - 8) { left = hr.right + gap; top = Math.max(8, Math.min(vh - ph - 8, r.top)); }
+      else if (hr.left - gap - pw >= 8) { left = hr.left - gap - pw; top = Math.max(8, Math.min(vh - ph - 8, r.top)); }
+      else { top = vh - ph - 12; left = (vw - pw) / 2; }
+      pop.style.left = Math.max(8, Math.min(vw - pw - 8, left)) + 'px';
+      pop.style.top = Math.max(8, top) + 'px';
+    }
+    function next() { if (i < steps.length - 1) { i++; show(); } else finish(true); }
+    function finish(done) { endTour(); if (onEnd) onEnd(done); }
+    function onKey(e) {
+      if (e.key === 'Escape') finish(false);
+      else if (e.key === 'ArrowRight' && e.target.tagName !== 'INPUT') next();
+      else if (e.key === 'ArrowLeft' && i && e.target.tagName !== 'INPUT') { i--; show(); }
+    }
+    var onMove = function () { window.requestAnimationFrame(place); };
+    window.addEventListener('resize', onMove);
+    window.addEventListener('scroll', onMove, true);
+    document.addEventListener('keydown', onKey);
+    tourOff = function () { window.removeEventListener('resize', onMove); window.removeEventListener('scroll', onMove, true); document.removeEventListener('keydown', onKey); };
+    show();
+  }
+  function seen(key) {
+    if (!me.tour || Array.isArray(me.tour)) me.tour = {};
+    me.tour[key] = 1;
+    api('POST', '/tour', { key: key }).catch(function () {});
+  }
+  // Waits for a page part to appear (maps and price grids load after the page).
+  function whenReady(sel, cb, ms) {
+    var t0 = Date.now();
+    (function poll() {
+      if (findEl(sel)) return cb();
+      if (Date.now() - t0 > (ms || 5000)) return cb();
+      setTimeout(poll, 150);
+    })();
+  }
+
+  function welcomeTour() {
+    var p = me.provider, first = nextTodo();
+    var steps = [
+      { title: 'Welcome, ' + p.name + '!', text: 'We will take you through your setup, one step at a time. Here is the plan before you start. It takes about 20 minutes, and you can stop and come back whenever you like.' },
+      { right: true, el: '[data-nav=steps]', title: 'Your 8 steps, in order', text: 'Do them from top to bottom. The dot next to each step turns green when it is done, orange while we review it.' },
+      { right: true, el: '[data-nav=company]', title: 'Step 1 · Company details', text: GUIDE.company.why },
+      { right: true, el: '[data-nav=vehicles]', title: 'Step 2 · Vehicles', text: GUIDE.vehicles.why },
+      { right: true, el: '[data-nav=coverage]', title: 'Step 3 · Zones you serve', text: 'The areas you drive to, drawn on a map. You do not have to draw: type the name of a place and we draw it for you.' },
+      { right: true, el: '[data-nav=prices]', title: 'Step 4 · Prices', text: GUIDE.prices.why },
+      { right: true, el: '[data-nav=pricelist]', title: 'Shortcut for steps 2 to 4', text: 'Already have a price list in Excel, CSV or Google Sheets? Upload it here: we match your vehicles, draw your zones and fill in your prices. You check everything before it is saved.' },
+      { right: true, el: ['[data-nav=documents]', '[data-nav=payout]', '[data-nav=agreement]'], title: 'Steps 5 to 7 · Documents, payout, agreement', text: 'Your permit and insurance, where we pay you, and the provider agreement. We review your documents and switch you on.' },
+      { right: true, el: '[data-nav=directory]', title: 'Step 8 · Directory profile', text: GUIDE.directory.why },
+      { right: true, el: '[data-nav=airports]', title: 'More than one airport?', text: 'Add every airport you pick up from here. Each airport has its own vehicles, zones and prices.' },
+      { right: true, el: '[data-nav=help]', title: 'Lost? Click here', text: 'This tour comes back whenever you click “Show me around”. Each step also has a “Show me how” button that explains that page.' },
+      { title: first ? 'Ready? Start with step ' + (stepIndex(first) + 1) : 'You have done every step', text: first ? 'Next: ' + SETUP[stepIndex(first)][1] + '. ' + GUIDE[first].why : 'We review your documents and switch you on. You can still change anything here.', done: first ? 'Start step ' + (stepIndex(first) + 1) + ' →' : 'Done' }
+    ];
+    runTour(steps, function (done) {
+      seen('welcome');
+      if (done && first) go(first);
+    });
+  }
+
+  function pageTour(key, force) {
+    var make = TOURS[key];
+    if (!make) return;
+    var steps = make();
+    if (!steps.length) return;
+    whenReady(steps[0].el || 'body', function () {
+      if (path() !== (key || '') && !(key === '' && path() === '')) return; // the provider moved on
+      runTour(steps, function () { seen(key || 'home'); });
+    }, force ? 1500 : 6000);
+  }
+
+  function autoTour(key) {
+    if (tourEl || !me) return;
+    var t = me.tour || {};
+    if (!t.welcome) { setTimeout(function () { if (!tourEl && path() === key) welcomeTour(); }, 400); return; }
+    if (TOURS[key] && !t[key || 'home']) setTimeout(function () { if (!tourEl && path() === key) pageTour(key, false); }, 500);
+  }
+
+  var TOURS = {
+    company: function () { return [
+      { el: '#atc-app form', title: 'Your company details', text: 'Travelers see your company name on their booking. We use your phone and email to reach you about rides.' },
+      { el: '#atc-app form button[type=submit]', title: 'Save', text: 'Press Save when it is right. You can change it later.' },
+      { el: '[data-tour=next]', title: 'Then the next step', text: 'This button takes you to step 2: your vehicles.' }
+    ]; },
+    vehicles: function () { return [
+      { el: '[data-tour=airportbar]', title: 'The airport you are setting up', text: 'Vehicles, zones and prices are per airport. If you serve more airports, add them here later.' },
+      { el: '#atc-app .vt-grid', title: 'Tick what you sell', text: 'Each card is one of our vehicle categories. Tick the ones you sell. Your car can be another model, but it must be similar and carry as many people.' },
+      { el: '#atc-app .svc.vt', title: 'Check the numbers, then Save', text: 'When you tick a category it opens: check the passengers, bags and minutes of free waiting at the airport, then press Save.' },
+      { el: '[data-tour=cars]', title: 'Add your cars', text: 'Then add each car you will drive: model, plate, seats and insurance date. We need at least one.' },
+      { el: '[data-tour=next]', title: 'Next: your zones', text: 'When your categories and cars are in, go to step 3.' }
+    ]; },
+    coverage: function () { return [
+      { el: '[data-tour=find]', title: 'Start here: find an area by name', text: 'Type a town or area you drive to, like “Playa del Carmen” or “Hotel Zone”, and press “Find on the map”. We draw it for you.' },
+      { el: '#atc-app .atc-map', title: 'The map', text: 'The area appears in orange. Drag the white points to move its edge, then press “Save zone”. Your saved zones are green.' },
+      { el: '[data-tour=drawhand]', title: 'Or draw by hand', text: 'If we cannot find a place, press this and click around the area on the map, point by point.' },
+      { el: '[data-tour=ourzones]', title: 'Zones we already drew', text: 'Outlined in black on the map. Tick the ones you serve, then press “Save the zones I ticked”.' },
+      { el: '[data-tour=nearby]', title: 'Zones near your airport', text: 'We drew these for a nearby airport. Press “Use this zone” to add one to your zones here, without drawing.' },
+      { el: '[data-tour=next]', title: 'Next: your prices', text: 'Once you have your zones, go to step 4 and give each one a price.' }
+    ]; },
+    prices: function () { return [
+      { el: '#atc-app .pe-grid', title: 'Your price grid', text: 'Each row is one of your zones, each column a vehicle category you sell. Empty boxes say “Add price”: travelers cannot book there yet.' },
+      { el: '#atc-app .pe-edit', title: 'Type the price here', text: 'Click a box, then type the price the traveler pays, one way, in US dollars, per vehicle. We show what you get after our commission. Press “Save price”.' },
+      { el: '#atc-app .pe-pills', title: 'Round trip (optional)', text: 'Switch to Round trip to add a round trip price. Without one, a round trip costs two one-way prices.' },
+      { el: '[data-tour=missing]', title: 'What is still missing', text: 'This list shows the boxes still empty. The step turns green when every zone has a price for every vehicle.' },
+      { el: '[data-tour=next]', title: 'Next: your documents', text: 'Then upload your permit and insurance in step 5.' }
+    ]; },
+    pricelist: function () { return [
+      { el: '#atc-app .pe-up', title: 'Upload your file', text: 'Pick your Excel or CSV file, or paste from Google Sheets. One row per place and a column per vehicle works best.' },
+      { title: 'Then check what we found', text: 'We show how we read your vehicles, places and prices. Confirm each vehicle match and each place before saving. New places become zones you can reshape on the Zones page.' }
+    ]; },
+    documents: function () { return [
+      { el: '#atc-app section.card', title: 'One box per document', text: 'Pick the file (PDF or photo), set the expiry date and press Upload. Do the same for each document.' },
+      { el: '[data-tour=next]', title: 'Next: payout details', text: 'We check your documents within two working days. Meanwhile, go on with step 6.' }
+    ]; },
+    payout: function () { return [
+      { el: '#atc-app form', title: 'Where we pay you', text: 'Choose bank transfer or Wise and your currency, type the account details, and press Save. Only the last digits show afterwards.' },
+      { el: '[data-tour=next]', title: 'Next: the agreement', text: 'Then read and accept the provider agreement.' }
+    ]; },
+    agreement: function () { return [
+      { el: '#atc-app .agreement', title: 'Read the agreement', text: 'Commission, cancellations and how payments work. Tick the box at the bottom and press “Accept the agreement”.' }
+    ]; },
+    directory: function () { return [
+      { el: '#atc-app .stack', title: 'Your free directory page', text: 'Add your logo, a short description and your website. Travelers find your page when they look for transport in your city.' },
+      { el: '#atc-app .dir-bl', title: 'Your website link', text: 'Your website shows on your page when your site links to us. Copy the code into your site, then press “Check now”.' }
+    ]; },
+    airports: function () { return [
+      { el: '[data-tour=aplist]', title: 'Your airports', text: 'Every airport you serve, with how far its setup is: vehicles, zones and prices. Open one to work on it.' },
+      { el: '[data-tour=apadd]', title: 'Add an airport', text: 'Type the city or the airport code and pick it from the list. Then set up its vehicles, zones and prices, like for your first airport.' }
+    ]; }
+  };
 
   function head(title, sub) {
     return h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: title }), sub ? h('p', { class: 'atc-muted', text: sub }) : null));
@@ -320,44 +598,124 @@
 
   function viewSetup() {
     var p = me.provider, s = me.steps;
-    var keys = ['company', 'directory', 'vehicles', 'coverage', 'prices', 'documents', 'payout', 'agreement', 'approval'];
+    var keys = SETUP.map(function (x) { return x[0]; }).concat(['approval']);
     var done = keys.filter(function (k) { return s[k].state === 'done'; }).length;
-    var welcome = /welcome=1/.test(location.search);
-    add(app, [
-      head(welcome ? 'Welcome, ' + p.name : p.name, p.status === 'live' ? 'You are live: travelers can book you.' : 'Travelers can book you once every step is green.'),
-      h('ol', { class: 'steps', 'aria-label': 'Setup steps' }, keys.map(function (k) {
-        var st = s[k];
-        var link = k === 'approval' ? null : k;
-        var inner = [h('span', { class: 'st', text: st.label.toUpperCase() }), h('span', { class: 'nm', text: st.name })];
-        return h('li', { class: 'step ' + st.state }, link ? h('a', { href: C.base + link + '/', 'data-go': link }, inner) : h('div', null, inner));
-      })),
-      s.vehicles.state !== 'done' || s.prices.state !== 'done' ? h('section', { class: 'card pad', style: 'border-color:var(--orange)' },
-        h('h2', { text: 'Have a price list? Start with it' }),
-        h('p', { class: 'atc-muted', text: 'Upload your price list (Excel, CSV or Google Sheets) with your vehicles, places and prices. We match your vehicles to our categories, draw a zone for each place near ' + (me.airport ? me.airport.city : 'your airport') + ', and fill in your prices. You check everything before it is saved.' }),
-        h('div', { class: 'atc-actions' }, h('a', { class: 'btn dark', href: C.base + 'pricelist/', 'data-go': 'pricelist', text: 'Upload my price list' }), h('span', { class: 'small atc-muted', text: 'No list? Go step by step: Vehicles, then Zones, then Prices.' }))) : null,
-      h('section', { class: 'card pad' },
-        h('h2', { text: done + ' of ' + keys.length + ' done' }),
-        h('p', { class: 'atc-muted', text: nextHint() }),
-        h('p', { class: 'small atc-muted', text: 'Questions? Write to ' + C.support + '.' }))
-    ]);
-    function nextHint() {
-      for (var i = 0; i < keys.length; i++) {
-        var k = keys[i];
-        if (s[k].state === 'todo') {
-          return {
-            company: 'Next: complete your company details.',
-            directory: 'Next: add your logo and a short description to your directory profile.',
-            vehicles: 'Next: tick the vehicle categories you sell and add your vehicles.',
-            coverage: 'Next: draw the zones you serve on the map.',
-            prices: 'Next: set a price for each zone and vehicle category.',
-            documents: 'Next: upload your permit and your liability insurance.',
-            payout: 'Next: tell us where to send your money.',
-            agreement: 'Next: read and accept the provider agreement.'
-          }[k] || '';
-        }
-      }
-      return p.status === 'live' ? 'All set.' : 'All sent. We review your documents within two working days and switch you on.';
+    var first = nextTodo();
+    var live = p.status === 'live';
+    add(app, head(first && !done ? 'Welcome, ' + p.name : p.name, live ? 'You are live: travelers can book you.' : 'Travelers can book you once every step is green. ' + done + ' of ' + keys.length + ' done.'));
+    if (first) {
+      var i = stepIndex(first);
+      add(app, h('section', { class: 'card pad nextcard', 'data-tour': 'nextcard' },
+        h('div', { class: 'sb-kicker', text: done ? 'YOUR NEXT STEP · ' + (i + 1) + ' OF ' + SETUP.length : 'START HERE · STEP 1 OF ' + SETUP.length }),
+        h('h2', { text: SETUP[i][1] }),
+        h('p', { text: GUIDE[first].why }),
+        h('div', { class: 'atc-actions' },
+          h('a', { class: 'btn dark', href: C.base + first + '/', 'data-go': first, text: (done ? 'Continue with step ' : 'Start step ') + (i + 1) + ' →' }),
+          h('button', { class: 'btn', type: 'button', onclick: welcomeTour }, h('span', { class: 'q', text: '?' }), ' Show me around'))));
+    } else {
+      add(app, h('section', { class: 'card pad nextcard done' }, h('h2', { text: live ? 'All set' : 'Every step is sent' }),
+        h('p', { text: live ? 'Keep your prices and documents up to date. New bookings show under Bookings.' : 'We review your documents within two working days and switch you on. We email you when you are live.' })));
     }
+    add(app, h('ol', { class: 'steps', 'aria-label': 'Setup steps', 'data-tour': 'steps' }, keys.map(function (k, j) {
+      var st = s[k];
+      var link = k === 'approval' ? null : k;
+      var inner = [h('span', { class: 'st', text: (j + 1) + ' · ' + st.label.toUpperCase() }), h('span', { class: 'nm', text: st.name })];
+      return h('li', { class: 'step ' + st.state + (k === first ? ' cur' : '') }, link ? h('a', { href: C.base + link + '/', 'data-go': link }, inner) : h('div', null, inner));
+    })));
+    if (s.vehicles.state !== 'done' || s.prices.state !== 'done') {
+      add(app, h('section', { class: 'card pad', 'data-tour': 'pricelist', style: 'border-color:var(--orange)' },
+        h('h2', { text: 'Shortcut: have a price list?' }),
+        h('p', { class: 'atc-muted', text: 'Upload your price list (Excel, CSV or Google Sheets) and we do steps 2 to 4 for you: we match your vehicles to our categories, draw a zone for each place near ' + (me.airport ? me.airport.city : 'your airport') + ', and fill in your prices. You check everything before it is saved.' }),
+        h('div', { class: 'atc-actions' }, h('a', { class: 'btn', href: C.base + 'pricelist/', 'data-go': 'pricelist', text: 'Upload my price list' }), h('span', { class: 'small atc-muted', text: 'No list? Go step by step.' }))));
+    }
+    if (me.airports.length > 1) {
+      add(app, h('section', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('h2', { text: 'Your airports' }), h('a', { class: 'link', href: C.base + 'airports/', 'data-go': 'airports', text: 'Manage →' })),
+        airportTable(true)));
+    }
+    add(app, h('p', { class: 'small atc-muted', text: 'Questions? Write to ' + C.support + '.' }));
+  }
+
+  /* ---------- Airports ---------- */
+
+  function airportLabel(a) { return a ? (a.iata ? a.city + ' (' + a.iata + ')' : a.name) : 'your airport'; }
+
+  // The airport the provider is working on, with a switch when it serves several.
+  function airportBar() {
+    var list = me.airports;
+    var cur = me.airport;
+    var ctl;
+    if (list.length > 1) {
+      ctl = h('select', { 'aria-label': 'Airport you are working on', onchange: function () {
+        api('POST', '/airport', { airport_id: +ctl.value }).then(function (d) { saved(d, 'Now working on ' + airportLabel(d.airport) + '.'); }).catch(fail);
+      } }, list.map(function (a) { return h('option', { value: a.id, selected: cur && a.id == cur.id, text: a.label + (a.home ? ' · main airport' : '') }); }));
+    } else {
+      ctl = h('strong', { text: airportLabel(cur) });
+    }
+    return h('div', { class: 'ap-bar', 'data-tour': 'airportbar' },
+      h('span', { class: 'ap-k', text: 'Airport' }), ctl,
+      h('span', { class: 'small atc-muted grow', text: list.length > 1 ? 'Vehicles, zones and prices are set per airport.' : '' }),
+      h('a', { class: 'link', href: C.base + 'airports/', 'data-go': 'airports', text: '+ Add another airport' }));
+  }
+
+  function openAirport(a, where) {
+    var to = where;
+    if (!to) to = !a.vehicles ? 'vehicles' : (!a.zones ? 'coverage' : 'prices');
+    if (me.airport && me.airport.id == a.id) { go(to); return; }
+    api('POST', '/airport', { airport_id: a.id }).then(function (d) { me = d; go(to); }).catch(fail);
+  }
+
+  function airportTable(compact) {
+    var chip = function (ok, text) { return h('span', { class: 'chip ' + (ok ? 'green' : 'grey'), text: (ok ? '✓ ' : '') + text }); };
+    return h('div', { class: 'ap-list' }, me.airports.map(function (a) {
+      var pr = a.prices;
+      return h('div', { class: 'ap-row' + (me.airport && me.airport.id == a.id ? ' cur' : '') },
+        h('div', { class: 'ap-name' }, h('strong', { text: a.name }), h('span', { class: 'small atc-muted', text: (a.iata || '') + (a.home ? ' · main airport' : '') })),
+        h('div', { class: 'ap-chips' },
+          h('button', { class: 'chipbtn', type: 'button', onclick: function () { openAirport(a, 'vehicles'); } }, chip(a.vehicles > 0, a.vehicles ? a.vehicles + ' vehicle categor' + (a.vehicles === 1 ? 'y' : 'ies') : 'Vehicles to do')),
+          h('button', { class: 'chipbtn', type: 'button', onclick: function () { openAirport(a, 'coverage'); } }, chip(a.zones > 0, a.zones ? a.zones + ' zone' + (a.zones === 1 ? '' : 's') : 'Zones to do')),
+          h('button', { class: 'chipbtn', type: 'button', onclick: function () { openAirport(a, 'prices'); } }, chip(pr.total > 0 && !pr.missing, pr.total ? 'Prices ' + (pr.total - pr.missing) + ' / ' + pr.total : 'Prices to do'))),
+        compact ? null : h('div', { class: 'atc-actions' },
+          h('button', { class: 'btn dark', type: 'button', text: 'Open', onclick: function () { openAirport(a); } }),
+          a.home ? null : h('button', { class: 'link danger', type: 'button', text: 'Stop serving', onclick: function () {
+            if (!window.confirm('Stop serving ' + a.name + '? Travelers will no longer find you there. Your zones and prices are kept.')) return;
+            api('DELETE', '/airports/' + a.id).then(function (d) { saved(d, 'You no longer serve ' + a.name + '.'); }).catch(fail);
+          } })));
+    }));
+  }
+
+  function viewAirports() {
+    add(app, head('Your airports', 'Every airport you pick travelers up from. Each one has its own vehicles, zones and prices.'));
+    add(app, h('section', { class: 'card pad', 'data-tour': 'aplist' }, airportTable(false)));
+
+    var root = C.rest.replace(/\/portal\/?$/, '');
+    var q = h('input', { type: 'search', placeholder: 'City, airport name or code, e.g. Tulum or TQO', autocomplete: 'off', 'aria-label': 'Search for an airport' });
+    var out = h('div', { class: 'ap-results', role: 'list' });
+    var timer = null, seq = 0;
+    function search(more) {
+      var term = q.value.trim(), my = ++seq;
+      if (term.length < 2) { clear(out); return; }
+      fetch(root + '/airports/search?q=' + encodeURIComponent(term) + (more ? '&more=1' : ''), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+        if (my !== seq) return;
+        clear(out);
+        var mine = me.airports.map(function (a) { return a.id; });
+        (d.results || []).forEach(function (r) {
+          var have = r.id && mine.indexOf(r.id) >= 0;
+          add(out, h('button', { class: 'ap-res', type: 'button', role: 'listitem', disabled: have, onclick: function (e) {
+            var b = e.currentTarget; b.disabled = true;
+            api('POST', '/airports', r.id ? { airport_id: r.id } : { place_id: r.place_id }).then(function (d2) {
+              me = d2; nav(); toast(r.label + ' added. Now pick the vehicles you sell there.'); go('vehicles');
+            }).catch(function (e2) { b.disabled = false; fail(e2); });
+          } }, h('strong', { text: r.label }), h('span', { class: 'small atc-muted', text: (r.sub || '') + (have ? ' · already yours' : '') })));
+        });
+        if (!more) add(out, h('button', { class: 'link', type: 'button', text: (d.results || []).length ? 'Not in the list? Look further' : 'No match yet. Look further', onclick: function () { search(true); } }));
+        else if (!(d.results || []).length) add(out, h('p', { class: 'small atc-muted', text: 'Still nothing. Write to ' + C.support + ' with the airport name and we add it.' }));
+      }).catch(function () {});
+    }
+    q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { search(false); }, 300); });
+    add(app, h('section', { class: 'card pad', 'data-tour': 'apadd' },
+      h('h2', { text: 'Add an airport' }),
+      h('p', { class: 'small atc-muted', text: 'After adding it you go through the same three steps as for your first airport: vehicles, zones, prices.' }),
+      q, out));
   }
 
   /* ---------- Company ---------- */
@@ -504,7 +862,8 @@
 
   function viewVehicles() {
     var airport = me.airport;
-    add(app, head('Vehicles', 'Tick the categories you sell at ' + (airport ? (airport.iata ? airport.city + ' (' + airport.iata + ')' : airport.name) : 'your airport') + ', then add each vehicle.'));
+    add(app, head('Vehicles', 'Tick the categories you sell at ' + airportLabel(airport) + ', then add each vehicle.'));
+    add(app, airportBar());
 
     var grid = h('div', { class: 'vt-grid' });
     var other = h('div', { class: 'vt-grid hidden' });
@@ -572,7 +931,8 @@
       field('Make and model', f.model), field('Year', f.year), field('Category', f.type), field('Plate', f.plate), field('Seats', f.seats), field('Insurance until', f.ins),
       h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'submit', text: 'Add vehicle' })));
 
-    add(app, [cats, h('section', { class: 'card pad' }, h('h2', { text: 'Your vehicles' }),
+    add(app, [cats, h('section', { class: 'card pad', 'data-tour': 'cars' }, h('h2', { text: 'Your cars' }),
+      h('p', { class: 'small atc-muted', text: 'The real cars you drive, at all your airports. Add at least one.' }),
       h('div', { class: 'scroll' }, h('table', null, h('thead', null, h('tr', null, ['Vehicle', 'Category', 'Plate', 'Seats', 'Insurance until', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))), tbody)),
       h('p', { class: 'label', text: 'Add a vehicle' }), form)]);
   }
@@ -598,7 +958,8 @@
     var offered = me.services.filter(function (s) { return s.status !== 'paused' && s.airport_id == airport.id; });
     var ours = me.zones.filter(function (z) { return !z.own; });
     var mine = me.zones.filter(function (z) { return z.own; });
-    add(app, head('Zones you serve', 'Draw the areas where you pick up and drop off travelers. Each zone gets its own price on the next step.' + (ours.length ? ' You can also tick the zones we already drew.' : '')));
+    add(app, head('Zones you serve', 'The areas where you pick up and drop off travelers around ' + airportLabel(airport) + '. Each zone gets its own price on the next step.'));
+    add(app, airportBar());
     if (!offered.length) {
       add(app, h('section', { class: 'card pad' }, h('p', { text: 'First tick the vehicle categories you sell.' }),
         h('div', { class: 'atc-actions' }, h('a', { class: 'btn dark', href: C.base + 'vehicles/', 'data-go': 'vehicles', text: 'Go to Vehicles' }))));
@@ -607,7 +968,7 @@
     var chosen = {};
     offered.forEach(function (s) { s.zone_ids.forEach(function (z) { chosen[z] = true; }); });
 
-    var map = null, polys = {}, labels = [];
+    var map = null, polys = {}, labels = [], nearby = [], nearPolys = [], showAllNear = false;
     var mode = null; // null | {draw: pts, line, dots} | {edit: id}
     var mapBox = h('div', { class: 'atc-map' });
     var tools = h('div', { class: 'zd-tools' });
@@ -621,13 +982,13 @@
     function drawSide() {
       clear(side);
       add(side, h('div', { class: 'row-flat' }, h('h2', { text: 'Your zones' }),
-        h('button', { class: 'btn', type: 'button', text: 'Draw by hand', disabled: !!mode || !map, onclick: startDraw })));
+        h('button', { class: 'btn', type: 'button', 'data-tour': 'drawhand', text: 'Draw by hand', disabled: !!mode || !map, onclick: startDraw })));
       // Finding an area by name works at any time (it replaces a drawing in progress), except while reshaping.
       var busy = !map || !!(mode && mode.edit);
       var q = h('input', { type: 'search', placeholder: 'Type an area, e.g. Tulum, Playa del Carmen', disabled: busy, value: (mode && mode.suggest && mode.name) || '' });
       var findBtn = h('button', { class: 'btn dark', type: 'submit', text: 'Find on the map', disabled: busy });
       add(side, h('p', { class: 'small atc-muted', style: 'margin:4px 0 0', text: 'The easy way: type the name of an area and we draw it on the map for you. You can adjust the edge before saving.' }));
-      add(side, h('form', { class: 'zd-find', onsubmit: function (e) {
+      add(side, h('form', { class: 'zd-find', 'data-tour': 'find', onsubmit: function (e) {
         e.preventDefault();
         if (!q.value.trim()) { q.focus(); return; }
         if (mode) stopMode();
@@ -660,16 +1021,31 @@
           mine.forEach(function (z) { if (ids.indexOf(z.id) < 0) ids.push(z.id); });
           api('PUT', '/coverage', { airport_id: airport.id, zone_ids: ids }).then(function (d) { saved(d, 'Zones saved.'); }).catch(fail).then(function () { saveBtn.disabled = false; });
         } });
-        add(side, [h('h2', { text: 'Our zones', style: 'margin-top:18px' }),
+        add(side, h('div', { 'data-tour': 'ourzones' }, h('h2', { text: 'Our zones', style: 'margin-top:18px' }),
           h('p', { class: 'small atc-muted', text: 'Already drawn by us. Tick the ones you serve too. Where one of your zones covers an address, travelers get your price for your zone.' }),
           h('div', { class: 'atc-actions' },
             h('button', { class: 'link', type: 'button', text: 'All', onclick: function () { ours.forEach(function (z) { chosen[z.id] = true; z._cb.checked = true; }); paint(); } }),
             h('button', { class: 'link', type: 'button', text: 'None', onclick: function () { ours.forEach(function (z) { chosen[z.id] = false; z._cb.checked = false; }); paint(); } })),
-          list, h('div', { class: 'atc-actions' }, saveBtn)]);
+          list, h('div', { class: 'atc-actions' }, saveBtn)));
+      }
+      var near = nearby.filter(function (z) { return !z.used; });
+      if (near.length) {
+        var nl = h('div', { class: 'zd-near' });
+        add(side, h('div', { 'data-tour': 'nearby' }, h('h2', { text: 'Zones near your airport', style: 'margin-top:18px' }),
+          h('p', { class: 'small atc-muted', text: 'We drew these for other airports close by (grey on the map). Add one to your zones here in one click.' }), nl));
+        near.slice(0, showAllNear ? 60 : 8).forEach(function (z) {
+          add(nl, h('div', { class: 'zd-row' }, h('span', { class: 'zd-swatch near' }),
+            h('span', { class: 'grow' }, h('strong', { text: z.name }), h('span', { class: 'small atc-muted', text: ' · ' + z.km + ' km, from ' + z.from })),
+            h('button', { class: 'link', type: 'button', text: 'Use this zone', disabled: !!mode, onclick: function () { copyZone(z); } })));
+        });
+        if (near.length > 8 && !showAllNear) add(nl, h('button', { class: 'link', type: 'button', text: 'Show all ' + near.length, onclick: function () { showAllNear = true; drawSide(); } }));
       }
       if (mine.length || Object.keys(chosen).some(function (k) { return chosen[k]; })) {
         add(side, h('div', { class: 'atc-actions', style: 'margin-top:18px' }, h('a', { class: 'btn dark', href: C.base + 'prices/', 'data-go': 'prices', text: 'Next: set your prices →' })));
       }
+    }
+    function copyZone(z) {
+      api('POST', '/zones/copy', { zone_id: z.id }).then(function (d) { saved(d, z.name + ' added to your zones. Now give it a price.'); }).catch(fail);
     }
 
     /* ----- toolbar over the map while drawing or reshaping ----- */
@@ -683,7 +1059,7 @@
         name.addEventListener('input', function () { mode.name = name.value; save.disabled = n < 3 || !name.value.trim(); });
         var save = h('button', { class: 'btn dark', type: 'button', text: 'Save zone', disabled: n < 3 || !(mode.name || '').trim(), onclick: function () {
           save.disabled = true;
-          api('POST', '/zones', { name: name.value, polygon: mode.draw.map(function (p) { return [p.lat(), p.lng()]; }) })
+          api('POST', '/zones', { airport_id: airport.id, name: name.value, polygon: mode.draw.map(function (p) { return [p.lat(), p.lng()]; }) })
             .then(function (d) { stopMode(); saved(d, name.value + ' saved. Now give it a price.'); }).catch(function (e) { save.disabled = false; fail(e); });
         } });
         add(tools, [h('strong', { text: n < 3 ? 'Click on the map around the area (' + n + ' of at least 3 points)' : n + ' points. Keep clicking to follow the edge, then name it and save.' }),
@@ -703,7 +1079,7 @@
             h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: stopMode }),
             h('button', { class: 'btn dark', type: 'button', text: 'Save zone', onclick: function (e) {
               var b = e.currentTarget; b.disabled = true;
-              api('POST', '/zones', { name: nm.value, polygon: mode.poly.getPath().getArray().map(function (p) { return [p.lat(), p.lng()]; }) })
+              api('POST', '/zones', { airport_id: airport.id, name: nm.value, polygon: mode.poly.getPath().getArray().map(function (p) { return [p.lat(), p.lng()]; }) })
                 .then(function (d) { var n = nm.value; stopMode(); saved(d, n + ' saved. Now give it a price.'); }).catch(function (e2) { b.disabled = false; fail(e2); });
             } }))]);
       } else if (mode.edit) {
@@ -814,6 +1190,21 @@
       map = new google.maps.Map(mapBox, { center: { lat: parseFloat(airport.lat), lng: parseFloat(airport.lng) }, zoom: 10, mapTypeControl: false, streetViewControl: false, clickableIcons: false, gestureHandling: 'greedy' });
       map.addListener('click', function (e) { if (mode && mode.draw) addPoint(e.latLng); });
       paintAll(); drawSide();
+      api('GET', '/zones/nearby').then(function (r) {
+        var mineNames = me.zones.map(function (z) { return z.name.toLowerCase(); });
+        nearby = (r.zones || []).map(function (z) { z.used = mineNames.indexOf(z.name.toLowerCase()) >= 0; return z; });
+        nearby.forEach(function (z) {
+          if (z.used) return;
+          var poly = new google.maps.Polygon({ map: map, paths: z.polygon.map(function (p) { return { lat: p[0], lng: p[1] }; }), strokeColor: '#6B7280', strokeOpacity: 0.8, strokeWeight: 1, fillColor: '#9CA3AF', fillOpacity: 0.08, zIndex: 0 });
+          poly.addListener('click', function (e) {
+            if (mode && mode.draw) { addPoint(e.latLng); return; }
+            if (mode) return;
+            if (window.confirm('Add ' + z.name + ' (drawn for ' + z.from + ') to your zones?')) copyZone(z);
+          });
+          nearPolys.push(poly);
+        });
+        drawSide();
+      }).catch(function () {});
     }).catch(function (e) {
       clear(mapBox);
       add(mapBox, h('div', { class: 'atc-nomap' }, h('p', { text: e.message === 'nokey' ? 'The map is not available right now. Please try again later.' : e.message })));
@@ -824,18 +1215,20 @@
 
   function viewPriceList() {
     add(app, head('Upload your price list', 'The fastest way to set up: your vehicles, zones and prices from one file. Afterwards, check your vehicles (add each car), the shapes of your zones on the map, and any missing price.'));
+    add(app, airportBar());
     var box = h('div', { class: 'pe-root' });
     add(app, box);
     window.ATCPrices.mount(box, {
-      api: api, base: '/prices', who: 'provider', h1: false, upload: true, toast: toast, fail: fail,
+      api: api, base: '/prices', who: 'provider', h1: false, upload: true, toast: toast, fail: fail, airportId: me.airport && me.airport.id,
       onSaved: function () { api('GET', '/me').then(function (d) { me = d; nav(); }); }
     });
   }
 
   function viewPrices() {
     var ps = me.steps.prices;
+    add(app, airportBar());
     if (ps && ps.missing) {
-      add(app, h('section', { class: 'card pad warn' }, h('h2', { text: ps.missing + ' one-way price' + (ps.missing === 1 ? '' : 's') + ' still missing' }),
+      add(app, h('section', { class: 'card pad warn', 'data-tour': 'missing' }, h('h2', { text: ps.missing + ' one-way price' + (ps.missing === 1 ? '' : 's') + ' still missing' }),
         h('p', { class: 'small', text: 'Every zone you serve needs a price for every vehicle category you sell. Travelers can only book where there is a price.' }),
         h('ul', { class: 'small', style: 'margin:0;padding-left:18px' }, ps.missing_list.map(function (m) { return h('li', { text: m.zone + ' · ' + m.vehicle }); })),
         ps.missing > ps.missing_list.length ? h('p', { class: 'small atc-muted', text: 'and ' + (ps.missing - ps.missing_list.length) + ' more.' }) : null));
@@ -843,7 +1236,7 @@
     var box = h('div', { class: 'pe-root' });
     add(app, box);
     window.ATCPrices.mount(box, {
-      api: api, base: '/prices', who: 'provider', h1: true, toast: toast, fail: fail,
+      api: api, base: '/prices', who: 'provider', h1: true, toast: toast, fail: fail, airportId: me.airport && me.airport.id,
       onSaved: function () { api('GET', '/me').then(function (d) { me = d; nav(); }); }
     });
   }

@@ -38,12 +38,7 @@ final class ATC_Prices {
 
 	/** Airports this provider sells or has prices at, plus its home airport. */
 	public static function airports_for( int $party_id ): array {
-		global $wpdb;
-		$p   = ATC_Catalog::party( $party_id );
-		$ids = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT DISTINCT airport_id FROM ' . self::t( 'services' ) . ' WHERE party_id = %d', $party_id ) ) );
-		if ( $p && ! empty( $p['home_airport_id'] ) ) {
-			array_unshift( $ids, (int) $p['home_airport_id'] );
-		}
+		$ids = ATC_Partner::airport_ids( $party_id );
 		$out = array();
 		foreach ( array_unique( $ids ) as $id ) {
 			$a = ATC_Catalog::airport( $id );

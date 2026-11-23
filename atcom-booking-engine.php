@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.20.4' );
-define( 'ATC_DB_VERSION', '22' );
+define( 'ATC_VERSION', '0.21.0' );
+define( 'ATC_DB_VERSION', '23' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ATC_URL', plugin_dir_url( __FILE__ ) );

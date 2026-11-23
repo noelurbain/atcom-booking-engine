@@ -43,7 +43,7 @@ final class ATC_REST_Portal {
 	public static function me(): array {
 		$pid     = self::pid();
 		$party   = ATC_Catalog::party( $pid );
-		$airport = ATC_Catalog::airport( (int) ( $party['home_airport_id'] ?: 0 ) );
+		$airport = ATC_Catalog::airport( self::current_airport( $pid ) );
 		if ( ! $airport ) {
 			$all     = ATC_Catalog::airports();
 			$airport = $all ? $all[0] : null;
@@ -60,6 +60,8 @@ final class ATC_REST_Portal {
 		return array(
 			'provider'      => array_intersect_key( $party, array_flip( array( 'id', 'name', 'legal_name', 'contact_name', 'email', 'phone', 'languages', 'website', 'about', 'country', 'min_notice_minutes', 'status', 'agreement_accepted_at', 'agreement_version' ) ) ),
 			'airport'       => $airport,
+			'airports'      => ATC_Partner::airports_overview( $pid ),
+			'tour'          => (object) ATC_Partner::tour( get_current_user_id() ),
 			'zones'         => $zones,
 			'vehicle_types' => ATC_Catalog::vehicle_types(),
 			'services'      => ATC_Catalog::services( $pid ),
@@ -74,6 +76,13 @@ final class ATC_REST_Portal {
 			'prices'        => ATC_Catalog::price_table( $pid ),
 			'to_confirm'    => self::to_confirm( $pid ),
 		);
+	}
+
+	/** The airport the provider is working on in the portal: the one it picked last, else its main airport. */
+	private static function current_airport( int $pid ): int {
+		$ids  = ATC_Partner::airport_ids( $pid );
+		$want = (int) get_user_meta( get_current_user_id(), 'atc_portal_airport', true );
+		return in_array( $want, $ids, true ) ? $want : (int) ( $ids[0] ?? 0 );
 	}
 
 	private static function to_confirm( int $pid ): int {
@@ -191,10 +200,74 @@ final class ATC_REST_Portal {
 		$airport = static function ( WP_REST_Request $r ) {
 			$want = (int) ( self::body( $r )['airport_id'] ?? $r['airport_id'] ?? 0 );
 			$ids  = wp_list_pluck( ATC_Prices::airports_for( self::pid() ), 'id' );
-			return in_array( $want, $ids, true ) ? $want : (int) ( $ids[0] ?? 0 );
+			return in_array( $want, $ids, true ) ? $want : self::current_airport( self::pid() );
 		};
 		// Bookings: the provider's rides.
 		self::route( '/bookings', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Trips::list( self::pid(), (string) $r['filter'], max( 1, (int) $r['page'] ), ! empty( $r['all'] ) ) ) ) );
+		// Airports the provider serves: pick the one to work on, add one, stop serving one.
+		self::route(
+			'/airport',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$id = (int) ( self::body( $r )['airport_id'] ?? 0 );
+					if ( ! in_array( $id, ATC_Partner::airport_ids( self::pid() ), true ) ) {
+						return new WP_Error( 'atc_airport', 'Add this airport first.', array( 'status' => 400 ) );
+					}
+					update_user_meta( get_current_user_id(), 'atc_portal_airport', $id );
+					return rest_ensure_response( self::me() );
+				},
+			)
+		);
+		self::route(
+			'/airports',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Partner::add_airport( self::pid(), self::body( $r ) );
+					if ( is_wp_error( $res ) ) {
+						return $res;
+					}
+					update_user_meta( get_current_user_id(), 'atc_portal_airport', (int) $res['airport_id'] );
+					return rest_ensure_response( array( 'added' => $res['added'] ) + self::me() );
+				},
+			)
+		);
+		self::route(
+			'/airports/(?P<id>\\d+)',
+			array(
+				'DELETE' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Partner::remove_airport( self::pid(), (int) $r['id'] );
+					if ( is_wp_error( $res ) ) {
+						return $res;
+					}
+					delete_user_meta( get_current_user_id(), 'atc_portal_airport' );
+					return rest_ensure_response( self::me() );
+				},
+			)
+		);
+		// Which explanations of the guided tour this person has seen.
+		self::route(
+			'/tour',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return rest_ensure_response( array( 'tour' => (object) ATC_Partner::tour_seen( get_current_user_id(), (string) ( $b['key'] ?? '' ), ! isset( $b['seen'] ) || ! empty( $b['seen'] ) ) ) );
+				},
+			)
+		);
+		// Our zones around nearby airports, to copy as the provider's own.
+		self::route(
+			'/zones/nearby',
+			array( 'GET' => static fn() => rest_ensure_response( array( 'zones' => ATC_Partner::nearby_zones( self::pid(), self::current_airport( self::pid() ) ) ) ) )
+		);
+		self::route(
+			'/zones/copy',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Partner::copy_zone( self::pid(), (int) ( self::body( $r )['zone_id'] ?? 0 ), self::current_airport( self::pid() ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( array( 'zone_id' => $res['id'] ) + self::me() );
+				},
+			)
+		);
 		// Zones the provider draws itself (no approval).
 		self::route(
 			'/zones',
@@ -210,8 +283,7 @@ final class ATC_REST_Portal {
 			array(
 				'GET' => static function ( WP_REST_Request $r ) {
 					$q = trim( sanitize_text_field( (string) $r['q'] ) );
-					$p = ATC_Catalog::party( self::pid() );
-					$a = $p && $p['home_airport_id'] ? ATC_Catalog::airport( (int) $p['home_airport_id'] ) : null;
+					$a = ATC_Catalog::airport( self::current_airport( self::pid() ) );
 					if ( '' === $q || ! $a ) {
 						return new WP_Error( 'atc_suggest', 'Type the name of an area first.', array( 'status' => 400 ) );
 					}

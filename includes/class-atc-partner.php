@@ -625,6 +625,189 @@ final class ATC_Partner {
 		return array( 'accepted_at' => self::now() );
 	}
 
+	/* ---------- Airports a provider serves ---------- */
+
+	const AIRPORTS_MAX = 12;
+
+	/** Airport ids the provider works at: its main airport, the ones it added, and any with a vehicle category. */
+	public static function airport_ids( int $party_id ): array {
+		global $wpdb;
+		$p   = ATC_Catalog::party( $party_id );
+		$ids = array();
+		if ( $p && ! empty( $p['home_airport_id'] ) ) {
+			$ids[] = (int) $p['home_airport_id'];
+		}
+		foreach ( self::extra_airports( $p ) as $id ) {
+			$ids[] = $id;
+		}
+		foreach ( $wpdb->get_col( $wpdb->prepare( 'SELECT DISTINCT airport_id FROM ' . self::t( 'services' ) . " WHERE party_id = %d AND status <> 'paused'", $party_id ) ) as $id ) {
+			$ids[] = (int) $id;
+		}
+		return array_values( array_unique( array_filter( $ids ) ) );
+	}
+
+	private static function extra_airports( ?array $p ): array {
+		return $p ? array_values( array_filter( array_map( 'intval', explode( ',', (string) ( $p['extra_airports'] ?? '' ) ) ) ) ) : array();
+	}
+
+	/** Each airport with how far its setup is: vehicle categories, zones, prices. */
+	public static function airports_overview( int $party_id ): array {
+		$p        = ATC_Catalog::party( $party_id );
+		$services = ATC_Catalog::services( $party_id );
+		$out      = array();
+		foreach ( self::airport_ids( $party_id ) as $id ) {
+			$a = ATC_Catalog::airport( $id );
+			if ( ! $a ) {
+				continue;
+			}
+			$here  = array_filter( $services, static fn( $s ) => (int) $s['airport_id'] === $id && 'paused' !== $s['status'] );
+			$zones = array();
+			foreach ( $here as $s ) {
+				$zones = array_merge( $zones, array_map( 'intval', $s['zone_ids'] ) );
+			}
+			$mp    = self::missing_prices( $party_id, $id );
+			$out[] = array(
+				'id'       => $id,
+				'label'    => ATC_Catalog::airport_label( $a ),
+				'name'     => $a['name'],
+				'iata'     => $a['iata'],
+				'city'     => $a['city'],
+				'home'     => $p && (int) $p['home_airport_id'] === $id,
+				'vehicles' => count( $here ),
+				'zones'    => count( array_unique( $zones ) ),
+				'prices'   => array( 'total' => $mp['total'], 'missing' => $mp['missing'] ),
+			);
+		}
+		return $out;
+	}
+
+	/** Adds an airport the provider also serves: one of ours, or one found on Google (place_id). */
+	public static function add_airport( int $party_id, array $in ) {
+		global $wpdb;
+		$p = ATC_Catalog::party( $party_id );
+		if ( ! $p ) {
+			return new WP_Error( 'atc_airport', 'Provider not found.', array( 'status' => 404 ) );
+		}
+		$airport = ! empty( $in['airport_id'] ) ? ATC_Catalog::airport( (int) $in['airport_id'] ) : null;
+		if ( $airport && 'active' !== $airport['status'] ) {
+			$airport = null;
+		}
+		$place = sanitize_text_field( (string) ( $in['place_id'] ?? '' ) );
+		if ( ! $airport && '' !== $place ) {
+			if ( ! self::rate_ok( 'add_airport', 10 ) ) {
+				return new WP_Error( 'atc_airport', 'Too many new airports. Try again in a few minutes.', array( 'status' => 429 ) );
+			}
+			$airport = ATC_Catalog::airport_from_google( $place );
+			if ( is_wp_error( $airport ) ) {
+				return $airport;
+			}
+		}
+		if ( ! $airport ) {
+			return new WP_Error( 'atc_airport', 'Search for the airport and pick it from the list.', array( 'status' => 400 ) );
+		}
+		$id  = (int) $airport['id'];
+		$ids = self::airport_ids( $party_id );
+		if ( in_array( $id, $ids, true ) ) {
+			return array( 'airport_id' => $id, 'added' => false );
+		}
+		if ( count( $ids ) >= self::AIRPORTS_MAX ) {
+			return new WP_Error( 'atc_airport', 'You serve ' . self::AIRPORTS_MAX . ' airports already. Write to us to add more.', array( 'status' => 400 ) );
+		}
+		$extra   = self::extra_airports( $p );
+		$extra[] = $id;
+		$wpdb->update( self::t( 'parties' ), array( 'extra_airports' => implode( ',', array_unique( $extra ) ) ), array( 'id' => $party_id ) );
+		if ( empty( $p['home_airport_id'] ) ) {
+			$wpdb->update( self::t( 'parties' ), array( 'home_airport_id' => $id ), array( 'id' => $party_id ) );
+		}
+		return array( 'airport_id' => $id, 'added' => true );
+	}
+
+	/** Stops serving an airport (not the main one): its categories are paused, zones and prices are kept. */
+	public static function remove_airport( int $party_id, int $airport_id ) {
+		global $wpdb;
+		$p = ATC_Catalog::party( $party_id );
+		if ( ! $p ) {
+			return new WP_Error( 'atc_airport', 'Provider not found.', array( 'status' => 404 ) );
+		}
+		if ( (int) $p['home_airport_id'] === $airport_id ) {
+			return new WP_Error( 'atc_airport', 'This is your main airport. Write to us if you want to change it.', array( 'status' => 400 ) );
+		}
+		$extra = array_values( array_diff( self::extra_airports( $p ), array( $airport_id ) ) );
+		$wpdb->update( self::t( 'parties' ), array( 'extra_airports' => $extra ? implode( ',', $extra ) : null ), array( 'id' => $party_id ) );
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'services' ) . " SET status = 'paused' WHERE party_id = %d AND airport_id = %d", $party_id, $airport_id ) );
+		return true;
+	}
+
+	/**
+	 * Zones we drew around OTHER airports close to this one (for example Tulum and Playa del Carmen,
+	 * drawn for Cancún, seen from Tulum airport). A provider copies one as its own zone at its airport.
+	 */
+	public static function nearby_zones( int $party_id, int $airport_id, float $km = 100 ): array {
+		global $wpdb;
+		$a = ATC_Catalog::airport( $airport_id );
+		if ( ! $a || null === $a['lat'] ) {
+			return array();
+		}
+		$mine  = array_map( 'strtolower', $wpdb->get_col( $wpdb->prepare( 'SELECT name FROM ' . self::t( 'zones' ) . " WHERE airport_id = %d AND status = 'active' AND (party_id IS NULL OR party_id = %d)", $airport_id, $party_id ) ) );
+		$near  = array();
+		foreach ( ATC_Catalog::airports() as $o ) {
+			if ( (int) $o['id'] !== $airport_id && null !== $o['lat'] && ATC_Geo::km( (float) $a['lat'], (float) $a['lng'], (float) $o['lat'], (float) $o['lng'] ) <= $km * 2 ) {
+				$near[ (int) $o['id'] ] = $o;
+			}
+		}
+		$out = array();
+		foreach ( $near as $oid => $o ) {
+			foreach ( ATC_Catalog::zones( $oid ) as $z ) {
+				$ring = (array) ( $z['polygon'] ?? array() );
+				if ( count( $ring ) < 3 || in_array( strtolower( (string) $z['name'] ), $mine, true ) ) {
+					continue;
+				}
+				$clat = array_sum( array_column( $ring, 0 ) ) / count( $ring );
+				$clng = array_sum( array_column( $ring, 1 ) ) / count( $ring );
+				$d    = ATC_Geo::km( (float) $a['lat'], (float) $a['lng'], $clat, $clng );
+				if ( $d > $km ) {
+					continue;
+				}
+				$out[] = array( 'id' => (int) $z['id'], 'name' => $z['name'], 'polygon' => $ring, 'km' => (int) round( $d ), 'from' => ATC_Catalog::airport_label( $o ) );
+			}
+		}
+		usort( $out, static fn( $x, $y ) => $x['km'] <=> $y['km'] );
+		return array_slice( $out, 0, 60 );
+	}
+
+	/** Copies one of our zones from a nearby airport as the provider's own zone at its airport. */
+	public static function copy_zone( int $party_id, int $zone_id, int $airport_id ) {
+		foreach ( self::nearby_zones( $party_id, $airport_id ) as $z ) {
+			if ( $z['id'] === $zone_id ) {
+				return self::save_own_zone( $party_id, array( 'name' => $z['name'], 'polygon' => $z['polygon'], 'airport_id' => $airport_id ) );
+			}
+		}
+		return new WP_Error( 'atc_zone', 'That zone is not near this airport.', array( 'status' => 400 ) );
+	}
+
+	/* ---------- Guided tour: which explanations a portal user has seen ---------- */
+
+	public static function tour( int $user_id ): array {
+		$t = get_user_meta( $user_id, 'atc_tour', true );
+		return is_array( $t ) ? $t : array();
+	}
+
+	public static function tour_seen( int $user_id, string $key, bool $seen = true ): array {
+		$t   = self::tour( $user_id );
+		$key = sanitize_key( $key );
+		if ( 'reset' === $key ) {
+			$t = array();
+		} elseif ( '' !== $key ) {
+			if ( $seen ) {
+				$t[ $key ] = 1;
+			} else {
+				unset( $t[ $key ] );
+			}
+		}
+		update_user_meta( $user_id, 'atc_tour', array_slice( $t, 0, 40, true ) );
+		return $t;
+	}
+
 	/* ---------- Zones a provider draws for itself ---------- */
 
 	const OWN_ZONES_MAX = 80;
@@ -651,6 +834,9 @@ final class ATC_Partner {
 			$airport = ATC_Catalog::airport( (int) $zone['airport_id'] );
 		} else {
 			$airport = ! empty( $in['airport_id'] ) ? ATC_Catalog::airport( (int) $in['airport_id'] ) : self::home_airport( $party_id );
+			if ( $airport && ! in_array( (int) $airport['id'], self::airport_ids( $party_id ), true ) ) {
+				return new WP_Error( 'atc_zone', 'Add this airport to your airports first.', array( 'status' => 400 ) );
+			}
 			if ( ! $airport ) {
 				return new WP_Error( 'atc_zone', 'Set your main airport first.', array( 'status' => 400 ) );
 			}
@@ -728,8 +914,9 @@ final class ATC_Partner {
 	}
 
 	/** Prices still missing: one-way, for each vehicle category the provider sells × each zone it serves. */
-	public static function missing_prices( int $party_id ): array {
+	public static function missing_prices( int $party_id, int $airport_id = 0 ): array {
 		global $wpdb;
+		$only = $airport_id ? $wpdb->prepare( ' AND s.airport_id = %d', $airport_id ) : '';
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				'SELECT z.name zone, v.name vehicle FROM ' . self::t( 'services' ) . ' s
@@ -737,13 +924,13 @@ final class ATC_Partner {
 				JOIN ' . self::t( 'zones' ) . " z ON z.id = sz.zone_id AND z.status = 'active'
 				JOIN " . self::t( 'vehicle_types' ) . ' v ON v.id = s.vehicle_type_id
 				LEFT JOIN ' . self::t( 'prices' ) . " pr ON pr.service_id = s.id AND pr.zone_id = sz.zone_id AND pr.direction = 'one_way' AND pr.valid_from IS NULL AND pr.retail_cents > 0
-				WHERE s.party_id = %d AND s.status <> 'paused' AND pr.service_id IS NULL
+				WHERE s.party_id = %d AND s.status <> 'paused' AND pr.service_id IS NULL{$only}
 				ORDER BY z.sort, z.name, v.sort",
 				$party_id
 			),
 			ARRAY_A
 		);
-		$total = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . self::t( 'services' ) . ' s JOIN ' . self::t( 'service_zones' ) . ' sz ON sz.service_id = s.id JOIN ' . self::t( 'zones' ) . " z ON z.id = sz.zone_id AND z.status = 'active' WHERE s.party_id = %d AND s.status <> 'paused'", $party_id ) );
+		$total = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . self::t( 'services' ) . ' s JOIN ' . self::t( 'service_zones' ) . ' sz ON sz.service_id = s.id JOIN ' . self::t( 'zones' ) . " z ON z.id = sz.zone_id AND z.status = 'active' WHERE s.party_id = %d AND s.status <> 'paused'{$only}", $party_id ) );
 		return array( 'total' => $total, 'missing' => count( $rows ), 'list' => array_slice( $rows, 0, 12 ) );
 	}
 

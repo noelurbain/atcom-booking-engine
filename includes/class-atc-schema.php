@@ -66,6 +66,7 @@ final class ATC_Schema {
   website varchar(190) NULL,
   about text NULL,
   home_airport_id bigint(20) unsigned NULL,
+  extra_airports varchar(255) NULL,
   invited_at datetime NULL,
   invite_count int(11) NOT NULL DEFAULT 0,
   rating_avg decimal(3,2) NULL,

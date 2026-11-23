@@ -128,7 +128,7 @@
       var pill = function (d, label) {
         return h('button', { type: 'button', class: 'pe-pill' + (dir === d ? ' on' : ''), 'aria-pressed': dir === d ? 'true' : 'false', text: label, onclick: function () { dir = d; render(); } });
       };
-      var airportSel = g.airports.length > 1 ? h('select', { 'aria-label': 'Airport', onchange: function () { load(+airportSel.value); } },
+      var airportSel = g.airports.length > 1 && !opts.airportId ? h('select', { 'aria-label': 'Airport', onchange: function () { load(+airportSel.value); } },
         g.airports.map(function (a) { return h('option', { value: a.id, selected: a.id === g.airport.id, text: a.label }); })) : null;
 
       var zoneAdd = h('select', { 'aria-label': 'Add a zone', onchange: function () { if (zoneAdd.value) { var z = g.zones.filter(function (x) { return x.id === +zoneAdd.value; })[0]; extraZones.push(z.id); sel = { zone: z, type: sel ? sel.type : types[0] }; render(); } } },
