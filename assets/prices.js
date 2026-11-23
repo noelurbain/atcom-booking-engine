@@ -103,7 +103,18 @@
     function shownZones() { return g.zones.filter(function (z) { return z.served || z.status === 'proposed' || extraZones.indexOf(z.id) > -1; }); }
     function shownTypes(zones) { return g.vehicle_types.filter(function (t) { return t.offered || extraVehicles.indexOf(t.id) > -1 || zones.some(function (z) { return g.cells[z.id + ':' + t.id]; }); }); }
 
+    // Redrawing the grid keeps the page where it is (no jump to the top) and the grid's sideways scroll.
     function render() {
+      var y = window.scrollY, gridEl = root.querySelector('.pe-grid'), gx = gridEl ? gridEl.scrollLeft : 0;
+      root.style.minHeight = root.offsetHeight + 'px';
+      draw();
+      var ng = root.querySelector('.pe-grid');
+      if (ng) ng.scrollLeft = gx;
+      root.style.minHeight = '';
+      window.scrollTo(window.scrollX, y);
+    }
+
+    function draw() {
       clear(root);
       if (!g || !g.airport) { add(root, h('p', { class: 'atc-muted', text: 'Add your airport and the zones you serve first.' })); return; }
       var bp = g.commission_bp;
@@ -136,7 +147,7 @@
               var c = cell(z.id, t.id);
               var on = sel && sel.zone.id === z.id && sel.type.id === t.id;
               return h('td', null, h('button', { type: 'button', class: 'pe-c' + (on ? ' on' : '') + (c ? '' : ' empty'), 'aria-label': z.name + ', ' + t.name + (c ? ', USD ' + dollars(c.retail) : ', no price'),
-                onclick: function () { sel = { zone: z, type: t }; render(); } },
+                onclick: function () { sel = { zone: z, type: t }; render(); var ed = root.querySelector('.pe-edit'); if (ed && window.matchMedia('(max-width:900px)').matches) ed.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } },
                 h('span', { class: 'pe-r', text: c ? 'USD ' + dollars(c.retail) : 'Add price' }),
                 h('span', { class: 'pe-p', text: c ? (who === 'provider' ? 'you get ' : 'provider gets ') + dollars(c.provider) : 'not offered' })));
             }));

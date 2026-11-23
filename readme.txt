@@ -1,5 +1,9 @@
 === ATCOM Booking Engine ===
-Version: 0.20.3 (price list upload first; zones found by name)
+Version: 0.20.4 (price list upload first; zones found by name)
+
+New in 0.20.4:
+- Price grid: picking another cell no longer jumps the page to the top (portal and Control); the grid keeps
+  its sideways scroll too. On phones, where the editor sits under the grid, it scrolls to the editor.
 
 New in 0.20.3:
 - Portal → Zones you serve: "Find on the map" is the main way (type an area, we draw it) and works at any
