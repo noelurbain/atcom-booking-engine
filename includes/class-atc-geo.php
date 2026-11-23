@@ -443,7 +443,7 @@ final class ATC_Geo {
 			}
 			$clat = array_sum( array_column( $ring, 0 ) ) / count( $ring );
 			$clng = array_sum( array_column( $ring, 1 ) ) / count( $ring );
-			if ( self::km( (float) $airport['lat'], (float) $airport['lng'], $clat, $clng ) > 300 ) {
+			if ( self::km( (float) $airport['lat'], (float) $airport['lng'], $clat, $clng ) > 400 ) {
 				continue;
 			}
 			$s = ( 'osm' === ( $c['source'] ?? '' ) ? 2 : 1 ) + ( $point && self::point_in_polygon( (float) $point['lat'], (float) $point['lng'], $ring ) ? 4 : 0 );

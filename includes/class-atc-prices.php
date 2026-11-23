@@ -259,7 +259,22 @@ final class ATC_Prices {
 		}
 		$has = static fn( string $re ) => (bool) preg_match( '/\b(' . $re . ')\b/', $n );
 		$slug = null;
-		if ( $has( 'large coach|big coach|full size coach|50 seat|55 seat|56 seat' ) ) {
+		if ( $has( 'limo|limos|limousine|limousines|stretch|hummer' ) ) {
+			// Limousines before SUVs and vans: "Limo Suburban" is the stretch Suburban, not an SUV.
+			if ( $has( 'hummer|h2' ) ) {
+				$slug = 'hummer-h2-stretch-limousine';
+			} elseif ( $has( 'suburban|tahoe' ) ) {
+				$slug = 'suburban-stretch-limousine';
+			} elseif ( $has( 'escalade|cadillac' ) ) {
+				$slug = 'escalade-stretch-limousine';
+			} elseif ( $has( 'sprinter|van|party bus' ) ) {
+				$slug = 'sprinter-limousine';
+			} elseif ( $has( 'chrysler|300' ) ) {
+				$slug = 'chrysler-300-stretch-limousine';
+			} elseif ( $has( 'lincoln|town car' ) ) {
+				$slug = 'lincoln-stretch-limousine';
+			}
+		} elseif ( $has( 'large coach|big coach|full size coach|50 seat|55 seat|56 seat' ) ) {
 			$slug = 'large-coach';
 		} elseif ( $has( 'midi coach|midicoach|midi bus|35 seat|33 seat' ) ) {
 			$slug = 'midi-coach';
@@ -392,8 +407,36 @@ final class ATC_Prices {
 		$kinds = array_map( array( __CLASS__, 'header_kind' ), $head );
 		$place = array_search( 'place', $kinds, true );
 		$veh   = array_search( 'vehicle', $kinds, true );
+		// A second header row with "one way" / "round trip" under each vehicle (merged vehicle cells above).
+		$sub = null;
+		if ( isset( $rows[ $hi + 1 ] ) ) {
+			$sk = array_map( array( __CLASS__, 'header_kind' ), $rows[ $hi + 1 ] );
+			if ( count( array_filter( $sk, static fn( $k ) => in_array( $k, array( 'one_way', 'round_trip' ), true ) ) ) >= 2 ) {
+				$sub = $sk;
+			}
+		}
+		$data = array_slice( $rows, $hi + ( $sub ? 2 : 1 ) );
 		if ( false === $place ) {
+			// No "place" header: the column with the most words in it (not the row numbers).
+			$best = -1;
 			$place = 0;
+			$width = max( array_map( 'count', array_merge( array( $head ), array_slice( $data, 0, 40 ) ) ) );
+			for ( $c = 0; $c < $width; $c++ ) {
+				if ( false !== $veh && $c === $veh ) {
+					continue;
+				}
+				$n = 0;
+				foreach ( array_slice( $data, 0, 40 ) as $r ) {
+					$v = (string) ( $r[ $c ] ?? '' );
+					if ( '' !== $v && ! preg_match( '/^[\s$€£#.,0-9%-]*$/u', $v ) && null === self::amount( $v ) ) {
+						++$n;
+					}
+				}
+				if ( $n > $best ) {
+					$best  = $n;
+					$place = $c;
+				}
+			}
 		}
 		$lines = array();
 		if ( false !== $veh ) {
@@ -402,7 +445,7 @@ final class ATC_Prices {
 			if ( false === $ow && false === $rt ) {
 				return array( array(), 'There is a vehicle column but no price column (one way or round trip).' );
 			}
-			foreach ( array_slice( $rows, $hi + 1 ) as $r ) {
+			foreach ( $data as $r ) {
 				$p = $r[ $place ] ?? '';
 				$v = $r[ $veh ] ?? '';
 				if ( '' === $p || '' === $v ) {
@@ -417,21 +460,38 @@ final class ATC_Prices {
 			return array( $lines, null );
 		}
 		// Wide: every other headed column is a vehicle; "round trip" in the header makes it a round-trip column.
-		$cols = array();
-		foreach ( $head as $i => $h ) {
-			if ( $i === $place || '' === $h ) {
+		// A column with no header right after a vehicle (a merged cell) is that vehicle's round trip.
+		$cols    = array();
+		$last    = null;
+		$numeric = static function ( int $c ) use ( $data ): bool {
+			foreach ( array_slice( $data, 0, 40 ) as $r ) {
+				if ( null !== self::amount( (string) ( $r[ $c ] ?? '' ) ) ) {
+					return true;
+				}
+			}
+			return false;
+		};
+		$width = max( array_map( 'count', array_merge( array( $head ), array_slice( $data, 0, 40 ) ) ) );
+		for ( $i = 0; $i < $width; $i++ ) {
+			$h = (string) ( $head[ $i ] ?? '' );
+			if ( $i <= $place ) {
+				continue; // the place, and row numbers before it
+			}
+			if ( '' === $h ) {
+				if ( null !== $last && $numeric( $i ) ) {
+					$dir        = $sub && ! empty( $sub[ $i ] ) ? $sub[ $i ] : ( 'one_way' === $last[1] ? 'round_trip' : 'one_way' );
+					$cols[ $i ] = array( $last[0], $dir );
+					$last       = array( $last[0], $dir );
+				}
 				continue;
 			}
-			$dir  = 'round_trip' === $kinds[ $i ] ? 'round_trip' : 'one_way';
+			$dir  = $sub && ! empty( $sub[ $i ] ) ? $sub[ $i ] : ( 'round_trip' === $kinds[ $i ] ? 'round_trip' : 'one_way' );
 			$name = trim( preg_replace( '/\b(round ?trip|rt|return|redondo|ida y vuelta|one ?way|ow|sencillo|price|precio|usd|\$)\b/i', ' ', $h ) );
 			$name = trim( preg_replace( '/[\s\-–\/()]+$|^[\s\-–\/()]+/u', '', $name ) );
-			if ( '' === $name ) {
-				// "One way" / "Round trip" without a vehicle: a single, unnamed vehicle.
-				$name = '';
-			}
 			$cols[ $i ] = array( $name, $dir );
+			$last       = array( $name, $dir );
 		}
-		foreach ( array_slice( $rows, $hi + 1 ) as $r ) {
+		foreach ( $data as $r ) {
 			$p = $r[ $place ] ?? '';
 			if ( '' === $p ) {
 				continue;

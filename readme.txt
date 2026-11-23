@@ -1,5 +1,13 @@
 === ATCOM Booking Engine ===
-Version: 0.20.1 (price list upload first; zones found by name)
+Version: 0.20.2 (price list upload first; zones found by name)
+
+New in 0.20.2:
+- Price list upload reads more layouts: the place column is found even without a header (row numbers are
+  skipped), a vehicle name over two columns (one way, round trip; merged cells) gives both prices, and a
+  second header row with "one way / round trip" is understood. "NA" cells are skipped.
+- Limousines are matched before SUVs and vans ("Limo Suburban" is the Suburban stretch limousine, "Limo
+  Chrysler" the Chrysler 300).
+- Zones drawn from a name can be up to 400 km from the airport (was 300), like hand-drawn ones.
 
 New in 0.20.1:
 - New photos: Coach and Mini Coach (every vehicle category now has its picture).
