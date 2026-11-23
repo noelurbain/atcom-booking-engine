@@ -621,19 +621,23 @@
     function drawSide() {
       clear(side);
       add(side, h('div', { class: 'row-flat' }, h('h2', { text: 'Your zones' }),
-        h('button', { class: 'btn dark', type: 'button', text: 'Draw a zone', disabled: !!mode || !map, onclick: startDraw })));
-      var q = h('input', { type: 'search', placeholder: 'Find an area by name, e.g. Tulum', disabled: !!mode || !map });
-      var findBtn = h('button', { class: 'btn', type: 'submit', text: 'Find', disabled: !!mode || !map });
+        h('button', { class: 'btn', type: 'button', text: 'Draw by hand', disabled: !!mode || !map, onclick: startDraw })));
+      // Finding an area by name works at any time (it replaces a drawing in progress), except while reshaping.
+      var busy = !map || !!(mode && mode.edit);
+      var q = h('input', { type: 'search', placeholder: 'Type an area, e.g. Tulum, Playa del Carmen', disabled: busy, value: (mode && mode.suggest && mode.name) || '' });
+      var findBtn = h('button', { class: 'btn dark', type: 'submit', text: 'Find on the map', disabled: busy });
+      add(side, h('p', { class: 'small atc-muted', style: 'margin:4px 0 0', text: 'The easy way: type the name of an area and we draw it on the map for you. You can adjust the edge before saving.' }));
       add(side, h('form', { class: 'zd-find', onsubmit: function (e) {
         e.preventDefault();
         if (!q.value.trim()) { q.focus(); return; }
+        if (mode) stopMode();
         findBtn.disabled = true; findBtn.textContent = 'Looking…';
         api('GET', '/zones/suggest?q=' + encodeURIComponent(q.value.trim())).then(function (r) {
           if (!r.candidates.length) { findBtn.disabled = false; findBtn.textContent = 'Find'; toast('We did not find that area near ' + airport.city + '. Draw it by hand.', true); return; }
           startSuggest(r.candidates, r.query);
         }).catch(function (e2) { findBtn.disabled = false; findBtn.textContent = 'Find'; fail(e2); });
       } }, q, findBtn));
-      if (!mine.length) add(side, h('p', { class: 'atc-muted', text: ours.length ? 'None yet. Find an area by name, draw your own, or tick ours below.' : 'None yet. Find an area by name, or press “Draw a zone” and click around it on the map.' }));
+      if (!mine.length) add(side, h('p', { class: 'atc-muted', text: ours.length ? 'None yet. Find an area by name, draw one by hand, or tick ours below.' : 'None yet. Find an area by name, or press “Draw by hand” and click around it on the map.' }));
       mine.forEach(function (z) {
         add(side, h('div', { class: 'zd-row' + (mode && mode.edit === z.id ? ' on' : '') },
           h('span', { class: 'zd-swatch' }), h('strong', { text: z.name }),

@@ -1,5 +1,9 @@
 === ATCOM Booking Engine ===
-Version: 0.20.2 (price list upload first; zones found by name)
+Version: 0.20.3 (price list upload first; zones found by name)
+
+New in 0.20.3:
+- Portal → Zones you serve: "Find on the map" is the main way (type an area, we draw it) and works at any
+  time, even after pressing "Draw by hand" (it replaces the drawing in progress).
 
 New in 0.20.2:
 - Price list upload reads more layouts: the place column is found even without a header (row numbers are
