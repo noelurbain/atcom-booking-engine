@@ -2163,7 +2163,7 @@
   }
 
   function setupCard(d) {
-    var keys = ['company', 'directory', 'vehicles', 'coverage', 'prices', 'documents', 'payout', 'agreement', 'approval'];
+    var keys = ['company', 'vehicles', 'coverage', 'prices', 'payout', 'agreement', 'directory', 'documents', 'approval'];
     var pay = d.payout;
     return h('section', { class: 'card pad' },
       h('h2', { text: 'Setup in the provider portal' }),

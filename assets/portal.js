@@ -71,10 +71,10 @@
     ['vehicles', 'Vehicles'],
     ['coverage', 'Zones you serve'],
     ['prices', 'Prices'],
-    ['documents', 'Documents'],
     ['payout', 'Payout details'],
     ['agreement', 'Agreement'],
-    ['directory', 'Directory profile']
+    ['directory', 'Directory profile'],
+    ['documents', 'Documents']
   ];
   var MORE = [
     ['airports', 'Your airports'],
@@ -315,8 +315,9 @@
       { right: true, el: '[data-nav=coverage]', title: 'Step 3 · Zones you serve', text: 'The areas you drive to, drawn on a map. You do not have to draw: type the name of a place and we draw it for you.' },
       { right: true, el: '[data-nav=prices]', title: 'Step 4 · Prices', text: GUIDE.prices.why },
       { right: true, el: '[data-nav=pricelist]', title: 'Shortcut for steps 2 to 4', text: 'Already have a price list in Excel, CSV or Google Sheets? Upload it here: we match your vehicles, draw your zones and fill in your prices. You check everything before it is saved.' },
-      { right: true, el: ['[data-nav=documents]', '[data-nav=payout]', '[data-nav=agreement]'], title: 'Steps 5 to 7 · Documents, payout, agreement', text: 'You go live as soon as steps 1 to 4 are done. Then add your permit and insurance and where we pay you (we hold your payments until you do). The agreement you already accepted when you signed up.' },
-      { right: true, el: '[data-nav=directory]', title: 'Step 8 · Directory profile', text: GUIDE.directory.why },
+      { right: true, el: ['[data-nav=payout]', '[data-nav=agreement]'], title: 'Steps 5 and 6 · Payout and agreement', text: 'You go live as soon as steps 1 to 4 are done. Then tell us where to pay you (we hold your payments until you do). The agreement you already accepted when you signed up.' },
+      { right: true, el: '[data-nav=directory]', title: 'Step 7 · Directory profile', text: GUIDE.directory.why },
+      { right: true, el: '[data-nav=documents]', title: 'Step 8 · Documents', text: 'Last, your permit and insurance. You can sell without them at first, but we ask for them to keep you live.' },
       { right: true, el: '[data-nav=airports]', title: 'More than one airport?', text: 'Add every airport you pick up from here. Each airport has its own vehicles, zones and prices.' },
       { right: true, el: '[data-nav=help]', title: 'Lost? Click here', text: 'This tour comes back whenever you click “Show me around”. Each step also has a “Show me how” button that explains that page.' },
       { title: first ? 'Ready? Start with step ' + (stepIndex(first) + 1) : 'You have done every step', text: first ? 'Next: ' + SETUP[stepIndex(first)][1] + '. ' + GUIDE[first].why : 'You are set up. You can still change anything here.', done: first ? 'Start step ' + (stepIndex(first) + 1) + ' →' : 'Done' }
@@ -371,7 +372,7 @@
       { el: '#atc-app .pe-edit', title: 'Type the price here', text: 'Click a box, then type the price the traveler pays, one way, in US dollars, per vehicle. We show what you get after our commission. Press “Save price”.' },
       { el: '#atc-app .pe-pills', title: 'Round trip (optional)', text: 'Switch to Round trip to add a round trip price. Without one, a round trip costs two one-way prices.' },
       { el: '[data-tour=missing]', title: 'What is still missing', text: 'This list shows the boxes still empty. The step turns green when every zone has a price for every vehicle.' },
-      { el: '[data-tour=next]', title: 'Next: your documents', text: 'Then upload your permit and insurance in step 5.' }
+      { el: '[data-tour=next]', title: 'Next: payout details', text: 'Then tell us where to pay you in step 5.' }
     ]; },
     pricelist: function () { return [
       { el: '#atc-app .pe-up', title: 'Upload your file', text: 'Pick your Excel or CSV file, or paste from Google Sheets. One row per place and a column per vehicle works best.' },
@@ -379,11 +380,11 @@
     ]; },
     documents: function () { return [
       { el: '#atc-app section.card', title: 'One box per document', text: 'Pick the file (PDF or photo), set the expiry date and press Upload. Do the same for each document.' },
-      { el: '[data-tour=next]', title: 'Next: payout details', text: 'We check your documents within two working days. Meanwhile, go on with step 6.' }
+      { el: '[data-tour=next]', title: 'That was the last step', text: 'We check your documents within two working days and remind you before they expire.' }
     ]; },
     payout: function () { return [
       { el: '#atc-app form', title: 'Where we pay you', text: 'Choose bank transfer, Wise or PayPal, the country of your account and your currency, type the details, and press Save. Only the last digits show afterwards.' },
-      { el: '[data-tour=next]', title: 'Next: the agreement', text: 'Then read and accept the provider agreement.' }
+      { el: '[data-tour=next]', title: 'Next: the agreement', text: 'You accepted it when you signed up: just have a look.' }
     ]; },
     agreement: function () { return [
       { el: '#atc-app .agreement', title: 'Your agreement', text: 'The key points first, then the full text. You accepted it when you signed up; we only ask again when we publish a new version.' }
