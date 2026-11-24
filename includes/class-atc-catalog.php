@@ -224,6 +224,39 @@ final class ATC_Catalog {
 		return $out;
 	}
 
+	/**
+	 * Per vehicle category, across the whole platform: how many airports sell it and the lowest one-way price.
+	 * For the public Services page. Cached for an hour.
+	 */
+	public static function type_stats(): array {
+		global $wpdb;
+		$hit = get_transient( 'atc_type_stats' );
+		if ( is_array( $hit ) ) {
+			return $hit;
+		}
+		$today = current_time( 'Y-m-d' );
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT v.slug, COUNT(DISTINCT s.airport_id) airports, MIN(pr.retail_cents) from_cents
+				FROM ' . self::t( 'vehicle_types' ) . ' v
+				JOIN ' . self::t( 'services' ) . " s ON s.vehicle_type_id = v.id AND s.status = 'live'
+				JOIN " . self::t( 'parties' ) . " p ON p.id = s.party_id AND p.status = 'live'
+				JOIN " . self::t( 'prices' ) . " pr ON pr.service_id = s.id AND pr.direction = 'one_way' AND pr.retail_cents > 0
+					AND (pr.valid_from IS NULL OR pr.valid_from <= %s) AND (pr.valid_to IS NULL OR pr.valid_to >= %s)
+				GROUP BY v.id",
+				$today,
+				$today
+			),
+			ARRAY_A
+		);
+		$out = array();
+		foreach ( $rows as $r ) {
+			$out[ $r['slug'] ] = array( 'airports' => (int) $r['airports'], 'from_cents' => (int) $r['from_cents'] );
+		}
+		set_transient( 'atc_type_stats', $out, HOUR_IN_SECONDS );
+		return $out;
+	}
+
 	/** Our photo for a vehicle category found by its name ("Luxury SUV"), or ''. */
 	public static function vehicle_image_by_name( string $name ): string {
 		static $map = null;
