@@ -153,6 +153,70 @@ final class ATC_Catalog {
 		return '' !== $slug && file_exists( ATC_DIR . 'assets/vehicles/' . $slug . '.webp' ) ? ATC_URL . 'assets/vehicles/' . $slug . '.webp?v=' . rawurlencode( ATC_VERSION ) : '';
 	}
 
+	/**
+	 * What travelers can book at an airport, per vehicle category: the cheapest one-way price per vehicle
+	 * among live providers, the largest capacity sold, and our photo. No provider names: for public pages.
+	 * Cached for an hour.
+	 */
+	public static function airport_offer( string $iata ): array {
+		global $wpdb;
+		$iata = strtoupper( preg_replace( '/[^A-Za-z]/', '', $iata ) );
+		if ( 3 !== strlen( $iata ) ) {
+			return array();
+		}
+		$key = 'atc_offer_' . $iata;
+		$hit = get_transient( $key );
+		if ( is_array( $hit ) ) {
+			return $hit;
+		}
+		$today = current_time( 'Y-m-d' );
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT v.id, v.slug, v.name, v.category, v.sort, MAX(s.max_passengers) pax, MAX(s.max_bags) bags, MIN(pr.retail_cents) from_cents, COUNT(DISTINCT pr.zone_id) zones
+				FROM ' . self::t( 'airports' ) . ' a
+				JOIN ' . self::t( 'services' ) . " s ON s.airport_id = a.id AND s.status = 'live'
+				JOIN " . self::t( 'parties' ) . " p ON p.id = s.party_id AND p.status = 'live'
+				JOIN " . self::t( 'vehicle_types' ) . ' v ON v.id = s.vehicle_type_id
+				JOIN ' . self::t( 'prices' ) . " pr ON pr.service_id = s.id AND pr.direction = 'one_way' AND pr.retail_cents > 0
+					AND (pr.valid_from IS NULL OR pr.valid_from <= %s) AND (pr.valid_to IS NULL OR pr.valid_to >= %s)
+				JOIN " . self::t( 'zones' ) . " z ON z.id = pr.zone_id AND z.status = 'active'
+				WHERE a.iata = %s AND a.status = 'active'
+				GROUP BY v.id ORDER BY from_cents, v.sort",
+				$today,
+				$today,
+				$iata
+			),
+			ARRAY_A
+		);
+		$out = array();
+		foreach ( $rows as $r ) {
+			$out[] = array(
+				'name'       => $r['name'],
+				'slug'       => $r['slug'],
+				'category'   => $r['category'],
+				'pax'        => (int) $r['pax'],
+				'bags'       => (int) $r['bags'],
+				'from_cents' => (int) $r['from_cents'],
+				'zones'      => (int) $r['zones'],
+				'image'      => self::vehicle_image( (string) $r['slug'] ),
+			);
+		}
+		set_transient( $key, $out, HOUR_IN_SECONDS );
+		return $out;
+	}
+
+	/** Our photo for a vehicle category found by its name ("Luxury SUV"), or ''. */
+	public static function vehicle_image_by_name( string $name ): string {
+		static $map = null;
+		if ( null === $map ) {
+			$map = array();
+			foreach ( self::vehicle_types() as $t ) {
+				$map[ strtolower( trim( $t['name'] ) ) ] = (string) ( $t['image'] ?? '' );
+			}
+		}
+		return $map[ strtolower( trim( $name ) ) ] ?? '';
+	}
+
 	/* ---------- Zones ---------- */
 
 	/**
