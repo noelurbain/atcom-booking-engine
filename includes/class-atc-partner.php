@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class ATC_Partner {
 
-	const AGREEMENT_VERSION = '2026-11-draft';
+	const AGREEMENT_VERSION = '2026-11-24';
 
 	/** Documents every provider sends before going live. */
 	public static function doc_types(): array {
@@ -97,7 +97,7 @@ final class ATC_Partner {
 			$errors->add( 'airport_id', 'Search for your main airport and pick it from the list.' );
 		}
 		if ( empty( $in['accept'] ) ) {
-			$errors->add( 'accept', 'Please accept the provider terms and conditions.' );
+			$errors->add( 'accept', 'Please tick the box to accept the Provider Agreement.' );
 		}
 		if ( $errors->has_errors() ) {
 			return $errors;
@@ -158,6 +158,8 @@ final class ATC_Partner {
 		$wpdb->insert( self::t( 'party_users' ), array( 'party_id' => $party_id, 'user_id' => $user_id, 'role' => 'owner' ) );
 		update_user_meta( $user_id, 'atc_password_set', time() );
 		ATC_Install::log( 'party', $party_id, 'signed_up', array( 'user_id' => $user_id ) );
+		// Ticking the box on the sign-up form is the provider's signature on the agreement.
+		self::accept_agreement( $party_id );
 		do_action( 'atc_provider_signed_up', $party_id );
 
 		self::mail_welcome( $email, $contact, $company );
@@ -168,7 +170,7 @@ final class ATC_Partner {
 
 	private static function mail_welcome( string $email, string $name, string $company ): void {
 		$subject = 'Welcome to Airport Transportation, ' . $company;
-		$body    = "Hi {$name},\n\nThanks for signing up {$company} as a transport provider.\n\nNext, finish your setup in the provider portal: company details, vehicles, the zones you serve, your documents, payout details and the agreement.\n\n" . home_url( '/portal/' ) . "\n\nWe review your documents within two working days. Travelers can book you once every step is green.\n\nAirport Transportation";
+		$body    = "Hi {$name},\n\nThanks for signing up {$company} as a transport provider.\n\nNext, finish your setup in the provider portal, step by step: company details, vehicles, the zones you serve and your prices. You go live as soon as those are done.\n\n" . home_url( '/portal/' ) . "\n\nThen add your payout details and upload your documents (permit and insurance).\n\nAirport Transportation";
 		wp_mail( $email, $subject, $body, array( 'From: Airport Transportation <' . ATC_Settings::get( 'from_email' ) . '>' ) );
 	}
 
@@ -393,8 +395,14 @@ final class ATC_Partner {
 			'documents' => array( 'name' => 'Documents' ) + $st( $all_approved, 'Approved', $all_sent ),
 			'payout'    => array( 'name' => 'Payout details' ) + $st( ! empty( $raw ), 'Done' ),
 			'directory' => array( 'name' => 'Directory profile' ) + $st( ATC_Directory::step_done( $party_id ), 'Done' ),
-			'agreement' => array( 'name' => 'Agreement' ) + $st( ! empty( $p['agreement_accepted_at'] ), 'Accepted' ),
-			'approval'  => array( 'name' => 'Our approval' ) + $st( 'live' === $p['status'], 'Live', 'pending' === $p['status'], 'Pending' ),
+			'agreement' => array( 'name' => 'Agreement' ) + ( function () use ( $p, $st ) {
+				$out = $st( self::agreement_current( $p ), 'Accepted' );
+				if ( ! empty( $p['agreement_accepted_at'] ) && 'done' !== $out['state'] ) {
+					$out['label'] = 'New version';
+				}
+				return $out;
+			} )(),
+			'approval'  => array( 'name' => 'Live on the site' ) + $st( 'live' === $p['status'], 'Live', false ),
 		);
 	}
 
@@ -602,19 +610,126 @@ final class ATC_Partner {
 
 	/* ---------- Agreement ---------- */
 
-	public static function agreement_text(): array {
+	/**
+	 * The Provider Agreement: the key points first (what most people read), then the full text, which is what
+	 * binds. Shown on the public page before sign-up, beside the sign-up checkbox, and in the portal.
+	 */
+	public static function agreement(): array {
 		$c = (int) ATC_Settings::get( 'provider_commission_bp' ) / 100;
 		$d = (int) ATC_Settings::get( 'payout_day' );
 		$h = (int) ATC_Settings::get( 'autocomplete_hours' );
+		$k = rtrim( rtrim( number_format( $c, 2 ), '0' ), '.' );
 		return array(
-			'Commission. You set your prices as the Suggested retail price or the Amount you will get paid. Our commission is ' . $c . '% of the Suggested retail price. Example: on a USD 100 sale you get paid USD ' . number_format( 100 - $c, 2 ) . '.',
-			'Payment. We collect from the traveler. You are paid on the ' . $d . 'th of each month for every trip completed the month before.',
-			'Bookings. Confirm (acknowledge) each booking in the portal as soon as you receive it. If you cannot do a trip, hand it back as early as possible so we can reassign it.',
-			'Proof of service. The traveler gives your driver a short service code at pickup. Your driver enters it in the portal. Trips without a code complete on their own ' . $h . ' hours after pickup unless you report a no-show.',
-			'Quality. Vehicles, drivers and insurance must match what you declare. Keep your documents up to date; we remind you before they expire.',
-			'Travelers. Travelers are our customers. Do not offer them other services or ask them to book directly with you.',
-			'Disputes. If a traveler disputes a charge, the payment for that trip is held until the case is closed.',
+			'version' => self::AGREEMENT_VERSION,
+			'updated' => 'November 24, 2026',
+			'key'     => array(
+				'You set your own prices. We keep ' . $k . '% of the price the traveler pays; the rest is yours (USD 100 sale: you get USD ' . number_format( 100 - $c, 2 ) . ').',
+				'We collect from travelers. You are paid on the ' . $d . 'th of each month for the trips you completed the month before.',
+				'Confirm every booking as soon as you get it. A confirmed trip you do not do can cost you up to 150% of its price and your place on the platform.',
+				'Travelers booked through us are our customers: never ask them to book with you directly.',
+				'You are an independent company, responsible for your vehicles, drivers, licenses and insurance.',
+				'If a traveler disputes a charge, the payment for that trip waits until the case is closed.',
+				'You can leave at any time. Trips already booked must still be done.',
+			),
+			'sections' => array(
+				array( '1. Who we are', array(
+					'This Provider Agreement is between Airport Transportation LLC ("we", "us"), which runs AirportTransportation.com and its booking engine, and the transport company that signs up as a provider ("you"). It applies from the moment you accept it when you sign up, and to every booking you receive through us.',
+				) ),
+				array( '2. Your status', array(
+					'You are an independent contractor, not our employee, agent or partner. You run your own business: you choose your vehicles, drivers, schedules and prices.',
+					'You hold, and keep valid, every license, permit, registration and insurance the law requires to carry paying passengers where you operate. You are responsible for your vehicles, your drivers and their conduct, and for your own taxes.',
+				) ),
+				array( '3. Your listing', array(
+					'What you declare in the portal (vehicle categories, passengers and bags, zones, prices, free waiting time, minimum notice) is what travelers book. Keep it true and up to date. Your vehicles must be similar to the category you list and carry at least the number of people you declare.',
+					'You go live on the site once your company details, vehicles, zones, prices and this agreement are complete. We may ask for documents (permit, insurance, registration) at any time; if you do not send them when asked, or they are not valid, we may pause your listing.',
+				) ),
+				array( '4. Prices and commission', array(
+					'You set your prices in the portal, per vehicle, as the Suggested retail price (what the traveler pays) or as the Amount you will get paid. Our commission is ' . $k . '% of the Suggested retail price. The portal always shows both amounts side by side.',
+					'Travelers pay the Suggested retail price, with no fees added. Discounts, coupons and affiliate commissions we offer come out of our commission, not yours.',
+				) ),
+				array( '5. Payment', array(
+					'We collect the full price from the traveler. We pay you on the ' . $d . 'th of each month for every trip completed in the previous month, to the payout details you give us in the portal. We hold your payments until you add payout details.',
+					'If a traveler disputes a charge, we hold the payment for that trip until the case is closed. If the trip was not done as booked, it is not paid, and amounts already paid for it may be taken from your next payment.',
+				) ),
+				array( '6. Bookings', array(
+					'Confirm (acknowledge) each booking in the portal as soon as you receive it. If you cannot do a trip, hand it back in the portal as early as possible so we can give it to another provider.',
+					'Be at the pickup on time, track the flight, and wait at least the free waiting time you declared. Changes the traveler makes in "Manage booking" reach you in the portal and by email.',
+				) ),
+				array( '7. Proof of service', array(
+					'The traveler gives your driver a short service code at pickup, and your driver enters it in the portal. A trip without a code completes on its own ' . $h . ' hours after pickup unless you report a no-show before then.',
+				) ),
+				array( '8. Missed trips and quality', array(
+					'A confirmed trip you do not do, or do late without reason, harms the traveler and us. We may charge you up to 150% of its price to cover a replacement and the traveler\'s costs, and we may pause or remove your listing.',
+					'Travelers rate each trip. Repeated low ratings or complaints may lead us to pause or remove your listing.',
+				) ),
+				array( '9. Travelers are our customers', array(
+					'Do not offer travelers who booked through us other services, give them your own contact details for future bookings, or ask them to book with you directly. Their personal data is only for doing the trip; do not keep or use it for anything else.',
+				) ),
+				array( '10. Liability', array(
+					'You are responsible for the trip itself: the vehicle, the driver, passenger safety and any damage or injury during the service, and your insurance must cover it. You hold us harmless from claims that come from your services.',
+					'We provide the platform as it is. Our liability to you is limited to the commission we earned on the trip concerned.',
+				) ),
+				array( '11. Changes and ending', array(
+					'We may update this agreement. We tell you in the portal and by email; the new version applies to bookings made after you accept it, and we may pause your listing until you do.',
+					'You can stop at any time from the portal or by writing to us. We can end this agreement with notice, or at once for a serious breach. Either way, trips already booked must be done and are paid as above.',
+				) ),
+				array( '12. Law', array(
+					'This agreement is governed by the laws of the State of Wyoming, USA. Your acceptance online (ticking the box when you sign up) is your signature; we record the date, time, IP address and version you accepted.',
+				) ),
+			),
 		);
+	}
+
+	/** The key points as a list (the portal and older screens). */
+	public static function agreement_text(): array {
+		return self::agreement()['key'];
+	}
+
+	/** The full agreement as HTML, for the public page ([atc_provider_agreement]) and the e-mail copy. */
+	public static function agreement_html(): string {
+		$a   = self::agreement();
+		$out = '<div class="atc-agreement"><p><em>Airport Transportation Provider Agreement · version ' . esc_html( $a['version'] ) . ' · last updated ' . esc_html( $a['updated'] ) . '</em></p>';
+		$out .= '<div class="atc-keypoints" style="background:#F7F5F1;border:1px solid #ECE8E1;border-radius:14px;padding:18px 22px;margin:0 0 28px"><h2 style="margin-top:0">The key points</h2><ul>';
+		foreach ( $a['key'] as $k ) {
+			$out .= '<li>' . esc_html( $k ) . '</li>';
+		}
+		$out .= '</ul><p><small>These points summarize the agreement below. The full text is what applies.</small></p></div><h2>The full agreement</h2>';
+		foreach ( $a['sections'] as [ $t, $paras ] ) {
+			$out .= '<h3>' . esc_html( $t ) . '</h3>';
+			foreach ( $paras as $para ) {
+				$out .= '<p>' . esc_html( $para ) . '</p>';
+			}
+		}
+		return $out . '</div>';
+	}
+
+	public static function agreement_current( ?array $p ): bool {
+		return $p && ! empty( $p['agreement_accepted_at'] ) && self::AGREEMENT_VERSION === (string) $p['agreement_version'];
+	}
+
+	/**
+	 * A pending provider goes live on its own once it can take bookings: company, vehicles, zones and prices
+	 * done and the agreement accepted. Documents, payout details and the directory profile do not hold it back.
+	 */
+	public static function maybe_go_live( int $party_id ): bool {
+		$p = ATC_Catalog::party( $party_id );
+		if ( ! $p || 'provider' !== $p['type'] || 'pending' !== $p['status'] || ! ATC_Settings::get( 'auto_live' ) ) {
+			return false;
+		}
+		$s = self::steps( $party_id );
+		foreach ( array( 'company', 'vehicles', 'coverage', 'prices', 'agreement' ) as $k ) {
+			if ( 'done' !== $s[ $k ]['state'] ) {
+				return false;
+			}
+		}
+		$res = ATC_Catalog::save_party( array( 'status' => 'live' ), $party_id );
+		if ( is_wp_error( $res ) ) {
+			return false;
+		}
+		ATC_Install::log( 'party', $party_id, 'went_live_automatically', array() );
+		self::mail_team( 'Provider live: ' . $p['name'], $p['name'] . " finished its setup and is now live (automatic).\n\nDocuments and payout details may still be missing. Check: " . home_url( '/control/providers/' . $party_id . '/' ) );
+		ATC_Mail::provider_live( $p );
+		return true;
 	}
 
 	public static function accept_agreement( int $party_id ) {
@@ -622,6 +737,10 @@ final class ATC_Partner {
 		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : null;
 		$wpdb->update( self::t( 'parties' ), array( 'agreement_accepted_at' => self::now(), 'agreement_version' => self::AGREEMENT_VERSION, 'agreement_ip' => $ip, 'updated_at' => self::now() ), array( 'id' => $party_id ) );
 		ATC_Install::log( 'party', $party_id, 'agreement_accepted', array( 'version' => self::AGREEMENT_VERSION ) );
+		$p = ATC_Catalog::party( $party_id );
+		if ( $p ) {
+			ATC_Mail::agreement_copy( $p );
+		}
 		return array( 'accepted_at' => self::now() );
 	}
 

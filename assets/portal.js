@@ -100,12 +100,12 @@
       todo: ['Type the name of an area (a town, a hotel zone) and press “Find on the map”. We draw it for you.', 'If the edge is not right, drag the white points. Then press “Save zone”. Do this for each area.', 'Not found? Press “Draw by hand” and click around the area on the map.'] },
     prices: { why: 'One price per zone and vehicle. Travelers can only book where there is a price.',
       todo: ['Click a box in the grid. Each row is a zone, each column a vehicle category.', 'Type the price the traveler pays, one way. We show what you get after our commission.', 'Press “Save price”, then the next box. Round trip prices are optional.'] },
-    documents: { why: 'Your transport permit and your liability insurance, so we can switch you on.',
+    documents: { why: 'Your transport permit and your liability insurance. You can go live without them, but we ask for them to keep you live.',
       todo: ['Upload each document as a PDF or a photo, with its expiry date.', 'We check them within two working days.'] },
     payout: { why: 'Where we send your money for each ride.',
       todo: ['Pick bank transfer or Wise, and your currency.', 'Type the account holder and the account details, then press Save.'] },
-    agreement: { why: 'The rules between you and us: commission, cancellations, payments.',
-      todo: ['Read the provider agreement.', 'Tick the box and press “Accept the agreement”.'] },
+    agreement: { why: 'The rules between you and us: commission, payments, cancellations. You accepted it when you signed up.',
+      todo: ['Nothing to do if it is green: you accepted it when you signed up.', 'When we publish a new version, read it here and accept it.'] },
     directory: { why: 'Your free company page in our directory, where travelers find transport companies by city.',
       todo: ['Add your logo and a short description of your company.', 'Add your website: it shows on your page once your site links to us. We check this automatically.', 'Press Save.'] }
   };
@@ -314,11 +314,11 @@
       { right: true, el: '[data-nav=coverage]', title: 'Step 3 · Zones you serve', text: 'The areas you drive to, drawn on a map. You do not have to draw: type the name of a place and we draw it for you.' },
       { right: true, el: '[data-nav=prices]', title: 'Step 4 · Prices', text: GUIDE.prices.why },
       { right: true, el: '[data-nav=pricelist]', title: 'Shortcut for steps 2 to 4', text: 'Already have a price list in Excel, CSV or Google Sheets? Upload it here: we match your vehicles, draw your zones and fill in your prices. You check everything before it is saved.' },
-      { right: true, el: ['[data-nav=documents]', '[data-nav=payout]', '[data-nav=agreement]'], title: 'Steps 5 to 7 · Documents, payout, agreement', text: 'Your permit and insurance, where we pay you, and the provider agreement. We review your documents and switch you on.' },
+      { right: true, el: ['[data-nav=documents]', '[data-nav=payout]', '[data-nav=agreement]'], title: 'Steps 5 to 7 · Documents, payout, agreement', text: 'You go live as soon as steps 1 to 4 are done. Then add your permit and insurance and where we pay you (we hold your payments until you do). The agreement you already accepted when you signed up.' },
       { right: true, el: '[data-nav=directory]', title: 'Step 8 · Directory profile', text: GUIDE.directory.why },
       { right: true, el: '[data-nav=airports]', title: 'More than one airport?', text: 'Add every airport you pick up from here. Each airport has its own vehicles, zones and prices.' },
       { right: true, el: '[data-nav=help]', title: 'Lost? Click here', text: 'This tour comes back whenever you click “Show me around”. Each step also has a “Show me how” button that explains that page.' },
-      { title: first ? 'Ready? Start with step ' + (stepIndex(first) + 1) : 'You have done every step', text: first ? 'Next: ' + SETUP[stepIndex(first)][1] + '. ' + GUIDE[first].why : 'We review your documents and switch you on. You can still change anything here.', done: first ? 'Start step ' + (stepIndex(first) + 1) + ' →' : 'Done' }
+      { title: first ? 'Ready? Start with step ' + (stepIndex(first) + 1) : 'You have done every step', text: first ? 'Next: ' + SETUP[stepIndex(first)][1] + '. ' + GUIDE[first].why : 'You are set up. You can still change anything here.', done: first ? 'Start step ' + (stepIndex(first) + 1) + ' →' : 'Done' }
     ];
     runTour(steps, function (done) {
       seen('welcome');
@@ -385,7 +385,7 @@
       { el: '[data-tour=next]', title: 'Next: the agreement', text: 'Then read and accept the provider agreement.' }
     ]; },
     agreement: function () { return [
-      { el: '#atc-app .agreement', title: 'Read the agreement', text: 'Commission, cancellations and how payments work. Tick the box at the bottom and press “Accept the agreement”.' }
+      { el: '#atc-app .agreement', title: 'Your agreement', text: 'The key points first, then the full text. You accepted it when you signed up; we only ask again when we publish a new version.' }
     ]; },
     directory: function () { return [
       { el: '#atc-app .stack', title: 'Your free directory page', text: 'Add your logo, a short description and your website. Travelers find your page when they look for transport in your city.' },
@@ -609,7 +609,7 @@
     var done = keys.filter(function (k) { return s[k].state === 'done'; }).length;
     var first = nextTodo();
     var live = p.status === 'live';
-    add(app, head(first && !done ? 'Welcome, ' + p.name : p.name, live ? 'You are live: travelers can book you.' : 'Travelers can book you once every step is green. ' + done + ' of ' + keys.length + ' done.'));
+    add(app, head(first && !done ? 'Welcome, ' + p.name : p.name, live ? 'You are live: travelers can book you.' : 'You go live as soon as steps 1 to 4 are green. ' + done + ' of ' + keys.length + ' done.'));
     if (first) {
       var i = stepIndex(first);
       add(app, h('section', { class: 'card pad nextcard', 'data-tour': 'nextcard' },
@@ -620,8 +620,8 @@
           h('a', { class: 'btn dark', href: C.base + first + '/', 'data-go': first, text: (done ? 'Continue with step ' : 'Start step ') + (i + 1) + ' →' }),
           h('button', { class: 'btn', type: 'button', onclick: welcomeTour }, h('span', { class: 'q', text: '?' }), ' Show me around'))));
     } else {
-      add(app, h('section', { class: 'card pad nextcard done' }, h('h2', { text: live ? 'All set' : 'Every step is sent' }),
-        h('p', { text: live ? 'Keep your prices and documents up to date. New bookings show under Bookings.' : 'We review your documents within two working days and switch you on. We email you when you are live.' })));
+      add(app, h('section', { class: 'card pad nextcard done' }, h('h2', { text: live ? 'All set' : 'Almost there' }),
+        h('p', { text: live ? 'Keep your prices and documents up to date. New bookings show under Bookings.' : 'Accept the latest Provider Agreement to go live.' })));
     }
     add(app, h('ol', { class: 'steps', 'aria-label': 'Setup steps', 'data-tour': 'steps' }, keys.map(function (k, j) {
       var st = s[k];
@@ -1315,20 +1315,30 @@
   /* ---------- Agreement ---------- */
 
   function viewAgreement() {
-    var p = me.provider;
-    var accepted = !!p.agreement_accepted_at;
+    var p = me.provider, ag = me.agreement;
+    var current = !!p.agreement_accepted_at && p.agreement_version === ag.version;
     var box = h('input', { type: 'checkbox' });
-    var btn = h('button', { class: 'btn dark', type: 'button', disabled: true, text: 'Accept the agreement' });
+    var btn = h('button', { class: 'btn dark', type: 'button', disabled: true, text: 'Accept version ' + ag.version });
     box.addEventListener('change', function () { btn.disabled = !box.checked; });
     btn.addEventListener('click', function () {
-      api('POST', '/agreement').then(function (d) { saved(d, 'Agreement accepted.'); }).catch(fail);
+      api('POST', '/agreement').then(function (d) { saved(d, 'Agreement accepted. We emailed you a copy.'); }).catch(fail);
     });
-    add(app, [head('Provider agreement', 'Version ' + me.agreement.version),
-      h('section', { class: 'card pad agreement' },
-        h('ol', null, me.agreement.terms.map(function (t) { return h('li', { text: t }); })),
-        accepted
-          ? h('p', { class: 'chip green', text: 'Accepted on ' + p.agreement_accepted_at.slice(0, 16).replace('T', ' ') + ' (UTC)' })
-          : h('div', { class: 'atc-actions' }, h('label', { class: 'tick' }, box, 'I have read the agreement and accept it on behalf of ' + p.name + '.'), btn))]);
+    add(app, head('Provider agreement', 'Version ' + ag.version + ' · last updated ' + ag.updated));
+    add(app, h('section', { class: 'card pad' + (current ? '' : ' warn') },
+      current
+        ? h('p', { class: 'chip green', text: 'Accepted on ' + p.agreement_accepted_at.slice(0, 16).replace('T', ' ') + ' UTC, version ' + p.agreement_version })
+        : h('div', { class: 'stack' },
+            h('h2', { text: p.agreement_accepted_at ? 'A new version to accept' : 'Accept the agreement' }),
+            p.agreement_accepted_at ? h('p', { class: 'small', text: 'You accepted version ' + p.agreement_version + '. Read the key points below and accept the new version.' }) : null,
+            h('div', { class: 'atc-actions' }, h('label', { class: 'tick' }, box, 'I have read and accept the Provider Agreement on behalf of ' + p.name + '.'), btn)),
+      h('p', { class: 'small atc-muted', text: 'The same agreement is public at ' }, h('a', { href: ag.url, target: '_blank', rel: 'noopener', text: 'Provider Agreement' }), current ? '. We emailed you a copy when you accepted it.' : '.')));
+    add(app, h('section', { class: 'card pad agreement' },
+      h('h2', { text: 'The key points' }),
+      h('ul', null, ag.key.map(function (t) { return h('li', { text: t }); })),
+      h('p', { class: 'small atc-muted', text: 'These points summarize the agreement below. The full text is what applies.' })));
+    add(app, h('section', { class: 'card pad agreement' },
+      h('h2', { text: 'The full agreement' }),
+      ag.sections.map(function (sec) { return [h('h3', { text: sec[0] }), sec[1].map(function (t) { return h('p', { text: t }); })]; })));
   }
 
   /* ---------- Account ---------- */

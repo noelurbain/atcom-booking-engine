@@ -39,6 +39,7 @@ final class ATC_Settings {
 			'traveler_base'          => 1821,
 			// Directory: provider websites show only while they link back to one of these domains.
 			'dir_backlink_required'  => 1,
+			'auto_live'              => 1,   // a provider goes live by itself once it can take bookings
 			'backlink_domains'       => 'airporttransportation.com, airporttransportations.com',
 		);
 	}
@@ -98,6 +99,7 @@ final class ATC_Settings {
 		$out['ads_label']      = isset( $in['ads_label'] ) ? substr( preg_replace( '/[^A-Za-z0-9_\-]/', '', (string) $in['ads_label'] ), 0, 60 ) : '';
 		$out['traveler_base']  = isset( $in['traveler_base'] ) ? max( 0, min( 10000000, (int) $in['traveler_base'] ) ) : $d['traveler_base'];
 		$out['dir_backlink_required'] = empty( $in['dir_backlink_required'] ) ? 0 : 1;
+		$out['auto_live']             = empty( $in['auto_live'] ) ? 0 : 1;
 		$doms = array();
 		foreach ( preg_split( '/[\s,]+/', strtolower( (string) ( $in['backlink_domains'] ?? $d['backlink_domains'] ) ) ) as $dom ) {
 			$dom = preg_replace( '#^(https?://)?(www\.)?#', '', trim( $dom ) );

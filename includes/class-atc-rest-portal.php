@@ -42,6 +42,7 @@ final class ATC_REST_Portal {
 	/** Everything the portal shows, in one call. */
 	public static function me(): array {
 		$pid     = self::pid();
+		ATC_Partner::maybe_go_live( $pid );
 		$party   = ATC_Catalog::party( $pid );
 		$airport = ATC_Catalog::airport( self::current_airport( $pid ) );
 		if ( ! $airport ) {
@@ -69,7 +70,7 @@ final class ATC_REST_Portal {
 			'documents'     => ATC_Partner::documents( $pid ),
 			'doc_types'     => $types,
 			'payout'        => ATC_Partner::payout_summary( $pid ),
-			'agreement'     => array( 'version' => ATC_Partner::AGREEMENT_VERSION, 'terms' => ATC_Partner::agreement_text() ),
+			'agreement'     => ATC_Partner::agreement() + array( 'url' => home_url( '/partners/provider/terms-conditions/' ) ),
 			'commission_bp' => (int) ( $party['commission_bp'] ?? 0 ) ?: (int) ATC_Settings::get( 'provider_commission_bp' ),
 			'steps'         => ATC_Partner::steps( $pid ),
 			'account'       => ATC_Partner::account( get_current_user_id() ),

@@ -136,3 +136,4 @@ h2.section{margin:8px 0 0;font-size:18px}
 .tour-acts{display:flex;align-items:center;gap:8px;margin-top:6px}
 @media (max-width:760px){.side-h{flex-direction:row;flex-wrap:wrap;flex-basis:100%}.side-h>span{flex-basis:100%;padding:4px 2px}.sb-dots{margin-left:0;flex-basis:100%}}
 .ap-bar select{width:auto;flex:0 1 auto;max-width:100%}
+.agreement ul{margin:0 0 8px;padding-left:20px;display:flex;flex-direction:column;gap:8px;line-height:1.55}.agreement h3{margin:18px 0 6px;font-size:16px}.agreement p{line-height:1.6;margin:0 0 8px}

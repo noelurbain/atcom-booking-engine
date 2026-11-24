@@ -292,7 +292,13 @@ final class ATC_Portal {
 		$out .= '</select></label>';
 		$out .= '<label class="atc-field"><span>Tell us about your company: fleet, areas you cover, years in business (optional)</span><textarea name="about" rows="4" maxlength="2000">' . esc_textarea( (string) ( $in['about'] ?? '' ) ) . '</textarea>' . $err( 'about' ) . '</label>';
 		$out .= '<label class="atc-field"><span>Password (at least 10 characters)</span><input type="password" name="password" required minlength="10" autocomplete="new-password">' . $err( 'password' ) . '</label>';
-		$out .= '<label class="atc-check"><input type="checkbox" name="accept" value="1"' . checked( ! empty( $in['accept'] ), true, false ) . ' required> <span>I accept the <a href="' . esc_url( home_url( '/partners/provider/terms-conditions/' ) ) . '" target="_blank" rel="noopener">provider terms and conditions</a>.</span></label>' . $err( 'accept' );
+		// The agreement: its key points in view, the full text one click away, and an unticked box (the signature).
+		$out .= '<div class="atc-keypoints" style="background:#F7F5F1;border:1px solid #ECE8E1;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.5"><strong>Provider Agreement: the key points</strong><ul style="margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
+		foreach ( ATC_Partner::agreement()['key'] as $k ) {
+			$out .= '<li>' . esc_html( $k ) . '</li>';
+		}
+		$out .= '</ul></div>';
+		$out .= '<label class="atc-check"><input type="checkbox" name="accept" value="1"' . checked( ! empty( $in['accept'] ), true, false ) . ' required> <span>I have read and accept the <a href="' . esc_url( home_url( '/partners/provider/terms-conditions/' ) ) . '" target="_blank" rel="noopener">Provider Agreement</a> (version ' . esc_html( ATC_Partner::AGREEMENT_VERSION ) . ') on behalf of my company.</span></label>' . $err( 'accept' );
 		return $out;
 	}
 

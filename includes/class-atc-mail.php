@@ -42,6 +42,24 @@ final class ATC_Mail {
 		return $ok;
 	}
 
+	/** A provider went live on its own: what to do now. */
+	public static function provider_live( array $p ): void {
+		$pay  = empty( ATC_Partner::payout_summary( (int) $p['id'] )['set'] );
+		$body = self::p( self::e( ( $p['contact_name'] ? 'Hi ' . $p['contact_name'] . ', ' : '' ) . $p['name'] . ' is now live: travelers can find and book you.' ) )
+			. self::p( 'Confirm each booking in the portal as soon as it arrives.' )
+			. ( $pay ? self::p( 'Add your payout details: we hold your payments until you do.' ) : '' )
+			. self::p( 'Upload your documents (permit and insurance) if you have not yet.' );
+		self::send( self::provider_to( $p ), 'You are live on Airport Transportation', self::wrap( 'You are live', $body, 'Open the portal', home_url( '/portal/' ) ), array( 'kind' => 'provider_live' ) );
+	}
+
+	/** A copy of the Provider Agreement the provider just accepted, with the date and version. */
+	public static function agreement_copy( array $p ): void {
+		$a    = ATC_Partner::agreement();
+		$body = self::p( 'You accepted the Airport Transportation Provider Agreement (version ' . self::e( $a['version'] ) . ') for ' . self::e( $p['name'] ) . ' on ' . gmdate( 'Y-m-d H:i' ) . ' UTC. Keep this copy for your records. You can also read it any time in the portal.' )
+			. '<div style="font-size:14px;line-height:1.55">' . ATC_Partner::agreement_html() . '</div>';
+		self::send( self::provider_to( $p ), 'Your Provider Agreement (version ' . $a['version'] . ')', self::wrap( 'Your Provider Agreement', $body, 'Open the portal', home_url( '/portal/agreement/' ) ), array( 'kind' => 'agreement_copy' ) );
+	}
+
 	/** Provider emails go to the test inbox while it is set. */
 	private static function provider_to( array $party ): string {
 		$test = trim( (string) ATC_Settings::get( 'invite_test_to' ) );
