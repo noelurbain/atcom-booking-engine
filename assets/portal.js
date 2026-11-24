@@ -178,6 +178,7 @@
       h('ol', { class: 'sb-todo' }, g.todo.map(function (t) { return h('li', { text: t }); })),
       h('div', { class: 'atc-actions' },
         h('button', { class: 'btn', type: 'button', onclick: function () { pageTour(key, true); } }, h('span', { class: 'q', text: '?' }), ' Show me how'),
+        key === 'directory' && me.directory_url ? h('a', { class: 'btn dark', href: me.directory_url, target: '_blank', rel: 'noopener', text: 'See your live profile ↗' }) : null,
         nextBtn(key, false)));
   }
   function nextBtn(key, big) {
@@ -639,6 +640,10 @@
       add(app, h('section', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('h2', { text: 'Your airports' }), h('a', { class: 'link', href: C.base + 'airports/', 'data-go': 'airports', text: 'Manage →' })),
         airportTable(true)));
     }
+    if (me.directory_url) {
+      add(app, h('section', { class: 'card pad row-flat' }, h('div', null, h('h2', { text: 'Your directory profile' }), h('p', { class: 'small atc-muted', style: 'margin:4px 0 0', text: 'Your public company page, where travelers find you by city.' })),
+        h('div', { class: 'atc-actions' }, h('a', { class: 'btn', href: C.base + 'directory/', 'data-go': 'directory', text: 'Edit' }), h('a', { class: 'btn dark', href: me.directory_url, target: '_blank', rel: 'noopener', text: 'See it live ↗' }))));
+    }
     add(app, h('p', { class: 'small atc-muted', text: 'Questions? Write to ' + C.support + '.' }));
   }
 
@@ -770,7 +775,11 @@
       save: function (b) { return api('PUT', '/directory', b); },
       logo: function (fd) { return api('POST', '/directory/logo', fd, true); },
       check: function () { return api('POST', '/directory/check'); },
-      after: function () { api('GET', '/me').then(function (m) { me = m; nav(); }).catch(function () {}); },
+      after: function () { api('GET', '/me').then(function (m) {
+        me = m; nav();
+        var old = app.querySelector('.stepbar');
+        if (old && path() === 'directory') old.parentNode.replaceChild(stepBar('directory'), old);
+      }).catch(function () {}); },
       staff: false
     }); }).catch(fail);
   }
@@ -797,8 +806,9 @@
       return list && list.length ? h('button', { class: 'link', type: 'button', text: label, onclick: function () { input.value = list.join(', '); } }) : null;
     }
     var state = d.url
-      ? h('p', null, h('span', { class: 'chip green', text: 'Public' }), ' ', h('a', { href: d.url, target: '_blank', rel: 'noopener', text: 'See your profile ↗' }))
-      : h('p', null, h('span', { class: 'chip orange', text: 'Not public yet' }), ' ', h('span', { class: 'small atc-muted', text: d.provider_live ? 'Save to publish it.' : 'It goes public when we approve your company.' }));
+      ? h('div', { class: 'row-flat' }, h('p', { style: 'margin:0' }, h('span', { class: 'chip green', text: 'Public' }), ' ', h('span', { class: 'small atc-muted', text: 'Travelers can find this page now.' })),
+          h('a', { class: 'btn dark', href: d.url, target: '_blank', rel: 'noopener', text: 'See your live profile ↗' }))
+      : h('p', null, h('span', { class: 'chip orange', text: 'Not public yet' }), ' ', h('span', { class: 'small atc-muted', text: d.provider_live ? 'Save to publish it.' : 'It goes public as soon as your company is live (steps 1 to 4 done).' }));
 
     var logoImg = h('span', { class: 'dir-logo' }, d.logo ? null : h('span', { class: 'small atc-muted', text: 'No logo' }));
     if (d.logo) logoImg.style.backgroundImage = 'url("' + String(d.logo).replace(/["\\\n]/g, '') + '")';

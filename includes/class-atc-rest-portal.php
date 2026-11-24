@@ -76,6 +76,10 @@ final class ATC_REST_Portal {
 			'account'       => ATC_Partner::account( get_current_user_id() ),
 			'prices'        => ATC_Catalog::price_table( $pid ),
 			'to_confirm'    => self::to_confirm( $pid ),
+			'directory_url' => ( function () use ( $pid ) {
+				$post = ATC_Directory::post_id( $pid );
+				return $post && 'publish' === get_post_status( $post ) ? get_permalink( $post ) : '';
+			} )(),
 		);
 	}
 
