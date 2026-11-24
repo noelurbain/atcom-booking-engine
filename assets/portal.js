@@ -895,13 +895,17 @@
           .then(function (d) { saved(d, offered ? t.name + ' saved.' : t.name + ' removed.'); }).catch(fail);
       }
       box.addEventListener('change', function () {
-        if (box.checked) { body.classList.remove('hidden'); save(true); } else if (s) { save(false); } else { body.classList.add('hidden'); }
+        if (box.checked) { body.classList.remove('hidden'); save(true); return; }
+        if (!s) { body.classList.add('hidden'); return; }
+        if (!window.confirm('Stop selling ' + t.name + ' at ' + airportLabel(airport) + '? Travelers will no longer see it. Your prices and zones are kept, so you can tick it again any time.')) { box.checked = true; return; }
+        save(false);
       });
       var limo = t.category && t.category !== 'standard';
       if (limo) { otherCount++; if (on) otherOn = true; }
       add(limo ? other : grid, h('div', { class: 'svc vt' + (on ? ' on' : '') },
         t.image ? h('img', { class: 'vt-img', src: t.image, alt: '', width: 320, height: 200, loading: 'lazy' }) : h('div', { class: 'vt-img vt-noimg', text: 'Photo coming soon' }),
-        h('label', { class: 'svc-head' }, box, h('strong', { text: t.name }), h('span', { class: 'atc-muted small', text: 'usually up to ' + t.max_passengers + ' passengers · ' + t.max_bags + ' bags' })),
+        h('label', { class: 'svc-head' }, box, h('strong', { text: t.name }), h('span', { class: 'atc-muted small', text: 'usually up to ' + t.max_passengers + ' passengers · ' + t.max_bags + ' bags' }),
+          s && !on ? h('span', { class: 'chip orange', text: 'Not selling · your prices are kept' }) : null),
         body));
     });
     function paintOther() {
@@ -1226,7 +1230,7 @@
     var box = h('div', { class: 'pe-root' });
     add(app, box);
     window.ATCPrices.mount(box, {
-      api: api, base: '/prices', who: 'provider', h1: false, upload: true, toast: toast, fail: fail, airportId: me.airport && me.airport.id,
+      api: api, base: '/prices', who: 'provider', h1: false, upload: true, toast: toast, fail: fail, airportId: me.airport && me.airport.id, vehiclesUrl: C.base + 'vehicles/', vehiclesGo: 'vehicles',
       onSaved: function () { api('GET', '/me').then(function (d) { me = d; nav(); }); }
     });
   }
@@ -1243,7 +1247,7 @@
     var box = h('div', { class: 'pe-root' });
     add(app, box);
     window.ATCPrices.mount(box, {
-      api: api, base: '/prices', who: 'provider', h1: true, toast: toast, fail: fail, airportId: me.airport && me.airport.id,
+      api: api, base: '/prices', who: 'provider', h1: true, toast: toast, fail: fail, airportId: me.airport && me.airport.id, vehiclesUrl: C.base + 'vehicles/', vehiclesGo: 'vehicles',
       onSaved: function () { api('GET', '/me').then(function (d) { me = d; nav(); }); }
     });
   }

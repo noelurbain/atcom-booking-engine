@@ -101,7 +101,12 @@
       return c && c[d || dir] ? c[d || dir] : null;
     }
     function shownZones() { return g.zones.filter(function (z) { return z.served || z.status === 'proposed' || extraZones.indexOf(z.id) > -1; }); }
-    function shownTypes(zones) { return g.vehicle_types.filter(function (t) { return t.offered || extraVehicles.indexOf(t.id) > -1 || zones.some(function (z) { return g.cells[z.id + ':' + t.id]; }); }); }
+    function shownTypes(zones) {
+      var list = g.vehicle_types.filter(function (t) { return t.offered || extraVehicles.indexOf(t.id) > -1 || zones.some(function (z) { return g.cells[z.id + ':' + t.id]; }); });
+      // Categories the provider stopped selling go last: their prices are kept but travelers do not see them.
+      return list.filter(function (t) { return !off(t); }).concat(list.filter(off));
+    }
+    function off(t) { return t.offered === 'paused'; }
 
     // Redrawing the grid keeps the page where it is (no jump to the top) and the grid's sideways scroll.
     function render() {
@@ -121,8 +126,9 @@
       var zones = shownZones();
       var types = shownTypes(zones);
       var gaps = 0;
-      zones.forEach(function (z) { types.forEach(function (t) { if (!cell(z.id, t.id)) gaps++; }); });
-      var rows = onlyGaps ? zones.filter(function (z) { return types.some(function (t) { return !cell(z.id, t.id); }); }) : zones;
+      var sold = types.filter(function (t) { return !off(t); });
+      zones.forEach(function (z) { sold.forEach(function (t) { if (!cell(z.id, t.id)) gaps++; }); });
+      var rows = onlyGaps ? zones.filter(function (z) { return sold.some(function (t) { return !cell(z.id, t.id); }); }) : zones;
       if (!sel && zones.length && types.length) sel = { zone: zones[0], type: types[0] };
 
       var pill = function (d, label) {
@@ -139,17 +145,21 @@
         g.vehicle_types.filter(function (t) { return types.indexOf(t) === -1; }).map(function (t) { return h('option', { value: t.id, text: t.name + ' (up to ' + t.max_passengers + ')' }); }));
 
       var table = zones.length && types.length ? h('div', { class: 'pe-grid' }, h('table', { class: 'pe' },
-        h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), types.map(function (t) { return h('th', { scope: 'col' }, h('div', { class: 'strong', text: t.name }), h('small', { class: 'atc-muted', text: 'up to ' + t.max_passengers + (t.offered && t.offered !== 'live' ? ' · ' + t.offered : '') })); }))),
+        h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Zone' }), types.map(function (t) {
+          var note = off(t) ? ' · not sold' : (who === 'provider' ? '' : (t.offered && t.offered !== 'live' ? ' · ' + t.offered : ''));
+          return h('th', { scope: 'col', class: off(t) ? 'pe-offcol' : null }, h('div', { class: 'strong', text: t.name }), h('small', { class: 'atc-muted', text: 'up to ' + t.max_passengers + note }),
+            off(t) && opts.vehiclesUrl ? h('a', { class: 'pe-on', href: opts.vehiclesUrl, 'data-go': opts.vehiclesGo || null, text: 'Sell it again →' }) : null);
+        }))),
         h('tbody', null, rows.map(function (z) {
           return h('tr', null,
             h('th', { scope: 'row' }, h('div', { text: z.name }), z.status === 'proposed' ? h('span', { class: 'chip orange', text: 'Zone pending' }) : (!z.shaped ? h('span', { class: 'chip grey', text: 'Shape coming' }) : (z.own ? h('span', { class: 'chip green', text: 'Drawn by ' + (who === 'staff' ? 'them' : 'you') }) : null))),
             types.map(function (t) {
               var c = cell(z.id, t.id);
               var on = sel && sel.zone.id === z.id && sel.type.id === t.id;
-              return h('td', null, h('button', { type: 'button', class: 'pe-c' + (on ? ' on' : '') + (c ? '' : ' empty'), 'aria-label': z.name + ', ' + t.name + (c ? ', USD ' + dollars(c.retail) : ', no price'),
+              return h('td', { class: off(t) ? 'pe-offcol' : null }, h('button', { type: 'button', class: 'pe-c' + (on ? ' on' : '') + (c || off(t) ? '' : ' empty'), 'aria-label': z.name + ', ' + t.name + (c ? ', USD ' + dollars(c.retail) : ', no price'),
                 onclick: function () { sel = { zone: z, type: t }; render(); var ed = root.querySelector('.pe-edit'); if (ed && window.matchMedia('(max-width:900px)').matches) ed.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } },
-                h('span', { class: 'pe-r', text: c ? 'USD ' + dollars(c.retail) : 'Add price' }),
-                h('span', { class: 'pe-p', text: c ? (who === 'provider' ? 'you get ' : 'provider gets ') + dollars(c.provider) : 'not offered' })));
+                h('span', { class: 'pe-r', text: c ? 'USD ' + dollars(c.retail) : (off(t) ? '–' : 'Add price') }),
+                h('span', { class: 'pe-p', text: c ? (who === 'provider' ? 'you get ' : 'provider gets ') + dollars(c.provider) : (off(t) ? 'not sold' : 'not offered') })));
             }));
         })))) : h('p', { class: 'atc-muted pad-x', text: 'Add the zones you serve and a vehicle category to start.' });
 

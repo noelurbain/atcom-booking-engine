@@ -120,13 +120,18 @@ final class ATC_Prices {
 	}
 
 	/** The service for (provider, airport, category), created when missing; live straight away for live providers. */
-	private static function service_id( int $party_id, int $airport_id, int $type_id ) {
+	private static function service_id( int $party_id, int $airport_id, int $type_id, bool $resume = false ) {
 		global $wpdb;
-		$id = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . self::t( 'services' ) . ' WHERE party_id = %d AND airport_id = %d AND vehicle_type_id = %d', $party_id, $airport_id, $type_id ) );
-		if ( $id ) {
-			return $id;
-		}
+		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT id, status FROM ' . self::t( 'services' ) . ' WHERE party_id = %d AND airport_id = %d AND vehicle_type_id = %d', $party_id, $airport_id, $type_id ), ARRAY_A );
 		$p   = ATC_Catalog::party( $party_id );
+		if ( $row ) {
+			// Uploading a price list for a category the provider had stopped selling means it sells it again.
+			if ( $resume && 'paused' === $row['status'] ) {
+				$wpdb->update( self::t( 'services' ), array( 'status' => ( $p && 'live' === $p['status'] ) ? 'live' : 'draft', 'updated_at' => current_time( 'mysql', true ) ), array( 'id' => (int) $row['id'] ) );
+				ATC_Install::log( 'service', (int) $row['id'], 'resumed_by_price_list', array( 'party_id' => $party_id ) );
+			}
+			return (int) $row['id'];
+		}
 		$res = ATC_Catalog::save_service(
 			$party_id,
 			array(
@@ -145,7 +150,7 @@ final class ATC_Prices {
 	 *
 	 * @return array|WP_Error {saved, cleared, flagged[]}
 	 */
-	public static function save( int $party_id, int $airport_id, array $cells ) {
+	public static function save( int $party_id, int $airport_id, array $cells, bool $resume = false ) {
 		global $wpdb;
 		if ( ! ATC_Catalog::airport( $airport_id ) ) {
 			return new WP_Error( 'atc_airport', 'Unknown airport.', array( 'status' => 400 ) );
@@ -169,7 +174,7 @@ final class ATC_Prices {
 			if ( ! isset( $zones[ $zid ], $types[ $vid ] ) ) {
 				continue;
 			}
-			$svc = self::service_id( $party_id, $airport_id, $vid );
+			$svc = self::service_id( $party_id, $airport_id, $vid, $resume );
 			if ( is_wp_error( $svc ) ) {
 				return $svc;
 			}
@@ -651,7 +656,7 @@ final class ATC_Prices {
 			}
 			$cells[] = array( 'zone_id' => $zmap[ $p ], 'vehicle_type_id' => $vmap[ $v ], 'direction' => $dir, ( 'provider' === $basis ? 'provider' : 'retail' ) => $amt );
 		}
-		$res = self::save( $party_id, $airport_id, $cells );
+		$res = self::save( $party_id, $airport_id, $cells, true );
 		if ( is_wp_error( $res ) ) {
 			return $res;
 		}
