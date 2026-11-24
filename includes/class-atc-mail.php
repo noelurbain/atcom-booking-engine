@@ -42,6 +42,33 @@ final class ATC_Mail {
 		return $ok;
 	}
 
+	/** Jobs to run after the response has gone back to the browser (so a click never waits on the mail server). */
+	private static array $later = array();
+
+	public static function defer( callable $job ): void {
+		if ( ! self::$later ) {
+			add_action( 'shutdown', array( __CLASS__, 'run_later' ), 1 );
+		}
+		self::$later[] = $job;
+	}
+
+	public static function run_later(): void {
+		if ( function_exists( 'fastcgi_finish_request' ) ) {
+			fastcgi_finish_request(); // the browser has its answer; the emails go out now
+		} elseif ( function_exists( 'litespeed_finish_request' ) ) {
+			litespeed_finish_request();
+		}
+		ignore_user_abort( true );
+		foreach ( self::$later as $job ) {
+			try {
+				$job();
+			} catch ( \Throwable $e ) {
+				ATC_Install::log( 'mail', 0, 'deferred_failed', array( 'error' => $e->getMessage() ) );
+			}
+		}
+		self::$later = array();
+	}
+
 	/** A provider went live on its own: what to do now. */
 	public static function provider_live( array $p ): void {
 		$pay  = empty( ATC_Partner::payout_summary( (int) $p['id'] )['set'] );

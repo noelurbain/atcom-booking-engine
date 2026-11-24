@@ -162,8 +162,8 @@ final class ATC_Partner {
 		self::accept_agreement( $party_id );
 		do_action( 'atc_provider_signed_up', $party_id );
 
-		self::mail_welcome( $email, $contact, $company );
-		self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nMain airport: " . ATC_Catalog::airport_label( $airport ) . ( $new_airport ? "\n\nNEW AIRPORT, added from Google: {$airport['name']} ({$airport['city']}, {$airport['country']}, time zone {$airport['timezone']}). It has no IATA code and no zones yet." : '' ) . "\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) );
+		ATC_Mail::defer( static fn() => self::mail_welcome( $email, $contact, $company ) );
+		ATC_Mail::defer( static fn() => self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nMain airport: " . ATC_Catalog::airport_label( $airport ) . ( $new_airport ? "\n\nNEW AIRPORT, added from Google: {$airport['name']} ({$airport['city']}, {$airport['country']}, time zone {$airport['timezone']}). It has no IATA code and no zones yet." : '' ) . "\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) ) );
 
 		return (int) $user_id;
 	}
@@ -862,8 +862,10 @@ final class ATC_Partner {
 			return false;
 		}
 		ATC_Install::log( 'party', $party_id, 'went_live_automatically', array() );
-		self::mail_team( 'Provider live: ' . $p['name'], $p['name'] . " finished its setup and is now live (automatic).\n\nDocuments and payout details may still be missing. Check: " . home_url( '/control/providers/' . $party_id . '/' ) );
-		ATC_Mail::provider_live( $p );
+		ATC_Mail::defer( static function () use ( $p, $party_id ) {
+			self::mail_team( 'Provider live: ' . $p['name'], $p['name'] . " finished its setup and is now live (automatic).\n\nDocuments and payout details may still be missing. Check: " . home_url( '/control/providers/' . $party_id . '/' ) );
+			ATC_Mail::provider_live( $p );
+		} );
 		return true;
 	}
 
@@ -874,7 +876,7 @@ final class ATC_Partner {
 		ATC_Install::log( 'party', $party_id, 'agreement_accepted', array( 'version' => self::AGREEMENT_VERSION ) );
 		$p = ATC_Catalog::party( $party_id );
 		if ( $p ) {
-			ATC_Mail::agreement_copy( $p );
+			ATC_Mail::defer( static fn() => ATC_Mail::agreement_copy( $p ) );
 		}
 		return array( 'accepted_at' => self::now() );
 	}
