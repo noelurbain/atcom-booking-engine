@@ -147,6 +147,8 @@ define( 'ATC_MAPS_SERVER_KEY', 'AIza…' );</pre>
 					<?php
 					$num( 'free_cancel_hours', 'Free cancellation', 'hours before pickup' );
 					$num( 'ack_reminder_minutes', 'Remind provider to acknowledge after', 'minutes' );
+					$num( 'ack_urgent_minutes', '… when pickup is less than 24 hours away, after', 'minutes' );
+					$num( 'docs_pause_days', 'Pause a live provider without documents after (0 = never)', 'days' );
 					$num( 'autocomplete_hours', 'Complete trips automatically', 'hours after pickup' );
 					$num( 'service_code_length', 'Service code length', 'characters (4–6)' );
 					$num( 'service_code_attempts', 'Service code tries before locking', '' );

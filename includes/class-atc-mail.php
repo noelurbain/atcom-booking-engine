@@ -69,6 +69,25 @@ final class ATC_Mail {
 		self::$later = array();
 	}
 
+	/** Reminder: the required documents are still missing. $left = days before a pause (0: no pause planned). */
+	public static function provider_docs( array $p, array $missing, int $left, bool $paused ): void {
+		$list = '<ul style="margin:0 0 12px;padding-left:20px">' . implode( '', array_map( static fn( $m ) => '<li>' . self::e( $m ) . '</li>', $missing ) ) . '</ul>';
+		if ( $paused ) {
+			$body = self::p( self::e( $p['name'] ) . ' is paused: travelers cannot book you until we have these documents:' ) . $list . self::p( 'Upload them in the portal and we switch you back on after checking them.' );
+			self::send( self::provider_to( $p ), 'Your listing is paused: documents missing', self::wrap( 'Your listing is paused', $body, 'Upload documents', home_url( '/portal/documents/' ) ), array( 'kind' => 'provider_docs' ) );
+			return;
+		}
+		$body = self::p( 'You are live and taking bookings. To keep it that way, we still need these documents from ' . self::e( $p['name'] ) . ':' ) . $list
+			. self::p( 'Upload a PDF or a photo of each one in the portal. It takes two minutes.' )
+			. ( $left > 0 ? self::p( '<strong>If we do not have them in ' . (int) $left . ' days, we pause your listing.</strong>' ) : '' );
+		self::send( self::provider_to( $p ), 'Documents needed to keep you live', self::wrap( 'Your documents', $body, 'Upload documents', home_url( '/portal/documents/' ) ), array( 'kind' => 'provider_docs' ) );
+	}
+
+	public static function provider_doc_expiring( array $p, string $doc, string $date ): void {
+		$body = self::p( 'Your ' . self::e( $doc ) . ' expires on ' . self::e( $date ) . '. Upload the new one in the portal before then so you stay live.' );
+		self::send( self::provider_to( $p ), 'Your ' . $doc . ' expires on ' . $date, self::wrap( 'A document expires soon', $body, 'Upload documents', home_url( '/portal/documents/' ) ), array( 'kind' => 'provider_doc_expiring' ) );
+	}
+
 	/** A provider went live on its own: what to do now. */
 	public static function provider_live( array $p ): void {
 		$pay  = empty( ATC_Partner::payout_summary( (int) $p['id'] )['set'] );
@@ -447,7 +466,7 @@ final class ATC_Mail {
 		$url  = home_url( '/portal/bookings/' . $b['number'] . '/' );
 		$body = self::p( 'Please confirm you got booking <strong>' . self::e( $b['number'] ) . '</strong>. The traveler is counting on it.' ) . self::table( self::trip_rows( $b, true ) );
 		self::send( self::provider_to( $p ), 'Please confirm booking ' . $b['number'], self::wrap( 'Please confirm booking ' . $b['number'], $body, 'Confirm in the portal', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_nudge' ) );
-		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking. We reminded them; you may want to call.' ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking within its confirmation time. We reminded them. Call them, or give the booking to another provider in Control.' ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	/** Manage booking: the link to a booking, sent to the email on it. */

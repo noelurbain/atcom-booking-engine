@@ -379,18 +379,24 @@ final class ATC_Trips {
 		}
 	}
 
-	/* ---------- Every hour ---------- */
-
-	public static function hourly(): void {
+	/**
+	 * Not confirmed within the confirmation time of the Provider Agreement (2 hours; 30 minutes when the pickup
+	 * is less than 24 hours away): remind the provider and tell our team. Runs every 15 minutes.
+	 */
+	public static function ack_check(): void {
 		global $wpdb;
-		$l   = self::t( 'booking_legs' );
-		$b   = self::t( 'bookings' );
-		$now = time();
-
-		// Not confirmed by the provider in time: remind them, then tell our team.
-		$mins = max( 30, (int) ATC_Settings::get( 'ack_reminder_minutes' ) );
-		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT l.id, l.booking_id FROM {$l} l JOIN {$b} b ON b.id = l.booking_id WHERE l.status = 'new' AND b.status = 'confirmed' AND l.party_id > 0 AND b.updated_at < %s AND l.pickup_at > %s LIMIT 100", gmdate( 'Y-m-d H:i:s', $now - $mins * 60 ), gmdate( 'Y-m-d H:i:s', $now ) ), ARRAY_A ); // phpcs:ignore
+		$l      = self::t( 'booking_legs' );
+		$b      = self::t( 'bookings' );
+		$now    = time();
+		$normal = max( 5, (int) ATC_Settings::get( 'ack_reminder_minutes' ) );
+		$urgent = max( 5, (int) ATC_Settings::get( 'ack_urgent_minutes' ) );
+		$rows   = $wpdb->get_results( $wpdb->prepare( "SELECT l.id, l.booking_id, l.pickup_at, b.updated_at FROM {$l} l JOIN {$b} b ON b.id = l.booking_id WHERE l.status = 'new' AND b.status = 'confirmed' AND l.party_id > 0 AND b.updated_at < %s AND l.pickup_at > %s LIMIT 200", gmdate( 'Y-m-d H:i:s', $now - min( $normal, $urgent ) * 60 ), gmdate( 'Y-m-d H:i:s', $now ) ), ARRAY_A ); // phpcs:ignore
 		foreach ( $rows as $r ) {
+			$since  = strtotime( $r['updated_at'] . ' UTC' );
+			$soon   = strtotime( $r['pickup_at'] . ' UTC' ) - $since < DAY_IN_SECONDS;
+			if ( $now - $since < ( $soon ? $urgent : $normal ) * 60 ) {
+				continue;
+			}
 			$bk   = ATC_Checkout::find( '', (int) $r['booking_id'] );
 			$done = (array) ( $bk['snap']['ack_nudged'] ?? array() );
 			if ( in_array( (int) $r['id'], $done, true ) ) {
@@ -401,6 +407,17 @@ final class ATC_Trips {
 			ATC_Checkout::snapshot( (int) $bk['id'], $bk['snap'] );
 			ATC_Mail::provider_nudge( $bk );
 		}
+	}
+
+	/* ---------- Every hour ---------- */
+
+	public static function hourly(): void {
+		global $wpdb;
+		$l   = self::t( 'booking_legs' );
+		$b   = self::t( 'bookings' );
+		$now = time();
+
+		self::ack_check();
 
 		// No code and no no-show: the ride completes on its own after the set hours.
 		$hours = max( 1, (int) ATC_Settings::get( 'autocomplete_hours' ) );

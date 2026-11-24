@@ -23,6 +23,8 @@ final class ATC_Settings {
 			'payout_minimum_cents'   => 10000,    // balances under USD 100 roll over
 			'autocomplete_hours'     => 24,
 			'ack_reminder_minutes'   => 120,
+			'ack_urgent_minutes'     => 30,  // when pickup is less than 24 hours away
+			'docs_pause_days'        => 0,   // pause a live provider without documents after this many days (0 = never)
 			'free_cancel_hours'      => 24,
 			'service_code_length'    => 4,
 			'service_code_attempts'  => 5,
@@ -77,6 +79,8 @@ final class ATC_Settings {
 			'payout_minimum_cents'   => array( 0, 10000000 ),
 			'autocomplete_hours'     => array( 1, 168 ),
 			'ack_reminder_minutes'   => array( 5, 1440 ),
+			'ack_urgent_minutes'     => array( 5, 240 ),
+			'docs_pause_days'        => array( 0, 365 ),
 			'free_cancel_hours'      => array( 0, 168 ),
 			'service_code_length'    => array( 4, 6 ),
 			'service_code_attempts'  => array( 3, 10 ),

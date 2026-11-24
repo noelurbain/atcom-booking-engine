@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.23.6
+ * Version:           0.24.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.23.6' );
+define( 'ATC_VERSION', '0.24.0' );
 define( 'ATC_DB_VERSION', '24' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
@@ -47,6 +47,7 @@ require_once ATC_DIR . 'includes/class-atc-tickets.php';
 require_once ATC_DIR . 'includes/class-atc-coupons.php';
 require_once ATC_DIR . 'includes/class-atc-extras.php';
 require_once ATC_DIR . 'includes/class-atc-directory.php';
+require_once ATC_DIR . 'includes/class-atc-followup.php';
 require_once ATC_DIR . 'includes/class-atc-insights.php';
 require_once ATC_DIR . 'includes/class-atc-report.php';
 require_once ATC_DIR . 'includes/class-atc-analytics.php';
@@ -78,6 +79,7 @@ ATC_Trips::init();
 ATC_Affiliates::init();
 ATC_Analytics::init();
 ATC_Directory::init();
+ATC_Followup::init();
 add_shortcode( 'atc_provider_agreement', array( 'ATC_Partner', 'agreement_html' ) );
 
 /** Fields of the provider sign-up form, used by the theme's /partners/provider/ page. */

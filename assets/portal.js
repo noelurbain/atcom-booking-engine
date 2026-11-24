@@ -101,7 +101,7 @@
     prices: { why: 'One price per zone and vehicle. Travelers can only book where there is a price.',
       todo: ['Click a box in the grid. Each row is a zone, each column a vehicle category.', 'Type the price the traveler pays, one way. We show what you get after our commission.', 'Press “Save price”, then the next box. Round trip prices are optional.'] },
     documents: { why: 'Your transport permit and your liability insurance. You can go live without them, but we ask for them to keep you live.',
-      todo: ['Upload each document as a PDF or a photo, with its expiry date.', 'We check them within two working days.'] },
+      todo: ['Upload each document as a PDF or a photo, with its expiry date.', 'We check them within two working days.', 'Until we have them, we email you a reminder after 3, 7 and 14 days, then every two weeks. We also remind you 30 days before a document expires.'] },
     payout: { why: 'Where we send your money for each ride.',
       todo: ['Pick bank transfer, Wise or PayPal, the country of your account and your currency.', 'Type the account holder and the account details (CLABE, IBAN, or account number and SWIFT), then press Save.'] },
     agreement: { why: 'The rules between you and us: commission, payments, cancellations. You accepted it when you signed up.',
