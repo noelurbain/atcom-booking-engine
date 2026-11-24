@@ -134,6 +134,25 @@ final class ATC_REST_Portal {
 			)
 		);
 		self::route(
+			'/vehicles/(?P<vid>\d+)/photos',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					$f   = $r->get_file_params();
+					$res = ATC_Directory::car_photo( self::pid(), (int) $r['vid'], (array) ( $f['file'] ?? array() ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( self::me() );
+				},
+			)
+		);
+		self::route(
+			'/vehicles/(?P<vid>\d+)/photos/(?P<att>\d+)',
+			array(
+				'DELETE' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Directory::car_photo_delete( self::pid(), (int) $r['vid'], (int) $r['att'] );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( self::me() );
+				},
+			)
+		);
+		self::route(
 			'/vehicles/(?P<vid>\d+)',
 			array(
 				'DELETE' => static function ( WP_REST_Request $r ) {

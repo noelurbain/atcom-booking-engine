@@ -141,10 +141,29 @@ final class ATC_Catalog {
 	public static function vehicle_types(): array {
 		global $wpdb;
 		$rows = $wpdb->get_results( 'SELECT id, slug, name, max_passengers, max_bags, category FROM ' . self::t( 'vehicle_types' ) . ' ORDER BY sort, id', ARRAY_A );
+		$ex = self::vehicle_examples();
 		foreach ( $rows as &$r ) {
-			$r['image'] = self::vehicle_image( (string) $r['slug'] );
+			$r['image']    = self::vehicle_image( (string) $r['slug'] );
+			$r['examples'] = $ex[ $r['slug'] ] ?? '';
 		}
 		return $rows;
+	}
+
+	/** Models that belong in each category, to help providers pick the right one. */
+	public static function vehicle_examples(): array {
+		return array(
+			'standard-sedan'  => 'Toyota Corolla, Nissan Sentra, VW Jetta, Honda Civic',
+			'executive-sedan' => 'Mercedes E-Class, BMW 5 Series, Audi A6, Lincoln Continental',
+			'standard-suv'    => 'Toyota RAV4, Honda CR-V, Nissan X-Trail, Kia Sportage',
+			'premium-suv'     => 'Chevrolet Suburban, Chevrolet Tahoe, Ford Expedition, GMC Yukon',
+			'luxury-suv'      => 'Cadillac Escalade, Lincoln Navigator, Mercedes GLS',
+			'minivan'         => 'VW Transporter, Toyota Hiace, Nissan Urvan, Ford Transit (short), Toyota Sienna, Kia Carnival, Mercedes Vito',
+			'minibus'         => 'Mercedes Sprinter, Ford Transit (long, high roof), VW Crafter',
+			'mini-coach'      => 'Toyota Coaster, Mitsubishi Rosa, Hyundai County',
+			'midi-coach'      => 'Isuzu Turquoise, Temsa MD9, Mercedes Atego',
+			'coach'           => 'Irizar i6, Volvo 9700, Mercedes Tourismo',
+			'large-coach'     => 'Mercedes Tourismo L, Setra, Volvo 9800, Irizar i8',
+		);
 	}
 
 	/** Our picture for a vehicle category (assets/vehicles/<slug>.webp), or '' when we have none yet. */
@@ -792,11 +811,35 @@ final class ATC_Catalog {
 		global $wpdb;
 		$v    = self::t( 'vehicles' );
 		$t    = self::t( 'vehicle_types' );
-		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT v.id, v.vehicle_type_id, t.name AS vehicle_type, v.make_model, v.year, v.plate, v.seats, v.insurance_until, v.status FROM {$v} v JOIN {$t} t ON t.id = v.vehicle_type_id WHERE v.party_id = %d AND v.status <> 'archived' ORDER BY t.sort, v.make_model", $party_id ), ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT v.id, v.vehicle_type_id, t.name AS vehicle_type, v.make_model, v.year, v.plate, v.seats, v.insurance_until, v.status, v.photos FROM {$v} v JOIN {$t} t ON t.id = v.vehicle_type_id WHERE v.party_id = %d AND v.status <> 'archived' ORDER BY t.sort, v.make_model", $party_id ), ARRAY_A );
 		foreach ( $rows as &$r ) {
-			$r['id'] = (int) $r['id'];
+			$r['id']     = (int) $r['id'];
+			$r['photos'] = self::vehicle_photos( (string) $r['photos'] );
 		}
 		return $rows;
+	}
+
+	/** One car, with its photos (for the traveler's reservation page once the provider assigns it). */
+	public static function vehicle( int $id ): ?array {
+		global $wpdb;
+		$r = $wpdb->get_row( $wpdb->prepare( 'SELECT v.id, v.make_model, v.year, v.plate, v.photos, t.name AS vehicle_type FROM ' . self::t( 'vehicles' ) . ' v JOIN ' . self::t( 'vehicle_types' ) . ' t ON t.id = v.vehicle_type_id WHERE v.id = %d', $id ), ARRAY_A );
+		if ( ! $r ) {
+			return null;
+		}
+		$r['photos'] = self::vehicle_photos( (string) $r['photos'] );
+		return $r;
+	}
+
+	/** A car's photos (attachment ids in JSON) as {id, url, thumb}. */
+	public static function vehicle_photos( string $json ): array {
+		$out = array();
+		foreach ( (array) json_decode( $json, true ) as $id ) {
+			$url = wp_get_attachment_image_url( (int) $id, 'large' );
+			if ( $url ) {
+				$out[] = array( 'id' => (int) $id, 'url' => $url, 'thumb' => (string) wp_get_attachment_image_url( (int) $id, 'medium' ) );
+			}
+		}
+		return $out;
 	}
 
 	public static function save_vehicle( int $party_id, array $in, ?int $id = null ) {
@@ -833,6 +876,7 @@ final class ATC_Catalog {
 		global $wpdb;
 		$wpdb->update( self::t( 'vehicles' ), array( 'status' => 'archived' ), array( 'id' => $id, 'party_id' => $party_id ) );
 		ATC_Install::log( 'vehicle', $id, 'archived' );
+		ATC_Directory::sync_fleet( $party_id );
 		return array( 'id' => $id );
 	}
 }

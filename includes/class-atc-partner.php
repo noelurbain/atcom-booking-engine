@@ -356,7 +356,6 @@ final class ATC_Partner {
 		$p        = ATC_Catalog::party( $party_id );
 		$services = ATC_Catalog::services( $party_id );
 		$offered  = array_filter( $services, static fn( $s ) => 'paused' !== $s['status'] );
-		$vehicles = ATC_Catalog::vehicles( $party_id );
 		$zones    = array();
 		foreach ( $offered as $s ) {
 			$zones = array_merge( $zones, $s['zone_ids'] );
@@ -381,7 +380,7 @@ final class ATC_Partner {
 
 		return array(
 			'company'   => array( 'name' => 'Company details' ) + $st( $p['name'] && $p['phone'] && $p['email'] && $p['languages'], 'Done' ),
-			'vehicles'  => array( 'name' => 'Vehicles' ) + $st( $offered && $vehicles, 'Done' ),
+			'vehicles'  => array( 'name' => 'Vehicles' ) + $st( (bool) $offered, 'Done' ),
 			'coverage'  => array( 'name' => 'Zones you serve' ) + $st( (bool) $zones, 'Done' ),
 			'prices'    => array( 'name' => 'Prices' ) + ( function () use ( $party_id, $st ) {
 				$mp = self::missing_prices( $party_id );

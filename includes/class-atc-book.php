@@ -916,6 +916,25 @@ final class ATC_Book {
 						<div class="ab-fact"><small class="ab-k">Total paid</small><strong><?php echo esc_html( self::money( (int) $b['total_cents'] ) ); ?></strong><span><?php echo ! empty( $snap['card']['last4'] ) ? esc_html( ucfirst( (string) $snap['card']['brand'] ) . ' •••• ' . $snap['card']['last4'] ) : 'Paid'; ?></span></div>
 					</div>
 
+					<?php
+					// The car the provider assigned, with its photo, so the traveler knows what to look for.
+					$cars = array();
+					foreach ( (array) $b['legs'] as $lg ) {
+						if ( ! empty( $lg['vehicle_id'] ) && ! isset( $cars[ (int) $lg['vehicle_id'] ] ) ) {
+							$car = ATC_Catalog::vehicle( (int) $lg['vehicle_id'] );
+							if ( $car ) {
+								$cars[ (int) $lg['vehicle_id'] ] = $car;
+							}
+						}
+					}
+					foreach ( $cars as $car ) :
+						?>
+						<section class="ab-card ab-pad ab-carcard" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+							<?php if ( $car['photos'] ) : ?><img src="<?php echo esc_url( $car['photos'][0]['thumb'] ?: $car['photos'][0]['url'] ); ?>" alt="<?php echo esc_attr( $car['make_model'] ); ?>" width="160" height="107" style="width:160px;height:107px;object-fit:cover;border-radius:12px"><?php endif; ?>
+							<span><small class="ab-k">Your vehicle</small><br><strong><?php echo esc_html( $car['make_model'] . ( $car['year'] ? ' ' . $car['year'] : '' ) ); ?></strong><br><span class="ab-muted"><?php echo esc_html( $car['vehicle_type'] . ( $car['plate'] ? ' · plate ' . $car['plate'] : '' ) ); ?></span></span>
+						</section>
+					<?php endforeach; ?>
+
 					<section class="ab-card ab-pad ab-voucher" aria-labelledby="ab-h-v">
 						<h2 id="ab-h-v">Show this to your driver</h2>
 						<div class="ab-vrow">

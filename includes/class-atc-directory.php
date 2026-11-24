@@ -685,6 +685,101 @@ final class ATC_Directory {
 		return self::profile( $party_id );
 	}
 
+	const CAR_PHOTOS_MAX = 3;
+
+	/**
+	 * A photo of one of the provider's cars: resized to 1600 px and saved as WebP, kept in the media library.
+	 * The photos make the fleet gallery on the provider's directory profile.
+	 */
+	public static function car_photo( int $party_id, int $vehicle_id, array $file ) {
+		global $wpdb;
+		$t   = self::t( 'vehicles' );
+		$car = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE id = %d AND party_id = %d AND status <> 'archived'", $vehicle_id, $party_id ), ARRAY_A );
+		if ( ! $car ) {
+			return new WP_Error( 'atc_car', 'That vehicle is not yours or no longer exists.', array( 'status' => 404 ) );
+		}
+		$ids = array_values( array_filter( array_map( 'intval', (array) json_decode( (string) $car['photos'], true ) ) ) );
+		if ( count( $ids ) >= self::CAR_PHOTOS_MAX ) {
+			return new WP_Error( 'atc_car', 'Up to ' . self::CAR_PHOTOS_MAX . ' photos per vehicle. Remove one first.', array( 'status' => 400 ) );
+		}
+		if ( ! empty( $file['error'] ) || empty( $file['tmp_name'] ) ) {
+			return new WP_Error( 'atc_car', 'The upload did not arrive. Try again.', array( 'status' => 400 ) );
+		}
+		if ( (int) $file['size'] > 12 * MB_IN_BYTES ) {
+			return new WP_Error( 'atc_car', 'Use a photo up to 12 MB.', array( 'status' => 400 ) );
+		}
+		$check = wp_check_filetype_and_ext( $file['tmp_name'], (string) $file['name'], array( 'png' => 'image/png', 'jpg|jpeg' => 'image/jpeg', 'webp' => 'image/webp' ) );
+		if ( empty( $check['type'] ) || ! @getimagesize( $file['tmp_name'] ) ) { // phpcs:ignore
+			return new WP_Error( 'atc_car', 'Use a JPG, PNG or WebP photo.', array( 'status' => 400 ) );
+		}
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		$p    = ATC_Catalog::party( $party_id );
+		$name = sanitize_title( ( $p ? $p['name'] : 'provider' ) . ' ' . $car['make_model'] );
+		// Resize and convert to WebP when the server can; otherwise keep the file as it came.
+		$ed = wp_get_image_editor( $file['tmp_name'] );
+		if ( ! is_wp_error( $ed ) ) {
+			$ed->resize( 1600, 1600, false );
+			$ed->set_quality( 82 );
+			$out = $ed->save( $file['tmp_name'] . '-atc.webp', 'image/webp' );
+			if ( is_wp_error( $out ) ) {
+				$out = $ed->save( $file['tmp_name'] . '-atc.jpg', 'image/jpeg' );
+			}
+			if ( ! is_wp_error( $out ) && ! empty( $out['path'] ) ) {
+				$file = array( 'name' => $name . '.' . pathinfo( $out['path'], PATHINFO_EXTENSION ), 'tmp_name' => $out['path'], 'size' => filesize( $out['path'] ), 'error' => 0, 'type' => $out['mime-type'] );
+			}
+		}
+		if ( empty( $file['type'] ) ) {
+			$file['name'] = $name . '.' . $check['ext'];
+		}
+		$att = media_handle_sideload( $file, (int) self::post_id( $party_id ), ( $p ? $p['name'] . ': ' : '' ) . $car['make_model'] );
+		if ( is_wp_error( $att ) ) {
+			return $att;
+		}
+		update_post_meta( $att, '_wp_attachment_image_alt', ( $p ? $p['name'] . ' ' : '' ) . $car['make_model'] . ' airport transfer vehicle' );
+		$ids[] = (int) $att;
+		$wpdb->update( $t, array( 'photos' => wp_json_encode( $ids ) ), array( 'id' => $vehicle_id ) );
+		ATC_Install::log( 'vehicle', $vehicle_id, 'photo_added', array( 'attachment' => $att ) );
+		self::sync_fleet( $party_id );
+		return true;
+	}
+
+	public static function car_photo_delete( int $party_id, int $vehicle_id, int $attachment ) {
+		global $wpdb;
+		$t   = self::t( 'vehicles' );
+		$car = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE id = %d AND party_id = %d", $vehicle_id, $party_id ), ARRAY_A );
+		if ( ! $car ) {
+			return new WP_Error( 'atc_car', 'That vehicle is not yours.', array( 'status' => 404 ) );
+		}
+		$ids = array_values( array_filter( array_map( 'intval', (array) json_decode( (string) $car['photos'], true ) ) ) );
+		if ( ! in_array( $attachment, $ids, true ) ) {
+			return new WP_Error( 'atc_car', 'That photo is not on this vehicle.', array( 'status' => 404 ) );
+		}
+		$ids = array_values( array_diff( $ids, array( $attachment ) ) );
+		$wpdb->update( $t, array( 'photos' => $ids ? wp_json_encode( $ids ) : null ), array( 'id' => $vehicle_id ) );
+		wp_delete_attachment( $attachment, true );
+		self::sync_fleet( $party_id );
+		return true;
+	}
+
+	/** The fleet gallery on the directory profile: every photo of the provider's active cars. */
+	public static function sync_fleet( int $party_id ): void {
+		$pid = self::post_id( $party_id );
+		if ( ! $pid ) {
+			return;
+		}
+		$fleet = array();
+		foreach ( ATC_Catalog::vehicles( $party_id ) as $car ) {
+			foreach ( $car['photos'] as $ph ) {
+				$fleet[] = array( 'url' => $ph['url'], 'thumb' => $ph['thumb'], 'model' => $car['make_model'] . ( $car['year'] ? ' ' . $car['year'] : '' ), 'category' => $car['vehicle_type'] );
+			}
+		}
+		$m          = self::meta( $pid );
+		$m['fleet'] = array_slice( $fleet, 0, 24 );
+		update_post_meta( $pid, '_atc', $m );
+	}
+
 	/** Profiles by name, for linking one by hand in Control. */
 	public static function search( string $q ): array {
 		$q = trim( $q );

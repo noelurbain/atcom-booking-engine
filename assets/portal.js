@@ -95,7 +95,7 @@
     company: { why: 'Who you are: your company name, a WhatsApp number and the languages your drivers speak.',
       todo: ['Check your company name, your name and your email.', 'Add a mobile number with WhatsApp and the languages your drivers speak.', 'Press Save.'] },
     vehicles: { why: 'The vehicle categories you sell at your airport, and the cars you drive them with.',
-      todo: ['Tick each category you sell. Your car does not have to be the same model, but it must be similar and carry as many people.', 'Check the passengers, bags and free waiting time, then press Save.', 'Further down, add each of your cars: model, plate and seats.'] },
+      todo: ['Tick each category you sell. Each card shows example models: your car must be similar and carry as many people.', 'Check the passengers, bags and free waiting time, then press Save.', 'Optional: further down, add your cars with photos for your directory profile.'] },
     coverage: { why: 'The areas where you pick up and drop off travelers. Each zone gets its own price.',
       todo: ['Type the name of an area (a town, a hotel zone) and press “Find on the map”. We draw it for you.', 'If the edge is not right, drag the white points. Then press “Save zone”. Do this for each area.', 'Not found? Press “Draw by hand” and click around the area on the map.'] },
     prices: { why: 'One price per zone and vehicle. Travelers can only book where there is a price.',
@@ -354,7 +354,7 @@
       { el: '[data-tour=airportbar]', title: 'The airport you are setting up', text: 'Vehicles, zones and prices are per airport. If you serve more airports, add them here later.' },
       { el: '#atc-app .vt-grid', title: 'Tick what you sell', text: 'Each card is one of our vehicle categories. Tick the ones you sell. Your car can be another model, but it must be similar and carry as many people.' },
       { el: '#atc-app .svc.vt', title: 'Check the numbers, then Save', text: 'When you tick a category it opens: check the passengers, bags and minutes of free waiting at the airport, then press Save.' },
-      { el: '[data-tour=cars]', title: 'Add your cars', text: 'Then add each car you will drive: model, plate, seats and insurance date. We need at least one.' },
+      { el: '[data-tour=cars]', title: 'Your cars and photos (optional)', text: 'Add the cars you really drive, with photos. The photos show on your directory profile. You can skip this and go live without it.' },
       { el: '[data-tour=next]', title: 'Next: your zones', text: 'When your categories and cars are in, go to step 3.' }
     ]; },
     coverage: function () { return [
@@ -905,6 +905,7 @@
       add(limo ? other : grid, h('div', { class: 'svc vt' + (on ? ' on' : '') },
         t.image ? h('img', { class: 'vt-img', src: t.image, alt: '', width: 320, height: 200, loading: 'lazy' }) : h('div', { class: 'vt-img vt-noimg', text: 'Photo coming soon' }),
         h('label', { class: 'svc-head' }, box, h('strong', { text: t.name }), h('span', { class: 'atc-muted small', text: 'usually up to ' + t.max_passengers + ' passengers · ' + t.max_bags + ' bags' }),
+          t.examples ? h('span', { class: 'small vt-ex', text: 'e.g. ' + t.examples }) : null,
           s && !on ? h('span', { class: 'chip orange', text: 'Not selling · your prices are kept' }) : null),
         body));
     });
@@ -918,34 +919,54 @@
     otherBtn.addEventListener('click', function () { other.classList.toggle('hidden'); paintOther(); });
     paintOther();
 
-    var tbody = h('tbody');
+    // The real cars (optional): pick one when assigning a booking; their photos make the directory gallery.
+    var list = h('div', { class: 'car-list' });
     me.vehicles.forEach(function (v) {
-      add(tbody, h('tr', null,
-        h('td', { class: 'strong', text: v.make_model + (v.year ? ' ' + v.year : '') }), h('td', { text: v.vehicle_type }),
-        h('td', { text: v.plate || '' }), h('td', { text: v.seats || '' }), h('td', { text: v.insurance_until || '' }),
-        h('td', null, h('button', { class: 'link danger', type: 'button', onclick: function () {
-          if (!confirm('Remove ' + v.make_model + '?')) return;
-          api('DELETE', '/vehicles/' + v.id).then(function (d) { saved(d, 'Removed.'); }).catch(fail);
-        }, text: 'Remove' }))));
+      var file = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', class: 'hidden' });
+      file.addEventListener('change', function () {
+        if (!file.files.length) return;
+        var fd = new FormData(); fd.append('file', file.files[0]);
+        addBtn.disabled = true; addBtn.textContent = 'Uploading…';
+        api('POST', '/vehicles/' + v.id + '/photos', fd, true).then(function (d) { saved(d, 'Photo added.'); }).catch(function (e) { addBtn.disabled = false; addBtn.textContent = '+ Add a photo'; fail(e); });
+      });
+      var addBtn = h('button', { class: 'car-add', type: 'button', text: '+ Add a photo', onclick: function () { file.click(); } });
+      add(list, h('div', { class: 'car' },
+        h('div', { class: 'car-head' },
+          h('div', null, h('strong', { text: v.make_model + (v.year ? ' ' + v.year : '') }),
+            h('div', { class: 'small atc-muted', text: [v.vehicle_type, v.plate ? 'plate ' + v.plate : '', v.seats ? v.seats + ' seats' : '', v.insurance_until ? 'insured until ' + v.insurance_until : ''].filter(Boolean).join(' · ') })),
+          h('button', { class: 'link danger', type: 'button', text: 'Remove', onclick: function () {
+            if (!confirm('Remove ' + v.make_model + '? Its photos are removed from your profile too.')) return;
+            api('DELETE', '/vehicles/' + v.id).then(function (d) { saved(d, 'Removed.'); }).catch(fail);
+          } })),
+        h('div', { class: 'car-photos' },
+          v.photos.map(function (ph) {
+            return h('div', { class: 'car-ph' }, h('img', { src: ph.thumb || ph.url, alt: v.make_model, loading: 'lazy' }),
+              h('button', { type: 'button', 'aria-label': 'Remove this photo', text: '×', onclick: function () {
+                if (!confirm('Remove this photo?')) return;
+                api('DELETE', '/vehicles/' + v.id + '/photos/' + ph.id).then(function (d) { saved(d, 'Photo removed.'); }).catch(fail);
+              } }));
+          }),
+          v.photos.length < 3 ? [addBtn, file] : null)));
     });
-    if (!me.vehicles.length) add(tbody, h('tr', null, h('td', { colspan: 6, class: 'atc-muted', text: 'No vehicles yet.' })));
+    if (!me.vehicles.length) add(list, h('p', { class: 'atc-muted', text: 'No cars yet. That is fine: you can go live without them.' }));
     var f = {
-      model: h('input', { type: 'text', placeholder: 'Toyota Sienna', required: true }), year: h('input', { type: 'number', min: 1990, max: 2100, placeholder: '2024' }),
+      model: h('input', { type: 'text', placeholder: 'Toyota Hiace', required: true }), year: h('input', { type: 'number', min: 1990, max: 2100, placeholder: '2024' }),
       type: h('select', null, me.vehicle_types.map(function (t) { return h('option', { value: t.id, text: t.name }); })),
       plate: h('input', { type: 'text' }), seats: h('input', { type: 'number', min: 1, max: 60 }), ins: h('input', { type: 'date' })
     };
     var form = h('form', { class: 'grid6', onsubmit: function (e) {
       e.preventDefault();
       api('POST', '/vehicles', { make_model: f.model.value, year: f.year.value, vehicle_type_id: f.type.value, plate: f.plate.value, seats: f.seats.value || null, insurance_until: f.ins.value })
-        .then(function (d) { saved(d, 'Vehicle added.'); }).catch(fail);
+        .then(function (d) { saved(d, 'Car added. Now add a photo of it.'); }).catch(fail);
     } },
       field('Make and model', f.model), field('Year', f.year), field('Category', f.type), field('Plate', f.plate), field('Seats', f.seats), field('Insurance until', f.ins),
-      h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'submit', text: 'Add vehicle' })));
+      h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'submit', text: 'Add car' })));
 
-    add(app, [cats, h('section', { class: 'card pad', 'data-tour': 'cars' }, h('h2', { text: 'Your cars' }),
-      h('p', { class: 'small atc-muted', text: 'The real cars you drive, at all your airports. Add at least one.' }),
-      h('div', { class: 'scroll' }, h('table', null, h('thead', null, h('tr', null, ['Vehicle', 'Category', 'Plate', 'Seats', 'Insurance until', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))), tbody)),
-      h('p', { class: 'label', text: 'Add a vehicle' }), form)]);
+    add(app, [cats, h('section', { class: 'card pad', 'data-tour': 'cars' },
+      h('div', { class: 'row-flat' }, h('h2', { text: 'Your cars and their photos' }), h('span', { class: 'chip grey', text: 'Optional' })),
+      h('p', { class: 'small atc-muted', text: 'Add the cars you really drive, with up to 3 photos each. The photos show on your directory profile, and you can pick the car when you assign a booking so the traveler knows what to look for. You can go live without this.' }),
+      list,
+      h('p', { class: 'label', text: 'Add a car' }), form)]);
   }
 
   /* ---------- Coverage ---------- */

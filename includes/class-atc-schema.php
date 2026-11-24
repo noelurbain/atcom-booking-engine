@@ -159,6 +159,7 @@ final class ATC_Schema {
   plate varchar(20) NULL,
   seats int(11) NULL,
   insurance_until date NULL,
+  photos text NULL,
   status varchar(20) NOT NULL DEFAULT 'active',
   PRIMARY KEY  (id),
   KEY party_id (party_id)
