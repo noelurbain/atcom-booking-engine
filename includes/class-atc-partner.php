@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class ATC_Partner {
 
-	const AGREEMENT_VERSION = '2026-11-24';
+	const AGREEMENT_VERSION = '2026-11-25';
 
 	/** Documents every provider sends before going live. */
 	public static function doc_types(): array {
@@ -615,66 +615,140 @@ final class ATC_Partner {
 	 * binds. Shown on the public page before sign-up, beside the sign-up checkbox, and in the portal.
 	 */
 	public static function agreement(): array {
-		$c = (int) ATC_Settings::get( 'provider_commission_bp' ) / 100;
-		$d = (int) ATC_Settings::get( 'payout_day' );
-		$h = (int) ATC_Settings::get( 'autocomplete_hours' );
-		$k = rtrim( rtrim( number_format( $c, 2 ), '0' ), '.' );
+		$c  = (int) ATC_Settings::get( 'provider_commission_bp' ) / 100;
+		$d  = (int) ATC_Settings::get( 'payout_day' );
+		$h  = (int) ATC_Settings::get( 'autocomplete_hours' );
+		$fc = (int) ATC_Settings::get( 'free_cancel_hours' );
+		$k  = rtrim( rtrim( number_format( $c, 2 ), '0' ), '.' );
+		$net = number_format( 100 - $c, 2 );
 		return array(
 			'version' => self::AGREEMENT_VERSION,
-			'updated' => 'November 24, 2026',
+			'updated' => 'November 25, 2026',
 			'key'     => array(
-				'You set your own prices. We keep ' . $k . '% of the price the traveler pays; the rest is yours (USD 100 sale: you get USD ' . number_format( 100 - $c, 2 ) . ').',
+				'You set your own prices. We keep ' . $k . '% of the price the traveler pays; the rest is yours (on a USD 100 trip you get USD ' . $net . ').',
 				'We collect from travelers. You are paid on the ' . $d . 'th of each month for the trips you completed the month before.',
-				'Confirm every booking as soon as you get it. A confirmed trip you do not do can cost you up to 150% of its price and your place on the platform.',
-				'Travelers booked through us are our customers: never ask them to book with you directly.',
-				'You are an independent company, responsible for your vehicles, drivers, licenses and insurance.',
-				'If a traveler disputes a charge, the payment for that trip waits until the case is closed.',
-				'You can leave at any time. Trips already booked must still be done.',
+				'Confirm every booking within 2 hours (30 minutes when pickup is less than 24 hours away), or we may give it to another provider.',
+				'Track the flight, wait from the real landing time, and meet travelers as your meeting instructions say. Charge nothing extra on the spot.',
+				'A trip you miss or do badly is paid less or not at all, and a missed trip can cost you up to 150% of its price (table in section 12).',
+				'Travelers who book through us are our customers: never ask them to book with you directly, during this agreement or 12 months after.',
+				'You are an independent company, responsible for your drivers, vehicles, licenses and insurance, and for anything that happens during the trip.',
+				'Disputed or charged-back trips are held until the case is closed. You can leave at any time with 30 days\' notice; trips already booked must still be done.',
 			),
 			'sections' => array(
-				array( '1. Who we are', array(
-					'This Provider Agreement is between Airport Transportation LLC ("we", "us"), which runs AirportTransportation.com and its booking engine, and the transport company that signs up as a provider ("you"). It applies from the moment you accept it when you sign up, and to every booking you receive through us.',
+				array( '1. Definitions', array(
+					'"We", "us" and "our" mean Airport Transportation LLC, a Wyoming (USA) company, which runs AirportTransportation.com, its booking engine and the sites, apps and partners that sell through it (together, the "Platform").',
+					'"You" means the transport company that signs up as a provider, and "Provider Personnel" means your employees, drivers and anyone else you use to do a trip.',
+					'"Traveler" means the person who books, or travels on, a trip. "Booking" means one reservation made through the Platform for one or more trips ("Trips").',
+					'"Listing" means what you declare in the provider portal (the "Portal"): airports, zones, vehicle categories, passengers and bags, prices, extras, free waiting time, minimum notice and meeting instructions.',
+					'"Suggested retail price" is the price the traveler pays. "Amount you will get paid" is that price less our commission. "Pickup time" is the time in the Booking, in the local time of the pickup place.',
 				) ),
-				array( '2. Your status', array(
-					'You are an independent contractor, not our employee, agent or partner. You run your own business: you choose your vehicles, drivers, schedules and prices.',
-					'You hold, and keep valid, every license, permit, registration and insurance the law requires to carry paying passengers where you operate. You are responsible for your vehicles, your drivers and their conduct, and for your own taxes.',
+				array( '2. Accepting this agreement', array(
+					'You accept this agreement by ticking the box on the sign-up form, or by accepting it in the Portal. That acceptance is your electronic signature and has the same effect as a signature on paper. We record the date, time, IP address, account and the version you accepted, and we email you a copy.',
+					'The person who accepts confirms that they are of legal age and authorized to bind your company. Adding vehicles, zones or prices, or doing a Trip, also confirms your acceptance.',
+					'The key points at the top of this agreement are a summary. If they differ from the full text, the full text applies.',
 				) ),
-				array( '3. Your listing', array(
-					'What you declare in the portal (vehicle categories, passengers and bags, zones, prices, free waiting time, minimum notice) is what travelers book. Keep it true and up to date. Your vehicles must be similar to the category you list and carry at least the number of people you declare.',
-					'You go live on the site once your company details, vehicles, zones, prices and this agreement are complete. We may ask for documents (permit, insurance, registration) at any time; if you do not send them when asked, or they are not valid, we may pause your listing.',
+				array( '3. Our role', array(
+					'We run a marketplace. We show your Listing to travelers, take Bookings and payments, and pass each Booking to you. You, not us, provide the transport: the contract of carriage is between you and the traveler, and you are the carrier.',
+					'We collect payment from travelers in our name, as your limited agent for that purpose only. Once a traveler has paid us, the traveler has paid you, and your claim for the Trip is against us under this agreement, not against the traveler.',
+					'This agreement is non-exclusive: you may sell your services elsewhere, and we may work with other providers in the same places. Nothing in it makes you our employee, partner, franchisee or agent for any other purpose.',
 				) ),
-				array( '4. Prices and commission', array(
-					'You set your prices in the portal, per vehicle, as the Suggested retail price (what the traveler pays) or as the Amount you will get paid. Our commission is ' . $k . '% of the Suggested retail price. The portal always shows both amounts side by side.',
-					'Travelers pay the Suggested retail price, with no fees added. Discounts, coupons and affiliate commissions we offer come out of our commission, not yours.',
+				array( '4. Joining and going live', array(
+					'Your Listing goes live once your company details, vehicles, zones and prices are complete and this agreement is accepted. Being live does not mean we have checked your documents.',
+					'We may ask at any time for your operating license or permit, registration, insurance policies, vehicle and driver documents, and proof of identity. You must send them within 7 days of our request. If you do not, or if they are not valid, we may pause your Listing until they are.',
+					'We may refuse, pause or remove a Listing at our discretion, for example after complaints, wrong information, or a risk to travelers or to us.',
 				) ),
-				array( '5. Payment', array(
-					'We collect the full price from the traveler. We pay you on the ' . $d . 'th of each month for every trip completed in the previous month, to the payout details you give us in the portal. We hold your payments until you add payout details.',
-					'If a traveler disputes a charge, we hold the payment for that trip until the case is closed. If the trip was not done as booked, it is not paid, and amounts already paid for it may be taken from your next payment.',
+				array( '5. Your Listing', array(
+					'Your Listing must be true, complete and up to date. The vehicle you send must be of the category you listed, in similar condition, and carry at least the passengers and bags you declared.',
+					'Your prices are per vehicle, not per person, and include everything the traveler needs for the Trip: driver, fuel, tolls, parking and airport access fees, taxes, and the free waiting time you declared. The only extras you may charge are those the traveler booked through the Platform.',
+					'Changes you make to your Listing apply to new Bookings only. Bookings already made keep the terms, vehicle and price they were made with.',
 				) ),
-				array( '6. Bookings', array(
-					'Confirm (acknowledge) each booking in the portal as soon as you receive it. If you cannot do a trip, hand it back in the portal as early as possible so we can give it to another provider.',
-					'Be at the pickup on time, track the flight, and wait at least the free waiting time you declared. Changes the traveler makes in "Manage booking" reach you in the portal and by email.',
+				array( '6. Prices, commission and extras', array(
+					'You set your prices in the Portal, as the Suggested retail price or as the Amount you will get paid; the Portal always shows both. Our commission is ' . $k . '% of the Suggested retail price, extras included. Example: on a USD 100 trip you get USD ' . $net . '.',
+					'Travelers pay the Suggested retail price with no booking fee added. Discounts, coupons and affiliate or agency commissions that we offer are paid from our commission and never reduce what you get, unless you agree to a promotion in writing.',
+					'You may not show travelers a lower price for the same Trip to win them away from the Platform (see section 15).',
+					'We may change our commission rate for new Bookings with 30 days\' notice by email and in the Portal.',
 				) ),
-				array( '7. Proof of service', array(
-					'The traveler gives your driver a short service code at pickup, and your driver enters it in the portal. A trip without a code completes on its own ' . $h . ' hours after pickup unless you report a no-show before then.',
+				array( '7. Bookings and confirmation', array(
+					'A Booking that fits your Listing and your minimum notice is made with you as soon as the traveler pays. You receive it in the Portal and by email.',
+					'You must confirm (acknowledge) each Booking in the Portal within 2 hours of receiving it, or within 30 minutes when the pickup is less than 24 hours away. If you do not, we may give the Booking to another provider, and you lose it with no payment.',
+					'If you cannot do a Trip, hand it back in the Portal at once. Handing back more than 48 hours before pickup costs nothing; later hand-backs count as a missed Trip under section 12 unless we find another provider at the same price.',
+					'Travelers can change or cancel online until ' . $fc . ' hours before pickup, and changes reach you in the Portal and by email. Changes made later go through us and need your confirmation.',
 				) ),
-				array( '8. Missed trips and quality', array(
-					'A confirmed trip you do not do, or do late without reason, harms the traveler and us. We may charge you up to 150% of its price to cover a replacement and the traveler\'s costs, and we may pause or remove your listing.',
-					'Travelers rate each trip. Repeated low ratings or complaints may lead us to pause or remove your listing.',
+				array( '8. Doing the Trip', array(
+					'Track the flight. For airport pickups, the free waiting time counts from the actual landing time, not the time in the Booking. A delayed flight is not a no-show.',
+					'Meet the traveler as your meeting instructions say (place, sign with the traveler\'s name, contact by phone or WhatsApp), and be reachable on the numbers you gave us from 24 hours before until the end of the Trip.',
+					'Carry only the passengers in the Booking. Do not share the vehicle with other travelers, make stops that were not booked, or swap in a taxi or another company without our written consent.',
+					'Provide booked extras (child seats, stops, drinks and the like) as booked. Child seats must meet the safety rules of the country.',
+					'Your vehicles must be clean, safe, in good working order and legally registered for paid passenger transport. Your drivers must be licensed for the vehicle, rested, sober, courteous and dressed neatly, and must drive safely and lawfully.',
+					'Never ask the traveler for money, tips, or payment for anything the Booking includes.',
 				) ),
-				array( '9. Travelers are our customers', array(
-					'Do not offer travelers who booked through us other services, give them your own contact details for future bookings, or ask them to book with you directly. Their personal data is only for doing the trip; do not keep or use it for anything else.',
+				array( '9. Proof of service and no-shows', array(
+					'The traveler gives your driver a short service code at pickup, and your driver enters it in the Portal. A Trip without a code is treated as done ' . $h . ' hours after pickup unless you report a problem before then.',
+					'If the traveler does not appear, report a no-show in the Portal within ' . $h . ' hours of pickup, after waiting at least your free waiting time from landing and trying to call or message the traveler. Keep proof (for example a photo at the meeting point and your call log); we may ask for it.',
+					'A no-show you report correctly is paid as a completed Trip. If the traveler cancels within ' . $fc . ' hours of pickup, the Trip is also paid as completed.',
 				) ),
-				array( '10. Liability', array(
-					'You are responsible for the trip itself: the vehicle, the driver, passenger safety and any damage or injury during the service, and your insurance must cover it. You hold us harmless from claims that come from your services.',
-					'We provide the platform as it is. Our liability to you is limited to the commission we earned on the trip concerned.',
+				array( '10. Licenses, drivers and insurance', array(
+					'You hold, and keep valid for as long as you are on the Platform, every license, permit, registration and approval that the law requires to carry paying passengers in each place you serve.',
+					'Every driver has the right license for the vehicle, is not suspended, has no conviction for violent, sexual or serious driving offences, and has been checked by you before driving for the Platform.',
+					'You keep, with a reputable insurer: passenger and third-party liability insurance covering injury, death and damage to property; insurance for the vehicles; and any other insurance the law requires (workers\' compensation, for example). In Mexico, cover for occupants\' medical expenses must be at least what federal and state rules require. We may ask for the policies at any time.',
 				) ),
-				array( '11. Changes and ending', array(
-					'We may update this agreement. We tell you in the portal and by email; the new version applies to bookings made after you accept it, and we may pause your listing until you do.',
-					'You can stop at any time from the portal or by writing to us. We can end this agreement with notice, or at once for a serious breach. Either way, trips already booked must be done and are paid as above.',
+				array( '11. Incidents and complaints', array(
+					'Tell us at once, through the Portal or by email, of any accident, injury, death, damage, lost property, police involvement, or serious complaint during a Trip, and give us the details we ask for.',
+					'Answer our questions about a Booking or a complaint within 48 hours. We may share your answer with the traveler.',
 				) ),
-				array( '12. Law', array(
-					'This agreement is governed by the laws of the State of Wyoming, USA. Your acceptance online (ticking the box when you sign up) is your signature; we record the date, time, IP address and version you accepted.',
+				array( '12. Service levels and deductions', array(
+					'When a Trip is not done as booked, the Amount you get paid for it is reduced as follows. We decide each case on the evidence (service code, messages, flight data, traveler reports and your proof), and you can reply before we decide.',
+					'Driver no-show, or hand-back less than 48 hours before pickup with no replacement: no payment, plus the extra cost of a replacement or of the traveler\'s own transport, up to 150% of the Trip price.',
+					'Driver more than 45 minutes late, or the traveler missed a flight because of you (with proof): no payment, plus the traveler\'s documented extra costs, up to 150% of the Trip price.',
+					'Driver 20 to 45 minutes late; a shared ride, taxi or other company instead of the private vehicle booked; or a smaller or lower category vehicle: 50% of the payment withheld.',
+					'Driver up to 20 minutes late; wrong drop-off; no meet and greet as described; dirty vehicle; route not as booked; rude or unprofessional driver: 20% of the payment withheld.',
+					'A booked extra not provided: the price of that extra refunded to the traveler, plus 10% of the Trip payment withheld.',
+					'Repeated problems may also lead us to pause or remove your Listing.',
+				) ),
+				array( '13. Payment', array(
+					'We pay you on the ' . $d . 'th of each month for every Trip completed in the previous month, less deductions under section 12 and any amounts you owe us. Your monthly statement is in the Portal.',
+					'We pay to the payout details you give in the Portal, in USD or in the local currency we offer for your country. Bank, transfer and currency-conversion fees on your side are yours. We hold your payments until you give valid payout details; held amounts are paid in the next payout after you do.',
+					'If a traveler disputes a charge or files a chargeback, we hold the payment for that Trip until the case is closed. If the case is lost because the Trip was not done as booked, the Trip is not paid, and amounts already paid for it may be taken from your later payments or billed to you.',
+					'We may set off any amount you owe us (deductions, chargebacks, overpayments) against any amount we owe you.',
+					'You are responsible for your own taxes and, where the law requires, for issuing the traveler a receipt or invoice for the transport. Where the law of your country requires it, we may withhold taxes from your payments and give you the receipts.',
+				) ),
+				array( '14. Reviews, ratings and your directory profile', array(
+					'Travelers may rate and review each Trip. We publish reviews as written, except reviews that break the law or our review rules, and we are not responsible for their content. Do not offer travelers anything for a review, or post reviews about yourself or other providers.',
+					'We may publish a directory profile of your company with your name, logo, description, airports and vehicles. Your website link appears there when your website links to ours, which we check automatically.',
+				) ),
+				array( '15. Travelers are our customers', array(
+					'Do not ask travelers who booked through the Platform to book with you directly, give them your own booking contacts, cards or links, or offer them other services, during this agreement and for 12 months after it ends.',
+					'If you take a Booking off the Platform in breach of this section, you owe us the commission we would have earned on it, and we may end this agreement at once.',
+				) ),
+				array( '16. Personal data and confidentiality', array(
+					'We give you travelers\' personal data (names, phone numbers, flights, addresses) only to do the Booking. Use it only for that Booking, keep it secure, share it only with the Provider Personnel who need it, do not use it for marketing, and delete it within 90 days after the Trip unless the law requires you to keep it.',
+					'Tell us within 24 hours of any loss or misuse of travelers\' data. You follow the data protection laws that apply to you (for example Mexico\'s LFPDPPP, the GDPR in Europe, and US state laws).',
+					'We use your company and contact data to run the Platform, as our privacy policy describes, and may share it with travelers and sales partners to make Bookings work.',
+					'Each party keeps the other\'s non-public business information (prices, commission, statements, volumes) confidential, during this agreement and for 2 years after it.',
+				) ),
+				array( '17. Our brand and the Platform', array(
+					'The Platform, its software, content, data and our brand belong to us. You get a limited right to use the Portal for this agreement, and to use our name and logo on signs, vehicles and documents only to serve Bookings, as we allow.',
+					'You allow us to use your company name, logo, photos and descriptions to show and promote your services on the Platform and in our marketing.',
+				) ),
+				array( '18. Liability and indemnity', array(
+					'You are responsible for the Trips and everything that happens during them: the vehicles, Provider Personnel, safety of travelers and their belongings, and compliance with the law.',
+					'You will defend and indemnify us, our staff and partners against any claim, loss, fine or cost (including reasonable legal fees) that arises from your services, from Provider Personnel, or from a breach of this agreement by you.',
+					'We provide the Platform "as is". We are not liable for indirect or consequential losses, lost profits, or lost business. Our total liability to you under this agreement in any 12 months is limited to the commission we earned on your Trips in that period. Nothing in this agreement limits liability that the law does not allow to be limited.',
+				) ),
+				array( '19. Suspension and ending', array(
+					'This agreement runs until it is ended. You can end it at any time with 30 days\' notice in the Portal or by email; we can end it with 30 days\' notice.',
+					'We may pause your Listing or end this agreement at once if you seriously or repeatedly breach it, put travelers at risk, act dishonestly, lose a required license or insurance, or harm our reputation.',
+					'When it ends, you must still do every Trip already booked unless we take them back, and we pay you for those Trips as above. Sections 12, 13, 15, 16, 18 and 21 continue after it ends.',
+				) ),
+				array( '20. Changes to this agreement', array(
+					'We may update this agreement. We tell you by email and in the Portal at least 15 days before a change applies, or at once if the law requires it. The new version applies to Bookings made after it takes effect. If you do not accept it, you may end this agreement before it takes effect; we may pause your Listing until you accept.',
+				) ),
+				array( '21. General', array(
+					'Notices to you go to the email address in your account and appear in the Portal; notices to us go to the support address shown in the Portal.',
+					'You may not assign this agreement without our written consent. We may assign it to a company in our group or to a buyer of our business.',
+					'If part of this agreement is invalid, the rest stays in force and the invalid part is read as close to its purpose as the law allows. Not enforcing a right does not waive it.',
+					'This agreement, together with the Portal rules and policies it refers to, is the whole agreement between us on this subject and replaces earlier provider terms. If it is translated, the English version prevails.',
+					'This agreement is governed by the laws of the State of Wyoming, USA. The courts of Wyoming have jurisdiction, but we may also bring a claim in the courts of the place where you are established.',
 				) ),
 			),
 		);
