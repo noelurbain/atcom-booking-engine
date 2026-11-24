@@ -54,7 +54,14 @@
   function field(label, input, help) {
     return h('label', { class: 'field' }, h('span', { text: label }), input, help ? h('small', { text: help }) : null);
   }
-  function saved(data, msg) { me = data; nav(); toast(msg || 'Saved.'); route(); }
+  // After a save the page is redrawn in place: keep the provider where they were (no jump to the top).
+  function saved(data, msg) {
+    var y = window.scrollY;
+    app.style.minHeight = app.offsetHeight + 'px';
+    me = data; nav(); toast(msg || 'Saved.'); route();
+    window.scrollTo(0, y);
+    setTimeout(function () { app.style.minHeight = ''; }, 600);
+  }
 
   /* ---------- routing ---------- */
 
