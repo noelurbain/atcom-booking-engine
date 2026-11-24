@@ -1122,7 +1122,7 @@
       var csv = h('button', { type: 'button', class: 'btn', text: 'Download payment list (CSV)', onclick: function () {
         api('GET', '/payouts/list?period=' + d.period).then(function (rows) {
           if (!rows.length) { toast('Nothing approved and unpaid for this month.', true); return; }
-          var cols = ['payout', 'provider', 'method', 'holder', 'bank', 'account', 'email', 'amount', 'currency', 'concept'];
+          var cols = ['payout', 'provider', 'method', 'holder', 'bank', 'account', 'swift', 'routing', 'country', 'email', 'amount', 'currency', 'pay_in', 'concept'];
           var q = function (v) { v = String(v === null || v === undefined ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
           var text = [cols.join(',')].concat(rows.map(function (r) { return cols.map(function (c) { return q(r[c]); }).join(','); })).join('\n');
           var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' })); a.download = 'payouts-' + d.period + '.csv'; document.body.appendChild(a); a.click(); a.remove();

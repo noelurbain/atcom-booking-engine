@@ -185,7 +185,7 @@ final class ATC_Payouts {
 	public static function payment_list( string $period ): array {
 		global $wpdb;
 		$period = self::period( $period );
-		$rows   = $wpdb->get_results( $wpdb->prepare( 'SELECT o.*, p.name, p.payout_details FROM ' . self::t( 'payouts' ) . ' o JOIN ' . self::t( 'parties' ) . " p ON p.id = o.party_id WHERE o.period = %s AND o.status = 'approved' ORDER BY p.name", $period ), ARRAY_A );
+		$rows   = $wpdb->get_results( $wpdb->prepare( 'SELECT o.*, p.name, p.payout_details, p.payout_currency FROM ' . self::t( 'payouts' ) . ' o JOIN ' . self::t( 'parties' ) . " p ON p.id = o.party_id WHERE o.period = %s AND o.status = 'approved' ORDER BY p.name", $period ), ARRAY_A );
 		$out    = array();
 		foreach ( $rows as $r ) {
 			$d     = ATC_Partner::decrypt( $r['payout_details'] ) ?: array();
@@ -196,9 +196,13 @@ final class ATC_Payouts {
 				'holder'   => $d['holder'] ?? '',
 				'bank'     => $d['bank'] ?? '',
 				'account'  => $d['account'] ?? '',
+				'swift'    => $d['swift'] ?? '',
+				'routing'  => $d['routing'] ?? '',
+				'country'  => $d['country'] ?? '',
 				'email'    => $d['email'] ?? '',
 				'amount'   => number_format( (int) $r['amount_cents'] / 100, 2, '.', '' ),
 				'currency' => 'USD',
+				'pay_in'   => $r['payout_currency'] ?? 'USD',
 				'concept'  => 'Airport Transportation ' . $period,
 			);
 		}

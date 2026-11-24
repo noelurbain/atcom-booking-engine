@@ -103,7 +103,7 @@
     documents: { why: 'Your transport permit and your liability insurance. You can go live without them, but we ask for them to keep you live.',
       todo: ['Upload each document as a PDF or a photo, with its expiry date.', 'We check them within two working days.'] },
     payout: { why: 'Where we send your money for each ride.',
-      todo: ['Pick bank transfer or Wise, and your currency.', 'Type the account holder and the account details, then press Save.'] },
+      todo: ['Pick bank transfer, Wise or PayPal, the country of your account and your currency.', 'Type the account holder and the account details (CLABE, IBAN, or account number and SWIFT), then press Save.'] },
     agreement: { why: 'The rules between you and us: commission, payments, cancellations. You accepted it when you signed up.',
       todo: ['Nothing to do if it is green: you accepted it when you signed up.', 'When we publish a new version, read it here and accept it.'] },
     directory: { why: 'Your free company page in our directory, where travelers find transport companies by city.',
@@ -381,7 +381,7 @@
       { el: '[data-tour=next]', title: 'Next: payout details', text: 'We check your documents within two working days. Meanwhile, go on with step 6.' }
     ]; },
     payout: function () { return [
-      { el: '#atc-app form', title: 'Where we pay you', text: 'Choose bank transfer or Wise and your currency, type the account details, and press Save. Only the last digits show afterwards.' },
+      { el: '#atc-app form', title: 'Where we pay you', text: 'Choose bank transfer, Wise or PayPal, the country of your account and your currency, type the details, and press Save. Only the last digits show afterwards.' },
       { el: '[data-tour=next]', title: 'Next: the agreement', text: 'Then read and accept the provider agreement.' }
     ]; },
     agreement: function () { return [
@@ -1303,37 +1303,77 @@
 
   /* ---------- Payout ---------- */
 
+  var ISO = 'AD AE AF AG AI AL AM AO AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BW BY BZ CA CD CF CG CH CI CK CL CM CN CO CR CU CV CW CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GT GU GW GY HK HN HR HT HU ID IE IL IM IN IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NG NI NL NO NP NR NZ OM PA PE PF PG PH PK PL PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SI SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TG TH TJ TL TM TN TO TR TT TV TW TZ UA UG US UY UZ VA VC VE VG VI VN VU WS XK YE ZA ZM ZW'.split(' ');
+  var CURRENCIES = ['USD', 'MXN', 'EUR', 'GBP', 'CAD', 'AUD', 'CHF', 'DOP', 'CRC', 'COP', 'PEN', 'CLP', 'ARS', 'BRL', 'THB', 'IDR', 'INR', 'AED', 'SGD', 'JPY', 'CNY', 'HKD', 'ZAR', 'TRY', 'EGP', 'MAD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF'];
+  var EURO = 'AT BE CY DE EE ES FI FR GR HR IE IT LT LU LV MT NL PT SI SK'.split(' ');
+  function countryName(cc) {
+    try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(cc) || cc; } catch (e) { return cc; }
+  }
+  function localCurrency(cc) {
+    var map = { MX: 'MXN', US: 'USD', GB: 'GBP', CA: 'CAD', AU: 'AUD', CH: 'CHF', DO: 'DOP', CR: 'CRC', CO: 'COP', PE: 'PEN', CL: 'CLP', AR: 'ARS', BR: 'BRL', TH: 'THB', ID: 'IDR', IN: 'INR', AE: 'AED', SG: 'SGD', JP: 'JPY', CN: 'CNY', HK: 'HKD', ZA: 'ZAR', TR: 'TRY', EG: 'EGP', MA: 'MAD', NZ: 'NZD', SE: 'SEK', NO: 'NOK', DK: 'DKK', PL: 'PLN', CZ: 'CZK', HU: 'HUF' };
+    return EURO.indexOf(cc) >= 0 ? 'EUR' : (map[cc] || 'USD');
+  }
+
   function viewPayout() {
     var p = me.payout;
-    var method = h('select', null, h('option', { value: 'bank', selected: p.method !== 'wise', text: 'Bank transfer' }), h('option', { value: 'wise', selected: p.method === 'wise', text: 'Wise' }));
-    var currency = h('select', null, h('option', { value: 'MXN', selected: p.currency !== 'USD', text: 'MXN (Mexican pesos)' }), h('option', { value: 'USD', selected: p.currency === 'USD', text: 'USD (US dollars)' }));
+    var ibanList = String(p.iban_countries || '').split(' ');
+    var startCc = p.country || (me.provider.country || '').toUpperCase() || 'MX';
+    var method = h('select', null,
+      h('option', { value: 'bank', selected: p.method !== 'wise' && p.method !== 'paypal', text: 'Bank transfer' }),
+      h('option', { value: 'wise', selected: p.method === 'wise', text: 'Wise' }),
+      h('option', { value: 'paypal', selected: p.method === 'paypal', text: 'PayPal' }));
+    var country = h('select', null, ISO.map(function (cc) { return { cc: cc, n: countryName(cc) }; }).sort(function (a, b) { return a.n.localeCompare(b.n); })
+      .map(function (c) { return h('option', { value: c.cc, selected: c.cc === startCc, text: c.n }); }));
+    var curStart = p.set ? p.currency : localCurrency(startCc);
+    var currency = h('select', null, (CURRENCIES.indexOf(curStart) < 0 ? [curStart].concat(CURRENCIES) : CURRENCIES).map(function (c) { return h('option', { value: c, selected: c === curStart, text: c }); }));
     var holder = h('input', { type: 'text', value: p.holder || '', autocomplete: 'off' });
-    var bank = h('input', { type: 'text', value: p.bank || '', placeholder: 'BBVA, Santander…' });
-    var account = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: p.set && p.last4 ? 'ending ' + p.last4 + ' (type again to change)' : '18 digits' });
+    var bank = h('input', { type: 'text', value: p.bank || '' });
+    var account = h('input', { type: 'text', autocomplete: 'off', placeholder: p.set && p.last4 ? 'ending ' + p.last4 + ' (type again to change)' : '' });
+    var swift = h('input', { type: 'text', value: p.swift || '', autocomplete: 'off', maxlength: 11, placeholder: '8 or 11 characters' });
+    var routing = h('input', { type: 'text', inputmode: 'numeric', value: p.routing || '', autocomplete: 'off', maxlength: 9, placeholder: '9 digits' });
     var email = h('input', { type: 'email', value: p.email || '' });
-    var accLabel = h('span', { text: 'CLABE (18 digits)' });
-    var bankRow = h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Bank' }), bank), h('label', { class: 'field' }, accLabel, account));
-    var wiseRow = h('div', { class: 'grid2' }, field('Email of your Wise account', email));
-    function sync() {
-      var wise = method.value === 'wise';
-      bankRow.classList.toggle('hidden', wise); wiseRow.classList.toggle('hidden', !wise);
-      accLabel.textContent = currency.value === 'MXN' ? 'CLABE (18 digits)' : 'Account number';
+    var accLabel = h('span'), emailLabel = h('span');
+    var accField = h('label', { class: 'field' }, accLabel, account);
+    var swiftField = field('SWIFT / BIC code', swift, 'The bank’s international code, 8 or 11 characters. Your bank shows it in its app or on its website.');
+    var routingField = field('Routing number (ABA)', routing);
+    var bankRow = h('div', null, h('div', { class: 'grid2' }, field('Bank name', bank), accField), h('div', { class: 'grid2' }, swiftField, routingField));
+    var emailRow = h('div', null, h('div', { class: 'grid2' }, h('label', { class: 'field' }, emailLabel, email)));
+    var note = h('p', { class: 'small atc-muted' });
+    function scheme() {
+      var cc = country.value;
+      return cc === 'MX' ? 'clabe' : (cc === 'US' ? 'aba' : (ibanList.indexOf(cc) >= 0 ? 'iban' : 'swift'));
     }
-    method.addEventListener('change', sync); currency.addEventListener('change', sync); sync();
+    function sync() {
+      var m = method.value, sc = scheme();
+      bankRow.classList.toggle('hidden', m !== 'bank');
+      emailRow.classList.toggle('hidden', m === 'bank');
+      emailLabel.textContent = m === 'paypal' ? 'Email of your PayPal account' : 'Email of your Wise account';
+      accLabel.textContent = { clabe: 'CLABE (18 digits)', aba: 'Account number', iban: 'IBAN', swift: 'Account number' }[sc];
+      account.placeholder = p.set && p.last4 ? 'ending ' + p.last4 + ' (type again to change)' : { clabe: '18 digits', aba: '', iban: 'e.g. ' + country.value + '00 0000 0000 0000 0000', swift: '' }[sc];
+      bank.placeholder = sc === 'clabe' ? 'BBVA, Santander…' : 'Your bank';
+      swiftField.classList.toggle('hidden', sc === 'clabe' || sc === 'aba');
+      routingField.classList.toggle('hidden', sc !== 'aba');
+      note.textContent = m === 'paypal' ? 'PayPal charges a fee on each payment it receives and converts currencies at its own rate. Bank transfer or Wise is usually cheaper.'
+        : (m === 'wise' ? 'Wise is the cheapest way for us to pay you abroad. Your Wise account receives the money in the currency you pick.'
+        : 'Stored encrypted. After saving, we only ever show the last 4 digits.');
+    }
+    method.addEventListener('change', sync);
+    country.addEventListener('change', function () { if (!p.set) currency.value = CURRENCIES.indexOf(localCurrency(country.value)) >= 0 ? localCurrency(country.value) : 'USD'; sync(); });
+    sync();
     var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Save payout details' });
+    var savedText = p.set ? (p.method === 'wise' ? 'Wise · ' + p.email : (p.method === 'paypal' ? 'PayPal · ' + p.email : (p.bank ? p.bank + ' · ' : '') + 'ending ' + p.last4)) + ' · ' + p.currency : '';
     add(app, [head('Payout details', 'We pay you on the 10th of each month for the trips completed the month before.'),
-      p.set ? h('p', { class: 'chip green', text: 'Saved: ' + (p.method === 'wise' ? 'Wise · ' + p.email : (p.bank ? p.bank + ' · ' : '') + 'ending ' + p.last4) + ' · ' + p.currency }) : null,
+      p.set ? h('p', { class: 'chip green', text: 'Saved: ' + savedText }) : null,
       h('form', { class: 'card pad', autocomplete: 'off', onsubmit: function (e) {
         e.preventDefault();
         if (method.value === 'bank' && !account.value && p.set) { toast('Type the full account number again to change your details.', true); return; }
         btn.disabled = true;
-        api('PUT', '/payout', { method: method.value, currency: currency.value, holder: holder.value, bank: bank.value, account: account.value, email: email.value })
+        api('PUT', '/payout', { method: method.value, country: country.value, currency: currency.value, holder: holder.value, bank: bank.value, account: account.value, swift: swift.value, routing: routing.value, email: email.value })
           .then(function (d) { saved(d, 'Payout details saved.'); }).catch(fail).then(function () { btn.disabled = false; });
       } },
-        h('div', { class: 'grid2' }, field('How we pay you', method), field('Currency', currency)),
-        h('div', { class: 'grid2' }, field('Account holder (as the bank has it)', holder)),
-        bankRow, wiseRow,
-        h('p', { class: 'small atc-muted', text: 'Stored encrypted. After saving, we only ever show the last 4 digits.' }),
+        h('div', { class: 'grid2' }, field('How we pay you', method), field('Country of your account', country)),
+        h('div', { class: 'grid2' }, field('Account holder (as the bank or PayPal has it)', holder), field('Currency you want to receive', currency)),
+        bankRow, emailRow, note,
         h('div', { class: 'atc-actions' }, btn))]);
   }
 

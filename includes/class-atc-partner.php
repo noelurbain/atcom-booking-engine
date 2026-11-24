@@ -556,11 +556,43 @@ final class ATC_Partner {
 		return is_array( $d ) ? $d : null;
 	}
 
+	/** Countries whose banks use an IBAN (Europe, the UK and a few more). */
+	const IBAN_COUNTRIES = 'AD AE AL AT AZ BA BE BG BH BR CH CR CY CZ DE DK DO EE EG ES FI FO FR GB GE GI GL GR GT HR HU IE IL IQ IS IT JO KW KZ LB LC LI LT LU LV MC MD ME MK MR MT MU NL NO PK PL PS PT QA RO RS SA SC SE SI SK SM ST SV TL TN TR UA VA VG XK';
+
+	/** Which bank details a country uses: clabe (Mexico), aba (USA), iban, or swift (account number and SWIFT/BIC). */
+	public static function bank_scheme( string $country ): string {
+		$c = strtoupper( $country );
+		if ( 'MX' === $c ) {
+			return 'clabe';
+		}
+		if ( 'US' === $c ) {
+			return 'aba';
+		}
+		return in_array( $c, explode( ' ', self::IBAN_COUNTRIES ), true ) ? 'iban' : 'swift';
+	}
+
+	private static function iban_ok( string $iban ): bool {
+		if ( ! preg_match( '/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/', $iban ) ) {
+			return false;
+		}
+		$r = substr( $iban, 4 ) . substr( $iban, 0, 4 );
+		$n = '';
+		foreach ( str_split( $r ) as $ch ) {
+			$n .= ctype_alpha( $ch ) ? (string) ( ord( $ch ) - 55 ) : $ch;
+		}
+		$mod = 0;
+		foreach ( str_split( $n, 7 ) as $part ) {
+			$mod = (int) ( ( $mod . $part ) % 97 );
+		}
+		return 1 === $mod;
+	}
+
 	/** What we show back: never the full account number. */
 	public static function payout_summary( int $party_id ): array {
 		global $wpdb;
-		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT payout_method, payout_currency, payout_details FROM ' . self::t( 'parties' ) . ' WHERE id = %d', $party_id ), ARRAY_A );
+		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT payout_method, payout_currency, payout_details, country FROM ' . self::t( 'parties' ) . ' WHERE id = %d', $party_id ), ARRAY_A );
 		$d   = self::decrypt( $row['payout_details'] ?? null );
+		$cc  = strtoupper( (string) ( $d['country'] ?? ( $row['country'] ?? '' ) ) );
 		return array(
 			'method'   => $row['payout_method'] ?? 'manual',
 			'currency' => $row['payout_currency'] ?? 'USD',
@@ -569,41 +601,70 @@ final class ATC_Partner {
 			'bank'     => $d['bank'] ?? '',
 			'last4'    => $d ? substr( preg_replace( '/\s+/', '', (string) ( $d['account'] ?? '' ) ), -4 ) : '',
 			'email'    => $d['email'] ?? '',
+			'swift'    => $d['swift'] ?? '',
+			'routing'  => $d['routing'] ?? '',
+			'country'  => $cc,
+			'scheme'   => self::bank_scheme( $cc ),
+			'iban_countries' => self::IBAN_COUNTRIES,
 		);
 	}
 
 	public static function save_payout( int $party_id, array $in ) {
 		global $wpdb;
+		$p        = ATC_Catalog::party( $party_id );
 		$method   = in_array( $in['method'] ?? '', array( 'wise', 'bank', 'paypal' ), true ) ? $in['method'] : 'bank';
-		$currency = in_array( $in['currency'] ?? '', array( 'MXN', 'USD' ), true ) ? $in['currency'] : 'MXN';
+		$currency = strtoupper( preg_replace( '/[^A-Za-z]/', '', (string) ( $in['currency'] ?? '' ) ) );
+		$currency = 3 === strlen( $currency ) ? $currency : 'USD';
+		$country  = strtoupper( preg_replace( '/[^A-Za-z]/', '', (string) ( $in['country'] ?? '' ) ) );
+		$country  = 2 === strlen( $country ) ? $country : strtoupper( (string) ( $p['country'] ?? '' ) );
 		$holder   = trim( sanitize_text_field( $in['holder'] ?? '' ) );
 		$bank     = trim( sanitize_text_field( $in['bank'] ?? '' ) );
-		$account  = preg_replace( '/[^0-9A-Za-z]/', '', (string) ( $in['account'] ?? '' ) );
+		$account  = strtoupper( preg_replace( '/[^0-9A-Za-z]/', '', (string) ( $in['account'] ?? '' ) ) );
+		$swift    = strtoupper( preg_replace( '/[^0-9A-Za-z]/', '', (string) ( $in['swift'] ?? '' ) ) );
+		$routing  = preg_replace( '/\D/', '', (string) ( $in['routing'] ?? '' ) );
 		$email    = sanitize_email( $in['email'] ?? '' );
+		$scheme   = self::bank_scheme( $country );
 
 		if ( '' === $holder ) {
 			return new WP_Error( 'atc_payout', 'Enter the account holder’s name.', array( 'status' => 400 ) );
 		}
-		if ( 'bank' === $method && 'MXN' === $currency && ! preg_match( '/^\d{18}$/', $account ) ) {
-			return new WP_Error( 'atc_payout', 'A CLABE has exactly 18 digits.', array( 'status' => 400 ) );
-		}
-		if ( 'bank' === $method && strlen( $account ) < 6 ) {
-			return new WP_Error( 'atc_payout', 'Enter the account number.', array( 'status' => 400 ) );
+		if ( 'bank' === $method ) {
+			if ( 'clabe' === $scheme && ! preg_match( '/^\d{18}$/', $account ) ) {
+				return new WP_Error( 'atc_payout', 'A CLABE has exactly 18 digits.', array( 'status' => 400 ) );
+			}
+			if ( 'iban' === $scheme && ! self::iban_ok( $account ) ) {
+				return new WP_Error( 'atc_payout', 'That IBAN does not look right. Copy it from your bank statement or app.', array( 'status' => 400 ) );
+			}
+			if ( 'aba' === $scheme && ( ! preg_match( '/^\d{4,17}$/', $account ) || ! preg_match( '/^\d{9}$/', $routing ) ) ) {
+				return new WP_Error( 'atc_payout', 'Enter the account number and the 9-digit routing number (ABA).', array( 'status' => 400 ) );
+			}
+			if ( 'swift' === $scheme && strlen( $account ) < 4 ) {
+				return new WP_Error( 'atc_payout', 'Enter the account number.', array( 'status' => 400 ) );
+			}
+			if ( in_array( $scheme, array( 'iban', 'swift' ), true ) && ! preg_match( '/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/', $swift ) ) {
+				return new WP_Error( 'atc_payout', 'Enter the SWIFT/BIC code of your bank (8 or 11 letters and numbers).', array( 'status' => 400 ) );
+			}
+			if ( '' === $bank ) {
+				return new WP_Error( 'atc_payout', 'Enter the name of your bank.', array( 'status' => 400 ) );
+			}
 		}
 		if ( in_array( $method, array( 'wise', 'paypal' ), true ) && ! is_email( $email ) ) {
 			return new WP_Error( 'atc_payout', 'Enter the email of your ' . ( 'paypal' === $method ? 'PayPal' : 'Wise' ) . ' account.', array( 'status' => 400 ) );
 		}
+		$details = 'bank' === $method
+			? array( 'holder' => $holder, 'bank' => $bank, 'account' => $account, 'swift' => $swift, 'routing' => $routing, 'country' => $country, 'email' => '' )
+			: array( 'holder' => $holder, 'email' => $email, 'country' => $country, 'bank' => '', 'account' => '' );
 		$wpdb->update(
 			self::t( 'parties' ),
 			array(
 				'payout_method'   => $method,
 				'payout_currency' => $currency,
-				'payout_details'  => self::encrypt( array( 'holder' => $holder, 'bank' => $bank, 'account' => $account, 'email' => $email ) ),
+				'payout_details'  => self::encrypt( $details ),
 				'updated_at'      => self::now(),
 			),
 			array( 'id' => $party_id )
 		);
-		ATC_Install::log( 'party', $party_id, 'payout_updated', array( 'method' => $method, 'currency' => $currency ) );
+		ATC_Install::log( 'party', $party_id, 'payout_updated', array( 'method' => $method, 'currency' => $currency, 'country' => $country ) );
 		return self::payout_summary( $party_id );
 	}
 
