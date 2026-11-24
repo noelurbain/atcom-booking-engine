@@ -1334,7 +1334,8 @@
     var email = h('input', { type: 'email', value: p.email || '' });
     var accLabel = h('span'), emailLabel = h('span');
     var accField = h('label', { class: 'field' }, accLabel, account);
-    var swiftField = field('SWIFT / BIC code', swift, 'The bank’s international code, 8 or 11 characters. Your bank shows it in its app or on its website.');
+    var swiftLabel = h('span'), swiftHelp = h('small');
+    var swiftField = h('label', { class: 'field' }, swiftLabel, swift, swiftHelp);
     var routingField = field('Routing number (ABA)', routing);
     var bankRow = h('div', null, h('div', { class: 'grid2' }, field('Bank name', bank), accField), h('div', { class: 'grid2' }, swiftField, routingField));
     var emailRow = h('div', null, h('div', { class: 'grid2' }, h('label', { class: 'field' }, emailLabel, email)));
@@ -1351,7 +1352,9 @@
       accLabel.textContent = { clabe: 'CLABE (18 digits)', aba: 'Account number', iban: 'IBAN', swift: 'Account number' }[sc];
       account.placeholder = p.set && p.last4 ? 'ending ' + p.last4 + ' (type again to change)' : { clabe: '18 digits', aba: '', iban: 'e.g. ' + country.value + '00 0000 0000 0000 0000', swift: '' }[sc];
       bank.placeholder = sc === 'clabe' ? 'BBVA, Santander…' : 'Your bank';
-      swiftField.classList.toggle('hidden', sc === 'clabe' || sc === 'aba');
+      swiftField.classList.toggle('hidden', sc === 'aba');
+      swiftLabel.textContent = sc === 'clabe' ? 'SWIFT / BIC code (optional)' : 'SWIFT / BIC code';
+      swiftHelp.textContent = sc === 'clabe' ? 'Needed only for international wires, for example BBVAMXMM for BBVA México. Your bank shows it in its app or on its website.' : 'The bank’s international code, 8 or 11 characters. Your bank shows it in its app or on its website.';
       routingField.classList.toggle('hidden', sc !== 'aba');
       note.textContent = m === 'paypal' ? 'PayPal charges a fee on each payment it receives and converts currencies at its own rate. Bank transfer or Wise is usually cheaper.'
         : (m === 'wise' ? 'Wise is the cheapest way for us to pay you abroad. Your Wise account receives the money in the currency you pick.'

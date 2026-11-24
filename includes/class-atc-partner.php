@@ -641,7 +641,8 @@ final class ATC_Partner {
 			if ( 'swift' === $scheme && strlen( $account ) < 4 ) {
 				return new WP_Error( 'atc_payout', 'Enter the account number.', array( 'status' => 400 ) );
 			}
-			if ( in_array( $scheme, array( 'iban', 'swift' ), true ) && ! preg_match( '/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/', $swift ) ) {
+			// Mexico: the CLABE is enough inside Mexico (SPEI, Wise); an international wire also needs the SWIFT, so it is asked but optional.
+			if ( ( in_array( $scheme, array( 'iban', 'swift' ), true ) || ( 'clabe' === $scheme && '' !== $swift ) ) && ! preg_match( '/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/', $swift ) ) {
 				return new WP_Error( 'atc_payout', 'Enter the SWIFT/BIC code of your bank (8 or 11 letters and numbers).', array( 'status' => 400 ) );
 			}
 			if ( '' === $bank ) {
