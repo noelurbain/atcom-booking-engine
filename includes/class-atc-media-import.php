@@ -60,7 +60,7 @@ final class ATC_Media_Import {
 	/** Background: keep going every minute (WP-Cron) until nothing is left. */
 	public static function tick(): void {
 		$r = self::run( 45 );
-		if ( $r['posts_left'] > 0 && ( $r['posts_done'] > 0 || $r['images_copied'] > 0 ) ) {
+		if ( $r['posts_left'] > 0 && ( ! empty( $r['busy'] ) || $r['posts_done'] > 0 || $r['images_copied'] > 0 ) ) {
 			wp_schedule_single_event( time() + 20, 'atc_media_import_tick' );
 		}
 		update_option( 'atc_cdn_last', array( 'at' => gmdate( 'c' ), 'result' => array_diff_key( $r, array( 'failed' => 1 ) ) ), false );
@@ -81,7 +81,13 @@ final class ATC_Media_Import {
 		$copied = 0;
 		$failed = array();
 		$skip   = (array) get_option( 'atc_cdn_skip', array() ); // Posts whose images all failed: don't loop on them.
-		foreach ( self::next_ids( 200 ) as $id ) {
+		if ( get_transient( 'atc_cdn_lock' ) ) {
+			return array( 'busy' => true, 'posts_done' => 0, 'images_copied' => 0, 'failed' => array(), 'posts_left' => self::left(), 'images_total' => count( array_filter( $map ) ) );
+		}
+		set_transient( 'atc_cdn_lock', 1, 90 );
+		$ids = array_values( array_diff( self::next_ids( 200 ), $skip ) );
+		$pre = self::prefetch( $ids, $map, $until );
+		foreach ( $ids as $id ) {
 			if ( microtime( true ) > $until ) {
 				break;
 			}
@@ -101,7 +107,16 @@ final class ATC_Media_Import {
 					$ok = false;
 					break;
 				}
-				$att = media_sideload_image( $u, $id, null, 'id' );
+				if ( isset( $pre[ $u ] ) ) {
+					$file = array( 'name' => wp_basename( (string) wp_parse_url( $u, PHP_URL_PATH ) ), 'tmp_name' => $pre[ $u ] );
+					$att  = media_handle_sideload( $file, $id );
+					unset( $pre[ $u ] );
+					if ( ! is_wp_error( $att ) ) {
+						update_post_meta( $att, '_source_url', $u );
+					}
+				} else {
+					$att = media_sideload_image( $u, $id, null, 'id' );
+				}
 				if ( is_wp_error( $att ) ) {
 					$map[ $u ] = false;
 					$failed[]  = $u;
@@ -151,6 +166,10 @@ final class ATC_Media_Import {
 			++$done;
 		}
 		update_option( 'atc_cdn_skip', array_values( array_unique( $skip ) ), false );
+		foreach ( $pre as $tmp ) {
+			wp_delete_file( $tmp );
+		}
+		delete_transient( 'atc_cdn_lock' );
 		remove_filter( 'intermediate_image_sizes_advanced', $sizes, 99 );
 		if ( ! wp_next_scheduled( 'atc_media_import_tick' ) && ! doing_action( 'atc_media_import_tick' ) && self::left() > count( $skip ) ) {
 			wp_schedule_single_event( time() + 20, 'atc_media_import_tick' );
@@ -162,5 +181,43 @@ final class ATC_Media_Import {
 			'posts_left'   => max( 0, self::left() - count( $skip ) ),
 			'images_total' => count( array_filter( $map ) ),
 		);
+	}
+
+	/** Download the next posts' missing images 16 at a time, into temp files. @return array url => temp path */
+	private static function prefetch( array $ids, array $map, float $until ): array {
+		$want = array();
+		foreach ( array_slice( $ids, 0, 25 ) as $id ) {
+			$post = get_post( $id );
+			preg_match_all( self::RX, $post->post_content . ' ' . wp_json_encode( get_post_meta( $id, '_atc', true ), JSON_UNESCAPED_SLASHES ), $m );
+			foreach ( $m[0] as $u ) {
+				$u = rtrim( $u, '.,;' );
+				if ( ! isset( $map[ $u ] ) ) {
+					$want[ $u ] = true;
+				}
+			}
+			if ( count( $want ) >= 96 ) {
+				break;
+			}
+		}
+		$out = array();
+		foreach ( array_chunk( array_keys( $want ), 16 ) as $chunk ) {
+			if ( microtime( true ) > $until - 10 || ! class_exists( 'WpOrg\\Requests\\Requests' ) ) {
+				break;
+			}
+			$reqs = array();
+			foreach ( $chunk as $u ) {
+				$tmp        = wp_tempnam( $u );
+				$reqs[ $u ] = array( 'url' => $u, 'options' => array( 'filename' => $tmp, 'timeout' => 30 ) );
+				$out[ $u ]  = $tmp;
+			}
+			$res = \WpOrg\Requests\Requests::request_multiple( $reqs, array( 'timeout' => 30, 'connect_timeout' => 10 ) );
+			foreach ( $res as $u => $r ) {
+				if ( ! ( $r instanceof \WpOrg\Requests\Response ) || 200 !== (int) $r->status_code || ! @filesize( $out[ $u ] ) ) {
+					wp_delete_file( $out[ $u ] );
+					unset( $out[ $u ] ); // Falls back to a normal download later.
+				}
+			}
+		}
+		return $out;
 	}
 }
