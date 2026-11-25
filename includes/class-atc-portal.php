@@ -74,7 +74,7 @@ final class ATC_Portal {
 			if ( ! empty( $args['next'] ) ) {
 				$next = (string) $args['next'];
 			}
-			wp_safe_redirect( add_query_arg( 'failed', 1, self::login_url( $next ) ) );
+			wp_safe_redirect( add_query_arg( 'failed', class_exists( 'ATC_Guard' ) && ATC_Guard::locked() ? 'locked' : 1, self::login_url( $next ) ) );
 			exit;
 		}
 	}
@@ -382,7 +382,7 @@ final class ATC_Portal {
 		echo '<section class="atc-auth-form"><div class="atc-auth-inner">';
 		echo '<h1>Welcome back</h1><p class="atc-muted">Sign in to your account. Booked without one? Use <a href="' . esc_url( home_url( '/manage-booking/' ) ) . '">Manage booking</a>.</p>';
 		if ( isset( $_GET['failed'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			echo '<p class="chip red" role="alert">Email or password is not right.</p>';
+			echo '<p class="chip red" role="alert">' . ( 'locked' === $_GET['failed'] ? 'Too many failed attempts. Please wait an hour, or use “Forgot your password?” below.' : 'Email or password is not right.' ) . '</p>'; // phpcs:ignore
 		}
 		echo '<div class="atc-login">';
 		wp_login_form(
