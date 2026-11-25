@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.25.8
+ * Version:           0.25.9
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.25.8' );
+define( 'ATC_VERSION', '0.25.9' );
 define( 'ATC_DB_VERSION', '24' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
@@ -53,6 +53,7 @@ require_once ATC_DIR . 'includes/class-atc-rebook.php';
 require_once ATC_DIR . 'includes/class-atc-guard.php';
 require_once ATC_DIR . 'includes/class-atc-redirects.php';
 require_once ATC_DIR . 'includes/class-atc-chat.php';
+require_once ATC_DIR . 'includes/class-atc-crisp.php';
 require_once ATC_DIR . 'includes/class-atc-insights.php';
 require_once ATC_DIR . 'includes/class-atc-report.php';
 require_once ATC_DIR . 'includes/class-atc-analytics.php';
@@ -89,6 +90,7 @@ ATC_Policies::init();
 ATC_Guard::init();
 ATC_Redirects::init();
 ATC_Chat::init();
+ATC_Crisp::init();
 add_action( 'init', array( 'ATC_Checkout', 'repair_provider_names' ), 30 );
 add_shortcode( 'atc_provider_agreement', array( 'ATC_Partner', 'agreement_html' ) );
 

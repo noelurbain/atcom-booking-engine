@@ -35,6 +35,10 @@ final class ATC_Settings {
 			'posthog_key'            => '',
 			'posthog_region'         => 'us',     // us | eu
 			'crisp_id'               => '',       // Crisp website ID: the chat button shows when set
+			'crisp_plugin_id'        => '',       // Crisp plugin token (Marketplace): identifier
+			'crisp_plugin_key'       => '',       // ... and key (secret)
+			'crisp_hook_secret'      => '',       // signing secret of the plugin web hook
+			'crisp_autoreply'        => 1,        // answer reservation numbers in the chat
 			'ga4_id'                 => '',
 			'ads_id'                 => '',
 			'ads_label'              => '',
@@ -99,6 +103,13 @@ final class ATC_Settings {
 
 		$out['posthog_key']    = isset( $in['posthog_key'] ) && preg_match( '/^phc_[A-Za-z0-9]{20,}$/', trim( (string) $in['posthog_key'] ) ) ? trim( (string) $in['posthog_key'] ) : '';
 		$out['posthog_region'] = isset( $in['posthog_region'] ) && 'eu' === $in['posthog_region'] ? 'eu' : 'us';
+		// Secrets: an empty field keeps what is saved.
+		$old = get_option( self::OPTION, array() );
+		foreach ( array( 'crisp_plugin_id', 'crisp_plugin_key', 'crisp_hook_secret' ) as $k ) {
+			$v         = isset( $in[ $k ] ) ? trim( sanitize_text_field( (string) $in[ $k ] ) ) : '';
+			$out[ $k ] = '' !== $v ? mb_substr( $v, 0, 200 ) : (string) ( $old[ $k ] ?? '' );
+		}
+		$out['crisp_autoreply'] = empty( $in['crisp_autoreply'] ) ? 0 : 1;
 		$out['crisp_id']       = isset( $in['crisp_id'] ) && preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', strtolower( trim( (string) $in['crisp_id'] ) ) ) ? strtolower( trim( (string) $in['crisp_id'] ) ) : '';
 		$out['ga4_id']         = isset( $in['ga4_id'] ) && preg_match( '/^G-[A-Z0-9]{4,}$/', strtoupper( trim( (string) $in['ga4_id'] ) ) ) ? strtoupper( trim( (string) $in['ga4_id'] ) ) : '';
 		$out['ads_id']         = isset( $in['ads_id'] ) && preg_match( '/^AW-\d{6,}$/', strtoupper( trim( (string) $in['ads_id'] ) ) ) ? strtoupper( trim( (string) $in['ads_id'] ) ) : '';
