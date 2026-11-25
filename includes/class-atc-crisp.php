@@ -51,10 +51,10 @@ final class ATC_Crisp {
 	}
 
 	/** Crisp signs plugin hooks: HMAC-SHA256 of "[timestamp;body]" with the hook's signing secret. */
-	private static function signed( WP_REST_Request $r ): bool {
+	public static function signed( WP_REST_Request $r, bool $strict = false ): bool {
 		$secret = (string) ATC_Settings::get( 'crisp_hook_secret' );
 		if ( '' === $secret ) {
-			return true; // Not set yet: the token in the address still protects the hook.
+			return ! $strict; // Not set yet: the token in the address still protects the hook.
 		}
 		$ts  = (string) $r->get_header( 'x_crisp_request_timestamp' );
 		$sig = (string) $r->get_header( 'x_crisp_signature' );
@@ -124,6 +124,7 @@ final class ATC_Crisp {
 			ATC_Mail::manage_link( $b );
 		}
 		self::say( $session, $text );
+		self::remember( $session, $b );
 		ATC_Install::log( 'booking', (int) $b['id'], 'crisp_autoreply', array( 'session' => $session, 'verified' => $own ) );
 	}
 
@@ -165,12 +166,12 @@ final class ATC_Crisp {
 		return $t;
 	}
 
-	private static function say( string $session, string $text ): void {
+	public static function say( string $session, string $text, string $type = 'text' ): void {
 		self::api(
 			'POST',
 			'website/' . ATC_Settings::get( 'crisp_id' ) . '/conversation/' . rawurlencode( $session ) . '/message',
 			array(
-				'type'      => 'text',
+				'type'      => $type,
 				'from'      => 'operator',
 				'origin'    => 'chat',
 				'content'   => $text,
@@ -181,7 +182,7 @@ final class ATC_Crisp {
 	}
 
 	/** @return array|null the response's data, or null. */
-	private static function api( string $method, string $path, ?array $body = null ): ?array {
+	public static function api( string $method, string $path, ?array $body = null ): ?array {
 		$res = wp_remote_request(
 			self::API . $path,
 			array(
@@ -201,5 +202,19 @@ final class ATC_Crisp {
 		}
 		$j = json_decode( wp_remote_retrieve_body( $res ), true );
 		return is_array( $j['data'] ?? null ) ? $j['data'] : array();
+	}
+
+	/** Keep the booking on the conversation, so the sidebar panel shows it. */
+	public static function remember( string $session, array $b ): bool {
+		$path = 'website/' . ATC_Settings::get( 'crisp_id' ) . '/conversation/' . rawurlencode( $session ) . '/meta';
+		$meta = self::api( 'GET', $path );
+		if ( null === $meta ) {
+			return false;
+		}
+		$data = is_array( $meta['data'] ?? null ) ? $meta['data'] : array();
+		$data['booking'] = $b['number'];
+		$data['status']  = $b['status'];
+		$data['control'] = home_url( '/control/bookings/' . $b['number'] . '/' );
+		return null !== self::api( 'PATCH', $path, array( 'data' => $data ) );
 	}
 }
