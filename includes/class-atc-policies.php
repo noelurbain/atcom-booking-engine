@@ -93,7 +93,6 @@ final class ATC_Policies {
 				array( '10. If the service is not as booked', array(
 					'If your driver does not show up, you get a full refund of that ride.',
 					'If your driver is late, the vehicle is smaller or of a lower category than you booked, you are put in a shared ride, or the service is otherwise clearly worse than described, tell us within 30 days. We refund part or all of that ride according to what happened.',
-					'If you missed your flight because the driver was late, we refund the ride and pay your reasonable, documented extra costs (for example a change fee), up to 150% of the price of that ride.',
 					'We may upgrade you to a larger or better vehicle at no cost. That is never a reason for a charge.',
 				) ),
 				array( '11. Luggage', array(

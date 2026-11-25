@@ -715,6 +715,7 @@
         d.offers.forEach(function (o) {
           h += '<label class="ab-rbopt"><input type="radio" name="rb-service" value="' + o.service_id + '"' + (o.service_id === d.service ? ' checked' : '') + '>'
             + '<span><strong>' + esc(o.name) + '</strong>' + (o.current ? ' <span class="ab-chip">your vehicle</span>' : '')
+            + (o.same ? ' <span class="ab-rbtag is-same">Same provider</span>' : ' <span class="ab-rbtag is-diff">Different provider</span>')
             + '<br><span class="ab-muted">' + esc(o.provider) + ' · up to ' + o.max_passengers + ' passengers, ' + o.max_bags + ' suitcases</span></span>'
             + '<span class="ab-rbprice">' + usdR(o.ride) + '</span></label>';
         });

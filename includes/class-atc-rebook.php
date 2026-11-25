@@ -182,8 +182,11 @@ final class ATC_Rebook {
 				'max_bags'   => $x['max_bags'],
 				'ride'       => $x['ride'],
 				'current'    => (int) $x['service_id'] === $current,
+				'same'       => (int) $x['party_id'] === $pid,
 			);
 		}
+		// The traveler's provider first, then the others; cheapest first in each.
+		usort( $list, static fn( $x, $y ) => ( (int) $y['same'] <=> (int) $x['same'] ) ?: ( $x['ride'] <=> $y['ride'] ) );
 		$out = array(
 			'place'      => (string) $res['destination']['label'],
 			'moved'      => $moved,
