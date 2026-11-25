@@ -35,6 +35,10 @@ final class ATC_Crisp_Widget {
 
 	/** /?atc_crisp=<session>: remember the chat for 3 hours, then search as usual. ?atc_crisp=end stops. */
 	public static function start_booking(): void {
+		// Crisp opens link buttons with its own ?session_id=…&website_id=…&token=… (it drops ours).
+		if ( ! isset( $_GET['atc_crisp'] ) && isset( $_GET['session_id'], $_GET['website_id'] ) && (string) ATC_Settings::get( 'crisp_id' ) === $_GET['website_id'] ) { // phpcs:ignore
+			$_GET['atc_crisp'] = $_GET['session_id']; // phpcs:ignore
+		}
 		if ( ! isset( $_GET['atc_crisp'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return;
 		}
@@ -51,7 +55,7 @@ final class ATC_Crisp_Widget {
 				setcookie( self::COOKIE, '', array( 'expires' => time() - 3600, 'path' => '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax' ) );
 			}
 		}
-		wp_safe_redirect( remove_query_arg( 'atc_crisp' ) );
+		wp_safe_redirect( remove_query_arg( array( 'atc_crisp', 'session_id', 'website_id', 'token', 'locale', 'theme' ) ) );
 		exit;
 	}
 
