@@ -137,6 +137,9 @@ final class ATC_Affiliates {
 		} elseif ( is_user_logged_in() && current_user_can( 'atc_manage' ) ) {
 			$channel = 'admin';
 			$snap['booked_by'] = array( 'user' => get_current_user_id(), 'as' => 'team', 'name' => wp_get_current_user()->display_name );
+			if ( class_exists( 'ATC_Crisp_Widget' ) && '' !== ATC_Crisp_Widget::session() ) {
+				$snap['crisp_session'] = ATC_Crisp_Widget::session();
+			}
 		} elseif ( ! empty( $_COOKIE[ self::COOKIE ] ) ) {
 			$aff = self::by_code( sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ) ) );
 			if ( $aff ) {
@@ -613,7 +616,8 @@ final class ATC_Affiliates {
 		ATC_Mail::payment_link( $b, ATC_Checkout::pay_url( $b['number'], $key ) );
 		$b['snap']['link_sent'] = self::now();
 		ATC_Checkout::snapshot( (int) $b['id'], $b['snap'] );
-		ATC_Install::log( 'booking', (int) $b['id'], 'payment_link_sent', array( 'to' => $b['email'] ) );
-		return array( 'sent' => true, 'to' => $b['email'] );
+		$chat = class_exists( 'ATC_Crisp_Widget' ) && ATC_Crisp_Widget::send_link( $b, ATC_Checkout::pay_url( $b['number'], $key ) );
+		ATC_Install::log( 'booking', (int) $b['id'], 'payment_link_sent', array( 'to' => $b['email'], 'chat' => $chat ) );
+		return array( 'sent' => true, 'to' => $b['email'] . ( $chat ? ' and the chat' : '' ) );
 	}
 }

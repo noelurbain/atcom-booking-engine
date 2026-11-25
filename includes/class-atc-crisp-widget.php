@@ -13,8 +13,105 @@ defined( 'ABSPATH' ) || exit;
 
 final class ATC_Crisp_Widget {
 
+	const COOKIE = 'atc_crisp';
+
 	public static function init(): void {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
+		add_action( 'template_redirect', array( __CLASS__, 'start_booking' ), 1 );
+		add_action( 'wp_footer', array( __CLASS__, 'banner' ) );
+		add_action( 'atc_booking_confirmed', array( __CLASS__, 'paid' ), 20 );
+	}
+
+	/* ---------- Step 3: a new booking from a chat ---------- */
+
+	/** The chat a team member is booking for (set by the panel's "New booking" button), or ''. */
+	public static function session(): string {
+		if ( ! is_user_logged_in() || ! current_user_can( 'atc_manage' ) ) {
+			return '';
+		}
+		$s = sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ?? '' ) );
+		return preg_match( '/^session_[a-f0-9-]{36}$/', $s ) ? $s : '';
+	}
+
+	/** /?atc_crisp=<session>: remember the chat for 3 hours, then search as usual. ?atc_crisp=end stops. */
+	public static function start_booking(): void {
+		if ( ! isset( $_GET['atc_crisp'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			return;
+		}
+		if ( ! is_user_logged_in() ) {
+			auth_redirect();
+		}
+		$s = sanitize_text_field( wp_unslash( $_GET['atc_crisp'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+		if ( current_user_can( 'atc_manage' ) ) {
+			if ( preg_match( '/^session_[a-f0-9-]{36}$/', $s ) ) {
+				setcookie( self::COOKIE, $s, array( 'expires' => time() + 3 * HOUR_IN_SECONDS, 'path' => '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax' ) );
+				$_COOKIE[ self::COOKIE ] = $s;
+				self::who( $s, true );
+			} else {
+				setcookie( self::COOKIE, '', array( 'expires' => time() - 3600, 'path' => '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax' ) );
+			}
+		}
+		wp_safe_redirect( remove_query_arg( 'atc_crisp' ) );
+		exit;
+	}
+
+	/** Who the chat is with (name, email, phone from Crisp), cached for the team banner. */
+	public static function who( string $s, bool $fresh = false ): array {
+		$key = 'atc_crisp_who_' . md5( $s );
+		$w   = $fresh ? false : get_transient( $key );
+		if ( false === $w ) {
+			$m = ATC_Crisp::api( 'GET', 'website/' . ATC_Settings::get( 'crisp_id' ) . '/conversation/' . rawurlencode( $s ) . '/meta' );
+			$w = array(
+				'name'  => (string) ( $m['nickname'] ?? '' ),
+				'email' => (string) ( $m['email'] ?? '' ),
+				'phone' => (string) ( $m['phone'] ?? '' ),
+			);
+			set_transient( $key, $w, 3 * HOUR_IN_SECONDS );
+		}
+		return $w;
+	}
+
+	public static function banner(): void {
+		$s = self::session();
+		if ( '' === $s ) {
+			return;
+		}
+		$w    = self::who( $s );
+		$name = trim( $w['name'] . ( $w['email'] ? ' · ' . $w['email'] : '' ) . ( $w['phone'] ? ' · ' . $w['phone'] : '' ) );
+		echo '<div style="position:fixed;left:12px;bottom:12px;z-index:99999;max-width:min(92vw,520px);background:#111;color:#fff;font:14px/1.4 system-ui,sans-serif;padding:10px 14px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25)">'
+			. '<strong>Booking for a Crisp chat</strong>' . ( $name ? ': ' . esc_html( $name ) : '' )
+			. '<br><span style="opacity:.8">Search, pick a ride, fill the traveler\'s details, then "Send the payment link": it goes by email and into the chat.</span> '
+			. '<a href="' . esc_url( add_query_arg( 'atc_crisp', 'end', home_url( '/' ) ) ) . '" style="color:#ffb74d">Stop</a></div>';
+	}
+
+	/** The payment link, into the chat too. */
+	public static function send_link( array $b, string $url ): bool {
+		$s = (string) ( $b['snap']['crisp_session'] ?? '' );
+		if ( '' === $s || ! ATC_Crisp::ready() ) {
+			return false;
+		}
+		$legs = array();
+		foreach ( (array) $b['legs'] as $l ) {
+			$legs[] = '• ' . ATC_Mail::local( $l['pickup_at'], (string) ( $b['snap']['timezone'] ?? 'UTC' ), 'D j M, H:i' ) . ': ' . $l['from_place'] . ' → ' . $l['to_place'];
+		}
+		$text = 'Here is your booking ' . $b['number'] . ' (' . ( $b['snap']['vehicle'] ?? 'private transfer' ) . ', ' . ATC_Book::money( (int) $b['total_cents'] ) . "):\n" . implode( "\n", $legs )
+			. "\n\nCheck the details and pay securely by card here: " . $url . "\nYour booking is confirmed as soon as you pay. We have sent the same link to " . $b['email'] . '.';
+		ATC_Crisp::say( $s, $text );
+		ATC_Crisp::remember( $s, $b );
+		return true;
+	}
+
+	/** Paid: tell the chat. */
+	public static function paid( int $booking_id ): void {
+		$b = ATC_Checkout::find( '', $booking_id );
+		$s = (string) ( $b['snap']['crisp_session'] ?? '' );
+		if ( ! $b || '' === $s || ! ATC_Crisp::ready() ) {
+			return;
+		}
+		ATC_Mail::defer( static function () use ( $b, $s ) {
+			ATC_Crisp::say( $s, 'Thank you! Booking ' . $b['number'] . ' is paid and confirmed. Your confirmation is on its way to ' . $b['email'] . '.' );
+			ATC_Crisp::remember( $s, ATC_Checkout::find( '', (int) $b['id'] ) ?: $b );
+		} );
 	}
 
 	public static function routes(): void {
@@ -102,6 +199,22 @@ final class ATC_Crisp_Widget {
 						),
 					),
 				),
+				array(
+					'id'    => 'new',
+					'title' => 'New booking',
+					'items' => array(
+						array(
+							'id'    => 'newbooking',
+							'type'  => 'button',
+							'value' => array(
+								'type'  => 'link',
+								'label' => 'New booking for this chat',
+								'color' => 'orange',
+								'url'   => home_url( '/' ) . '?atc_crisp={conversation.session_id}',
+							),
+						),
+					),
+				),
 			),
 		);
 	}
@@ -149,19 +262,28 @@ final class ATC_Crisp_Widget {
 		return self::out( self::value( $item, $b ) );
 	}
 
-	/** Crisp shows "succeeded" on a 200 and "failed" otherwise (private notes need a paid Crisp plan). */
+	/** A private note for the team (needs a paid Crisp plan; skipped quietly otherwise). */
+	private static function note( string $session, string $text ): void {
+		if ( '' !== $session && ! get_transient( 'atc_crisp_no_notes' ) ) {
+			ATC_Crisp::say( $session, $text, 'note' );
+		}
+	}
+
+	/** Crisp shows "succeeded" on a 200 and "failed" otherwise (plus a private note on paid Crisp plans). */
 	private static function button( string $item, array $b, string $session ) {
 		if ( 'resend' === $item ) {
 			$res = ATC_Ops::resend( $b['number'] );
 			if ( is_wp_error( $res ) ) {
 				return new WP_Error( 'atc_crisp', $res->get_error_message(), array( 'status' => 409 ) );
 			}
+			self::note( $session, 'Confirmation for ' . $b['number'] . ' resent to ' . $b['email'] . '.' );
 		} elseif ( 'manage' === $item ) {
 			if ( ! empty( $b['snap']['legacy'] ) || ! in_array( $b['status'], array( 'confirmed', 'completed' ), true ) ) {
 				return new WP_Error( 'atc_crisp', 'No manage link for this booking.', array( 'status' => 409 ) );
 			}
 			ATC_Mail::manage_link( $b );
 			ATC_Install::log( 'booking', (int) $b['id'], 'manage_link_sent', array( 'via' => 'crisp', 'session' => $session ) );
+			self::note( $session, 'Manage link for ' . $b['number'] . ' emailed to ' . $b['email'] . '.' );
 		}
 		return rest_ensure_response( array( 'ok' => true ) );
 	}

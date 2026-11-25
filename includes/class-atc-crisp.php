@@ -196,6 +196,10 @@ final class ATC_Crisp {
 				'body'    => null === $body ? null : wp_json_encode( $body ),
 			)
 		);
+		if ( ! is_wp_error( $res ) && 402 === wp_remote_retrieve_response_code( $res ) && 'note' === ( $body['type'] ?? '' ) ) {
+			set_transient( 'atc_crisp_no_notes', 1, DAY_IN_SECONDS ); // Free Crisp plan: no private notes. Try again tomorrow.
+			return null;
+		}
 		if ( is_wp_error( $res ) || wp_remote_retrieve_response_code( $res ) >= 300 ) {
 			ATC_Install::log( 'crisp', 0, 'api_error', array( 'path' => $path, 'code' => is_wp_error( $res ) ? $res->get_error_message() : wp_remote_retrieve_response_code( $res ), 'body' => is_wp_error( $res ) ? '' : mb_substr( wp_remote_retrieve_body( $res ), 0, 300 ) ) );
 			return null;
