@@ -38,6 +38,7 @@ final class ATC_Settings {
 			'crisp_plugin_id'        => '',       // Crisp plugin token (Marketplace): identifier
 			'crisp_plugin_key'       => '',       // ... and key (secret)
 			'crisp_hook_secret'      => '',       // signing secret of the plugin web hook
+			'crisp_tier'             => 'website', // website token (Workspace Settings) or plugin token (Marketplace)
 			'crisp_autoreply'        => 1,        // answer reservation numbers in the chat
 			'ga4_id'                 => '',
 			'ads_id'                 => '',
@@ -109,6 +110,7 @@ final class ATC_Settings {
 			$v         = isset( $in[ $k ] ) ? trim( sanitize_text_field( (string) $in[ $k ] ) ) : '';
 			$out[ $k ] = '' !== $v ? mb_substr( $v, 0, 200 ) : (string) ( $old[ $k ] ?? '' );
 		}
+		$out['crisp_tier']      = ( isset( $in['crisp_tier'] ) && 'plugin' === $in['crisp_tier'] ) ? 'plugin' : 'website';
 		$out['crisp_autoreply'] = empty( $in['crisp_autoreply'] ) ? 0 : 1;
 		$out['crisp_id']       = isset( $in['crisp_id'] ) && preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', strtolower( trim( (string) $in['crisp_id'] ) ) ) ? strtolower( trim( (string) $in['crisp_id'] ) ) : '';
 		$out['ga4_id']         = isset( $in['ga4_id'] ) && preg_match( '/^G-[A-Z0-9]{4,}$/', strtoupper( trim( (string) $in['ga4_id'] ) ) ) ? strtoupper( trim( (string) $in['ga4_id'] ) ) : '';

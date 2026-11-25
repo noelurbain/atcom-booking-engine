@@ -2,7 +2,7 @@
 /**
  * Crisp plugin, step 1: automatic replies to reservation numbers.
  *
- * Crisp sends every visitor message to /wp-json/atc/v1/crisp/hook?t=<our token> (a plugin web hook, signed).
+ * Crisp sends every visitor message to /wp-json/atc/v1/crisp/hook?t=<our token> (a website web hook, or a signed plugin web hook).
  * When the message has a reservation number, we look it up and answer in the chat:
  * - the chat's email is the booking's email: full details and the link to the booking;
  * - otherwise: only the status, and the booking link goes to the email on the booking (anyone can type a number);
@@ -189,7 +189,7 @@ final class ATC_Crisp {
 				'timeout' => 15,
 				'headers' => array(
 					'Authorization' => 'Basic ' . base64_encode( ATC_Settings::get( 'crisp_plugin_id' ) . ':' . ATC_Settings::get( 'crisp_plugin_key' ) ), // phpcs:ignore
-					'X-Crisp-Tier'  => 'plugin',
+					'X-Crisp-Tier'  => 'plugin' === ATC_Settings::get( 'crisp_tier' ) ? 'plugin' : 'website',
 					'Content-Type'  => 'application/json',
 				),
 				'body'    => null === $body ? null : wp_json_encode( $body ),
