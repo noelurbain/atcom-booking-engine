@@ -41,7 +41,7 @@ final class ATC_Checkout {
 					break;
 				}
 				$o['retail']   = (int) $price['retail_cents'];
-				$o['provider'] = (int) $price['provider_cents'];
+				$o['provider_cents'] = (int) $price['provider_cents']; // the provider's name stays in 'provider'
 				return array( 'offer' => $o, 'search' => $res );
 			}
 		}
@@ -309,7 +309,7 @@ final class ATC_Checkout {
 					'party_id'       => (int) $o['party_id'],
 					'zone_id'        => (int) ( $o['zone_id'] ?? $s['destination']['zone_id'] ) ?: null,
 					'retail_cents'   => $last ? $o['retail'] - intdiv( $o['retail'], $n ) * ( $n - 1 ) : intdiv( $o['retail'], $n ),
-					'provider_cents' => $last ? $o['provider'] - intdiv( $o['provider'], $n ) * ( $n - 1 ) : intdiv( $o['provider'], $n ),
+					'provider_cents' => $last ? $o['provider_cents'] - intdiv( $o['provider_cents'], $n ) * ( $n - 1 ) : intdiv( $o['provider_cents'], $n ),
 					'status'         => 'held',
 				)
 			);
@@ -496,6 +496,38 @@ final class ATC_Checkout {
 	/** Seconds left on the hold (0 when it ran out). */
 	public static function hold_left( array $b ): int {
 		return empty( $b['hold_expires_at'] ) ? 0 : max( 0, strtotime( $b['hold_expires_at'] . ' UTC' ) - time() );
+	}
+
+	/** The provider's name: from the ride itself (it can change), else the snapshot. */
+	public static function provider_name( array $b ): string {
+		$p = self::provider( $b );
+		if ( $p ) {
+			return (string) $p['name'];
+		}
+		$s = (string) ( $b['snap']['provider'] ?? '' );
+		return is_numeric( $s ) ? '' : $s;
+	}
+
+	/**
+	 * Bookings started before 0.25.6 kept the provider's pay (in cents) where its name belongs. Put the name
+	 * back, once.
+	 */
+	public static function repair_provider_names(): void {
+		if ( get_option( 'atc_fix_provider_names' ) ) {
+			return;
+		}
+		update_option( 'atc_fix_provider_names', 1, false );
+		global $wpdb;
+		$t   = self::t( 'bookings' );
+		$ids = $wpdb->get_col( "SELECT id FROM {$t} WHERE JSON_VALID(snapshot) AND JSON_UNQUOTE(JSON_EXTRACT(snapshot, '$.provider')) REGEXP '^[0-9]+$'" ); // phpcs:ignore
+		foreach ( $ids as $id ) {
+			$b = self::find( '', (int) $id );
+			$n = $b ? self::provider_name( $b ) : '';
+			if ( $b && '' !== $n ) {
+				$b['snap']['provider'] = $n;
+				$wpdb->update( $t, array( 'snapshot' => wp_json_encode( $b['snap'] ) ), array( 'id' => (int) $id ) );
+			}
+		}
 	}
 
 	/** The provider of a booking, for the confirmation card. */

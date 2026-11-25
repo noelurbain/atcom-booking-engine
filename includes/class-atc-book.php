@@ -515,7 +515,7 @@ final class ATC_Book {
 			}
 		}
 		if ( ! $offer && $b ) {
-			$offer = array( 'service_id' => $sid, 'name' => $b['snap']['vehicle'] ?? '', 'provider' => $b['snap']['provider'] ?? '', 'slug' => $b['snap']['slug'] ?? '', 'retail' => (int) $b['total_cents'] );
+			$offer = array( 'service_id' => $sid, 'name' => $b['snap']['vehicle'] ?? '', 'provider' => ATC_Checkout::provider_name( $b ), 'slug' => $b['snap']['slug'] ?? '', 'retail' => (int) $b['total_cents'] );
 		}
 		$back = home_url( '/search/?' . ATC_Search::query( $q ) );
 		ob_start();
@@ -738,7 +738,7 @@ final class ATC_Book {
 		$edit  = add_query_arg( array( 'b' => $b['number'], 'k' => $key ), home_url( '/checkout/' ) );
 		$air   = array( 'iata' => $b['snap']['iata'] ?? '', 'name' => $b['snap']['airport'] ?? '' );
 		$to    = (string) ( $d['dropoff'] ?? $b['snap']['to'] ?? '' );
-		$offer = array( 'name' => $b['snap']['vehicle'] ?? '', 'provider' => $b['snap']['provider'] ?? '', 'slug' => $b['snap']['slug'] ?? '' );
+		$offer = array( 'name' => $b['snap']['vehicle'] ?? '', 'provider' => ATC_Checkout::provider_name( $b ), 'slug' => $b['snap']['slug'] ?? '' );
 		$res   = ATC_Search::run( $q );
 		foreach ( $res['offers'] as $o ) {
 			if ( $o['service_id'] === (int) $b['legs'][0]['service_id'] ) {
@@ -1218,7 +1218,7 @@ final class ATC_Book {
 		}
 		$pre  = isset( $_GET['rate'] ) ? max( 0, min( 5, (int) $_GET['rate'] ) ) : 0; // phpcs:ignore
 		$cfg  = array( 'number' => $b['number'], 'key' => $key, 'back' => ATC_Checkout::reservation_url( $b['number'], $key ) );
-		$name = (string) ( $b['snap']['provider'] ?? 'your provider' );
+		$name = ATC_Checkout::provider_name( $b ) ?: 'your provider';
 		ob_start();
 		?>
 		<section class="ab-card ab-pad ab-ratecard" id="rate" aria-labelledby="ab-h-rate">

@@ -181,6 +181,19 @@ final class ATC_Mail {
 	}
 
 	/** The rows every booking email shares. $for_provider adds what the driver needs. */
+	/** Our team's view of a booking: who drives it and the money, then the trip as the provider sees it. */
+	public static function team_rows( array $b ): array {
+		$rows = self::trip_rows( $b, true );
+		$p    = ATC_Checkout::provider( $b );
+		$prov = array_sum( array_map( static fn( $l ) => 'cancelled' === $l['status'] ? 0 : (int) $l['provider_cents'], (array) $b['legs'] ) ) + ATC_Extras::totals( (int) $b['id'] )['provider'];
+		$add  = array(
+			array( 'Provider', $p ? $p['name'] . ( $p['email'] ? ' · ' . $p['email'] : '' ) . ( $p['phone'] ? ' · ' . $p['phone'] : '' ) : 'None yet: give it to a provider in Control' ),
+			array( 'Money', 'Traveler pays ' . ATC_Book::money( (int) $b['total_cents'] ) . ' · provider gets ' . ATC_Book::money( $prov ) . ' · we keep ' . ATC_Book::money( (int) $b['total_cents'] - $prov ) ),
+		);
+		array_splice( $rows, 1, 0, $add );
+		return $rows;
+	}
+
 	public static function trip_rows( array $b, bool $for_provider = false ): array {
 		$s   = $b['snap'];
 		$tz  = (string) ( $s['timezone'] ?? 'UTC' );
@@ -307,7 +320,7 @@ final class ATC_Mail {
 			return;
 		}
 		self::provider_new( $b );
-		self::team( 'New booking ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' · ' . ATC_Book::money( (int) $b['total_cents'] ), self::wrap( 'New booking ' . $b['number'], self::p( self::e( $s['provider'] ?? '' ) . ' · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		self::team( 'New booking ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' · ' . ATC_Book::money( (int) $b['total_cents'] ), self::wrap( 'New booking ' . $b['number'], self::p( '<strong>' . self::e( ATC_Checkout::provider_name( $b ) ?: 'No provider yet' ) . '</strong> · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	private static function provider_amount( array $b ): int {
@@ -355,7 +368,7 @@ final class ATC_Mail {
 		if ( $p ) {
 			self::send( self::provider_to( $p ), 'Booking cancelled: ' . $b['number'], self::wrap( 'Booking ' . $b['number'] . ' is cancelled', self::p( 'The traveler cancelled. Please don’t send a driver.' ) . self::table( self::trip_rows( $b, true ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_cancelled' ) );
 		}
-		self::team( 'Cancelled ' . $b['number'], self::wrap( 'Cancelled ' . $b['number'], self::p( 'Refund ' . self::e( ATC_Book::money( $refund_cents ) ) ) . self::table( self::trip_rows( $b, true ) ) ) );
+		self::team( 'Cancelled ' . $b['number'], self::wrap( 'Cancelled ' . $b['number'], self::p( 'Refund ' . self::e( ATC_Book::money( $refund_cents ) ) ) . self::table( self::team_rows( $b ) ) ) );
 	}
 
 	/** A provider no longer does a ride (our team gave it to someone else). */
@@ -454,7 +467,7 @@ final class ATC_Mail {
 
 	/** For our team: something on a booking needs a look. */
 	public static function team_note( string $subject, string $intro, array $b, string $note ): void {
-		self::team( $subject, self::wrap( $subject, self::p( self::e( $intro ) ) . self::box( nl2br( self::e( $note ) ) ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		self::team( $subject, self::wrap( $subject, self::p( self::e( $intro ) ) . self::box( nl2br( self::e( $note ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	/** The provider has not confirmed a new booking in time: remind them, copy our team. */
@@ -466,7 +479,7 @@ final class ATC_Mail {
 		$url  = home_url( '/portal/bookings/' . $b['number'] . '/' );
 		$body = self::p( 'Please confirm you got booking <strong>' . self::e( $b['number'] ) . '</strong>. The traveler is counting on it.' ) . self::table( self::trip_rows( $b, true ) );
 		self::send( self::provider_to( $p ), 'Please confirm booking ' . $b['number'], self::wrap( 'Please confirm booking ' . $b['number'], $body, 'Confirm in the portal', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_nudge' ) );
-		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking within its confirmation time. We reminded them. Call them, or give the booking to another provider in Control.' ) . self::table( self::trip_rows( $b, true ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking within its confirmation time. We reminded them. Call them, or give the booking to another provider in Control.' ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	/** Manage booking: the link to a booking, sent to the email on it. */
