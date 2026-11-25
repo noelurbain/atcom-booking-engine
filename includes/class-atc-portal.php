@@ -377,19 +377,28 @@ final class ATC_Portal {
 
 	private static function login_page( string $next = '' ): void {
 		self::frame_open( 'Sign in', 'Sign in' );
-		echo '<main class="atc-wrap atc-narrow"><div class="atc-head"><div><h1>Sign in</h1><p class="atc-muted">Travelers, providers, affiliates and our team all sign in here. Booked without an account? Use <a href="' . esc_url( home_url( '/manage-booking/' ) ) . '">Manage booking</a> with your reservation number and email.</p></div></div><section class="card pad atc-login">';
-		if ( isset( $_GET['failed'] ) ) {
-			echo '<p class="chip red">Email or password is not right.</p>';
+		$van = ATC_URL . 'assets/vehicles/minivan.webp';
+		echo '<main class="atc-auth">';
+		echo '<section class="atc-auth-form"><div class="atc-auth-inner">';
+		echo '<h1>Welcome back</h1><p class="atc-muted">Sign in to your account. Booked without one? Use <a href="' . esc_url( home_url( '/manage-booking/' ) ) . '">Manage booking</a>.</p>';
+		if ( isset( $_GET['failed'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			echo '<p class="chip red" role="alert">Email or password is not right.</p>';
 		}
+		echo '<div class="atc-login">';
 		wp_login_form(
 			array(
 				'redirect'       => self::login_url( $next ),
 				'label_username' => 'Email',
 				'label_log_in'   => 'Sign in',
+				'label_remember' => 'Keep me signed in',
 				'remember'       => true,
 			)
 		);
-		echo '<p><a href="' . esc_url( wp_lostpassword_url( self::login_url() ) ) . '">Forgot your password?</a></p><p class="atc-muted">New here? <a href="' . esc_url( self::signup_url() ) . '">Become a provider</a> · <a href="' . esc_url( home_url( '/partners/affiliate/' ) ) . '">Become an affiliate</a></p></section></main>';
+		echo '</div><p class="atc-auth-forgot"><a href="' . esc_url( wp_lostpassword_url( self::login_url() ) ) . '">Forgot your password?</a></p>';
+		echo '<p class="atc-auth-new">New here? <a href="' . esc_url( self::signup_url() ) . '">Become a provider</a> · <a href="' . esc_url( home_url( '/partners/affiliate/' ) ) . '">Become an affiliate</a></p>';
+		echo '</div></section>';
+		echo '<aside class="atc-auth-art" aria-hidden="true"><p class="atc-auth-tag">Private airport transfers, <span>worldwide</span>.</p><img src="' . esc_url( $van ) . '" alt="" width="1600" height="1000" fetchpriority="low" decoding="async"><ul><li>Price per vehicle</li><li>Flight tracked</li><li>Free cancellation</li></ul></aside>';
+		echo '</main>';
 		self::frame_close();
 	}
 

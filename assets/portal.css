@@ -147,3 +147,31 @@ h2.section{margin:8px 0 0;font-size:18px}
 .car-ph button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:999px;border:0;background:rgba(21,23,28,.75);color:#fff;font-weight:800;cursor:pointer}
 .car-add{width:132px;height:88px;border-radius:10px;border:1.5px dashed var(--line2);background:#fff;font:inherit;font-weight:700;font-size:13px;cursor:pointer;color:var(--ink)}
 .car-add:hover{border-color:var(--ink)}
+/* Sign in: form beside one of our vans (a short band on phones) */
+.atc-auth{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);min-height:calc(100vh - 62px);background:#fff}
+.atc-auth-form{display:flex;align-items:center;justify-content:center;padding:48px 24px}
+.atc-auth-inner{width:100%;max-width:400px;display:flex;flex-direction:column;gap:6px}
+.atc-auth-inner h1{font-size:34px;line-height:1.1;margin:0;letter-spacing:-.02em}
+.atc-auth-inner>.atc-muted{margin:4px 0 18px;line-height:1.5}
+.atc-auth-inner .atc-muted a,.atc-auth-forgot a,.atc-auth-new a{font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.atc-auth .atc-login input[type=text],.atc-auth .atc-login input[type=password]{padding:13px 14px;font-size:16px}
+.atc-auth .atc-login input[type=submit]{width:100%;align-self:stretch;padding:14px 20px;font-size:16px;margin-top:4px}
+.atc-auth .atc-login input:focus{outline:2px solid var(--orange);outline-offset:1px;border-color:var(--ink)}
+.atc-auth-forgot{margin:4px 0 0}
+.atc-auth-new{margin:28px 0 0;padding-top:20px;border-top:1px solid var(--line);color:var(--muted)}
+.atc-auth-art{position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:28px;padding:56px 48px;background:linear-gradient(180deg,#E0DFE4 0%,#ECECEE 100%)}
+.atc-auth-tag{margin:0;max-width:460px;font-size:40px;line-height:1.08;font-weight:800;letter-spacing:-.02em;color:var(--ink)}
+.atc-auth-tag span{color:var(--brown);box-shadow:inset 0 -.22em 0 var(--orange)}
+.atc-auth-art img{width:100%;max-width:760px;height:auto;align-self:center;-webkit-mask-image:radial-gradient(closest-side at 50% 52%,#000 80%,transparent 100%);mask-image:radial-gradient(closest-side at 50% 52%,#000 80%,transparent 100%)}
+.atc-auth-art ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.atc-auth-art li{font-size:13px;font-weight:700;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.7)}
+@media (max-width:900px){
+  .atc-auth{grid-template-columns:1fr;min-height:0}
+  .atc-auth-art{order:-1;padding:20px 16px 0;gap:8px;height:190px;justify-content:flex-start}
+  .atc-auth-tag{font-size:22px;max-width:58%;position:relative;z-index:1}
+  .atc-auth-art{height:170px}
+  .atc-auth-art img{position:absolute;right:-28px;bottom:-22px;width:250px;max-width:none}
+  .atc-auth-art ul{display:none}
+  .atc-auth-form{padding:28px 16px 48px;align-items:flex-start}
+  .atc-auth-inner h1{font-size:28px}
+}
