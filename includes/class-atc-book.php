@@ -224,6 +224,7 @@ final class ATC_Book {
 		}
 		// phpcs:enable
 		$titles = array( 'checkout' => 'Flight and details', 'pay' => 'Payment', 'reservation' => 'Your booking ' . $b['number'] );
+		ATC_Chat::context( $b );
 		add_filter( 'pre_get_document_title', static fn() => $titles[ $view ] . ' · Airport Transportation' );
 		if ( 'checkout' === $view ) {
 			$q   = ATC_Search::parse( (array) ( $b['snap']['search'] ?? array() ) );
