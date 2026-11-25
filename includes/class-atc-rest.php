@@ -104,6 +104,8 @@ final class ATC_REST {
 		};
 		$routes = array(
 			'/booking/update' => $open( 'booking_update', static fn( $p, $n, $k ) => ATC_Manage::update( $n, $k, $p ) ),
+			'/booking/rebook/quote' => $open( 'booking_rebook', static fn( $p, $n, $k ) => ATC_Rebook::quote( $n, $k, $p ) ),
+			'/booking/rebook' => $open( 'booking_rebook', static fn( $p, $n, $k ) => ATC_Rebook::apply( $n, $k, $p ) ),
 			'/booking/cancel' => $open( 'booking_cancel', static fn( $p, $n, $k ) => ATC_Manage::cancel( $n, $k ) ),
 			'/booking/review' => $open( 'booking_review', static fn( $p, $n, $k ) => ATC_Manage::review( $n, $k, (int) ( $p['rating'] ?? 0 ), (string) ( $p['comment'] ?? '' ) ) ),
 			'/booking/find'   => $open( 'booking_find', static fn( $p, $n, $k ) => ATC_Manage::lookup( $n, (string) ( $p['email'] ?? '' ) ) ),

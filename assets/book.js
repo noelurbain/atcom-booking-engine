@@ -665,17 +665,87 @@
   var man = document.querySelector('[data-ab-manage]');
   if (man) {
     var mc = JSON.parse(man.getAttribute('data-ab-manage'));
+    var panelOf = function (w) { return man.querySelector('[data-ab-' + w + ']'); };
     man.querySelectorAll('[data-ab-open]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var which = b.getAttribute('data-ab-open');
-        var panel = man.querySelector(which === 'change' ? '[data-ab-change]' : '[data-ab-cancel]');
-        var other = man.querySelector(which === 'change' ? '[data-ab-cancel]' : '[data-ab-change]');
-        panel.hidden = !panel.hidden;
-        if (other) other.hidden = true;
-        man.querySelectorAll('[data-ab-open]').forEach(function (x) { x.setAttribute('aria-expanded', man.querySelector(x.getAttribute('data-ab-open') === 'change' ? '[data-ab-change]' : '[data-ab-cancel]').hidden ? 'false' : 'true'); });
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        var which = b.getAttribute('data-ab-open'), panel = panelOf(which);
+        if (!panel) return;
+        var show = panel.hidden || b.tagName === 'A';
+        ['change', 'cancel', 'rebook'].forEach(function (w) { var p = panelOf(w); if (p) p.hidden = true; });
+        panel.hidden = !show;
+        man.querySelectorAll('button[data-ab-open]').forEach(function (x) { var p = panelOf(x.getAttribute('data-ab-open')); x.setAttribute('aria-expanded', p && !p.hidden ? 'true' : 'false'); });
         if (!panel.hidden) { var f = panel.querySelector('input, button'); if (f) f.focus(); }
       });
     });
+    /* Change passengers, vehicle, address or extras: priced on the server, confirmed by the traveler. */
+    var rb = panelOf('rebook');
+    if (rb) {
+      var usdR = function (c) { return 'USD ' + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)); };
+      var esc = function (t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; };
+      var out = rb.querySelector('[data-ab-rbout]'), rerr = rb.querySelector('[data-ab-error]');
+      var st = { service: 0, extras: null, last: null, busy: false }, timer = null;
+      var field = function (n) { return rb.querySelector('[name=' + n + ']').value; };
+      var body = function () {
+        var o = { number: mc.number, key: mc.key, adults: field('adults'), children: field('children'), to: field('to'), service: st.service };
+        if (st.extras) o.extras = st.extras;
+        return o;
+      };
+      var unitTxt = function (u) { return u === 'per_ride' ? ' each ride' : (u === 'per_booking' ? ' per booking' : ' each'); };
+      var render = function (d) {
+        st.last = d; st.service = d.service;
+        var h = '<p class="ab-muted">' + (d.moved ? 'New address: ' : 'Address: ') + '<strong>' + esc(d.place) + '</strong></p>';
+        h += '<fieldset class="ab-rbopts"><legend class="ab-h3">Vehicle</legend>';
+        d.offers.forEach(function (o) {
+          h += '<label class="ab-rbopt"><input type="radio" name="rb-service" value="' + o.service_id + '"' + (o.service_id === d.service ? ' checked' : '') + '>'
+            + '<span><strong>' + esc(o.name) + '</strong>' + (o.current ? ' <span class="ab-chip">your vehicle</span>' : '')
+            + '<br><span class="ab-muted">' + esc(o.provider) + ' · up to ' + o.max_passengers + ' passengers, ' + o.max_bags + ' suitcases</span></span>'
+            + '<span class="ab-rbprice">' + usdR(o.ride) + '</span></label>';
+        });
+        h += '</fieldset>';
+        if (d.extras.length) {
+          h += '<fieldset class="ab-rbopts"><legend class="ab-h3">Extras</legend>';
+          d.extras.forEach(function (x) {
+            h += '<div class="ab-rbx"><label for="rbx-' + x.id + '"><strong>' + esc(x.name) + '</strong><br><span class="ab-muted">' + usdR(x.price) + unitTxt(x.unit) + '</span></label>'
+              + '<input id="rbx-' + x.id + '" type="number" min="0" max="' + x.max_qty + '" value="' + x.qty + '" data-rbx="' + x.id + '"></div>';
+          });
+          h += '</fieldset>';
+        }
+        var cur = d.offers.filter(function (o) { return o.current; })[0], sel = d.offers.filter(function (o) { return o.service_id === d.service; })[0];
+        var moveTxt = cur && sel && cur.provider !== sel.provider ? '<p>Your provider changes to <strong>' + esc(sel.provider) + '</strong>. We send you their contact.</p>' : '';
+        var line = d.diff > 0 ? 'You pay <strong>' + usdR(d.diff) + '</strong> more.' : (d.diff < 0 ? 'We refund <strong>' + usdR(-d.diff) + '</strong> to your card.' : 'Same price, nothing to pay.');
+        h += '<div class="ab-rbsum"><p>New total <strong>' + usdR(d.total) + '</strong>' + (d.discount ? ' (after your ' + usdR(d.discount) + ' discount)' : '') + ' · you paid ' + usdR(d.paid) + '</p><p>' + line + '</p>' + moveTxt + '</div>';
+        h += '<div class="ab-actions"><button type="button" class="ab-btn is-accent" data-ab-rbgo>' + (d.diff > 0 ? 'Pay ' + usdR(d.diff) + ' and change my trip' : 'Confirm the change') + '</button></div>';
+        out.innerHTML = h;
+        out.querySelectorAll('[name=rb-service]').forEach(function (r) { r.addEventListener('change', function () { st.service = +r.value; st.extras = null; quote(); }); });
+        out.querySelectorAll('[data-rbx]').forEach(function (i) {
+          i.addEventListener('change', function () {
+            st.extras = {};
+            out.querySelectorAll('[data-rbx]').forEach(function (j) { st.extras[j.getAttribute('data-rbx')] = Math.max(0, +j.value || 0); });
+            quote();
+          });
+        });
+        out.querySelector('[data-ab-rbgo]').addEventListener('click', confirmGo);
+      };
+      var quote = function () {
+        showError(rerr, '');
+        if (st.busy) { clearTimeout(timer); timer = setTimeout(quote, 300); return; }
+        st.busy = true; out.style.opacity = '.55';
+        post(C.api + 'booking/rebook/quote', body()).then(function (d) { st.busy = false; out.style.opacity = ''; render(d); })
+          .catch(function (x) { st.busy = false; out.style.opacity = ''; out.innerHTML = ''; showError(rerr, x.message); });
+      };
+      var confirmGo = function () {
+        var go = out.querySelector('[data-ab-rbgo]'); go.disabled = true; go.textContent = 'One moment…';
+        var b = body(); b.expect = st.last.diff;
+        post(C.api + 'booking/rebook', b).then(function (d) {
+          if (d.pay_url) { window.location.href = d.pay_url; return; }
+          backTo(mc.back, 'rebooked');
+        }).catch(function (x) { go.disabled = false; go.textContent = 'Confirm the change'; showError(rerr, x.message); if (/price changed/i.test(x.message)) quote(); });
+      };
+      rb.querySelector('[data-ab-rbquote]').addEventListener('click', function () { st.extras = null; quote(); });
+      ['adults', 'children'].forEach(function (n) { rb.querySelector('[name=' + n + ']').addEventListener('change', function () { if (st.last) quote(); }); });
+      rb.querySelector('[name=to]').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); st.extras = null; quote(); } });
+    }
     var chg = man.querySelector('[data-ab-change]');
     if (chg) chg.addEventListener('submit', function (e) {
       e.preventDefault();

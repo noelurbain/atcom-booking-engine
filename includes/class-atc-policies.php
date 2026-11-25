@@ -28,7 +28,7 @@ final class ATC_Policies {
 			'key'     => array(
 				'Prices are per vehicle, not per person, in US dollars, with taxes, tolls, airport fees and your free waiting time included. Nothing more to pay on the day unless you add something.',
 				'Free cancellation up to ' . $h . ' before pickup, refunded in full to the card you paid with. Later than that, or if you do not show up, the ride is not refunded.',
-				'Change your pickup times, flights, luggage and notes online for free up to ' . $h . ' before pickup.',
+				'Change your times, flights, luggage, passengers, vehicle, address and extras online under Manage booking up to ' . $h . ' before pickup. You only pay, or get back, any difference in price.',
 				'We track your flight. Your driver waits from the time you actually land, not the time in your booking, for the free waiting time shown on your booking.',
 				'Your ride is private: only your group, door to door, in the vehicle category you booked or a better one.',
 				'If your driver does not show up, you get a full refund and we pay back a taxi or other transport you take instead, with a receipt, up to 150% of the price of that ride.',
@@ -59,8 +59,9 @@ final class ATC_Policies {
 					'Before your ride we send you the provider\'s name and contact. You can also see them at any time under Manage booking.',
 				) ),
 				array( '5. Changes', array(
-					'You can change your pickup times, flights, luggage and notes for the driver online under Manage booking up to ' . $h . ' before pickup. Changes are free.',
-					'To change the number of passengers, the vehicle, an address or an extra, contact us. If the change needs a larger vehicle, a different zone or a new extra, we tell you the difference in price before we make it. If the new booking costs less, we refund the difference.',
+					'Under Manage booking you can change your pickup times, flights, luggage and notes for the driver, and also the number of passengers, the vehicle, the address and the extras, up to ' . $h . ' before your first pickup. There is no fee for changing.',
+					'Changing the passengers, vehicle, address or extras can change the price. We show you the new total and the difference before anything changes. If it costs more, you pay the difference by card to confirm the change; if it costs less, we refund the difference to your card at once.',
+					'A change can move your booking to another provider when yours does not offer the new vehicle or address. We tell you before you confirm, and send you the new provider\'s contact.',
 					'Within ' . $h . ' of pickup, contact us. We will try to make the change with the provider, but we cannot promise it.',
 					'Drivers cannot take changes. Always make them through us, so the booking, the provider and your confirmation stay the same.',
 				) ),

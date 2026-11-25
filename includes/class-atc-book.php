@@ -212,6 +212,11 @@ final class ATC_Book {
 			wp_safe_redirect( ATC_Checkout::reservation_url( $b['number'], $key ) );
 			exit;
 		}
+		if ( 'reservation' === $view && ! empty( $_GET['rebook_back'] ) ) {
+			if ( ATC_Rebook::sync( $b, sanitize_key( wp_unslash( $_GET['rebook_back'] ) ) ) ) {
+				$b = ATC_Checkout::load( $b['number'], $key );
+			}
+		}
 		if ( 'reservation' === $view && ! empty( $_GET['extra_back'] ) ) {
 			if ( ATC_Charges::sync( $b, sanitize_key( wp_unslash( $_GET['extra_back'] ) ) ) ) {
 				$b = ATC_Checkout::load( $b['number'], $key );
@@ -1021,6 +1026,17 @@ final class ATC_Book {
 	/** Extra payments: due ones with a Pay button, and a thank-you right after paying. */
 	private static function charges_notice( array $b, string $key ): string {
 		$out = '';
+		if ( ! empty( $_GET['rebook_back'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$r = (array) ( $b['snap']['rebook'] ?? array() );
+			if ( 'done' === ( $r['status'] ?? '' ) ) {
+				$out .= '<div class="ab-alert is-ok" role="status">Thank you, your trip is changed and we received ' . esc_html( self::money( (int) $r['diff'] ) ) . '. We emailed you the details and told your provider.</div>';
+			} elseif ( 'open' === ( $r['status'] ?? '' ) || 'paid' === ( $r['status'] ?? '' ) ) {
+				$out .= '<div class="ab-alert is-info" role="status">We are confirming your payment. Refresh this page in a minute.</div>';
+			}
+		}
+		if ( ! empty( $_GET['rebook_cancel'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$out .= '<div class="ab-alert is-info" role="status">Nothing was paid and your booking stays as it was.</div>';
+		}
 		if ( ! empty( $_GET['extra_back'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			$c = null;
 			foreach ( ATC_Charges::all( $b ) as $x ) {
@@ -1051,6 +1067,7 @@ final class ATC_Book {
 		$msg  = array(
 			'updated'   => 'Your changes are saved. We sent the new details to you and to your provider.',
 			'cancelled' => 'Your booking is cancelled and the refund is on its way to your card. We sent you an email.',
+			'rebooked'  => 'Your trip is changed. We sent the new details to you and to your provider.',
 			'rated'     => 'Thanks for rating your ride. It helps other travelers choose.',
 			'reported'  => 'Thanks, we got your message. We answer by email and on this page, within 48 hours.',
 		)[ $done ] ?? '';
@@ -1064,6 +1081,10 @@ final class ATC_Book {
 		}
 		$change = ATC_Manage::can_change( $b );
 		$cancel = ATC_Manage::can_cancel( $b );
+		$rebook = ATC_Rebook::can( $b );
+		$left   = (int) $b['total_cents'] - (int) ( $b['snap']['refunded'] ?? 0 );
+		$arr0   = ATC_Checkout::leg( $b, 'arrival' );
+		$place  = (string) ( $arr0 ? $arr0['to_place'] : ( ATC_Checkout::leg( $b, 'departure' )['from_place'] ?? '' ) );
 		$free   = (int) ATC_Settings::get( 'free_cancel_hours' );
 		$tz     = (string) ( $b['snap']['timezone'] ?? 'UTC' );
 		$d      = (array) ( $b['snap']['details'] ?? array() );
@@ -1079,9 +1100,10 @@ final class ATC_Book {
 			<?php if ( ! $change && ! $cancel ) : ?>
 				<p class="ab-muted">Changes and cancellations close <?php echo (int) $free; ?> hours before pickup, so this booking can no longer be changed online. For anything on the day, contact your provider.</p>
 			<?php else : ?>
-				<p class="ab-muted">You can change your flight, times and details<?php echo $cancel ? ', or cancel with a full refund,' : ''; ?> until <?php echo (int) $free; ?> hours before pickup. Your provider gets the changes by email.</p>
+				<p class="ab-muted">You can change your flight, times, passengers, vehicle, address and extras<?php echo $cancel ? ', or cancel with a full refund,' : ''; ?> until <?php echo (int) $free; ?> hours before pickup. Your provider gets the changes by email.</p>
 				<div class="ab-actions">
 					<?php if ( $change ) : ?><button type="button" class="ab-btn is-dark" data-ab-open="change" aria-expanded="false" aria-controls="ab-change">Change flight or details</button><?php endif; ?>
+					<?php if ( $rebook ) : ?><button type="button" class="ab-btn is-line" data-ab-open="rebook" aria-expanded="false" aria-controls="ab-rebook">Change passengers, vehicle, address or extras</button><?php endif; ?>
 					<?php if ( $cancel ) : ?><button type="button" class="ab-btn is-line" data-ab-open="cancel" aria-expanded="false" aria-controls="ab-cancel">Cancel booking</button><?php endif; ?>
 				</div>
 				<?php if ( $change ) : ?>
@@ -1113,14 +1135,27 @@ final class ATC_Book {
 						<div class="ab-field"><label for="m-hname">Name of the hotel reservation (optional)</label><input id="m-hname" name="hotel_name" value="<?php echo esc_attr( $v( 'hotel_name' ) ); ?>"></div>
 					</div>
 					<div class="ab-field"><label for="m-notes">Notes for your driver</label><textarea id="m-notes" name="notes" rows="3" maxlength="1000"><?php echo esc_textarea( $v( 'notes' ) ); ?></textarea></div>
-					<p class="ab-muted">To change the passengers, the vehicle or the address, cancel and book again: the price may differ.</p>
+					<?php if ( $rebook ) : ?><p class="ab-muted">To change the passengers, the vehicle, the address or the extras, use <a href="#ab-rebook" data-ab-open="rebook">Change passengers, vehicle, address or extras</a>.</p><?php endif; ?>
 					<div class="ab-alert" role="alert" hidden data-ab-error></div>
 					<div class="ab-actions"><button type="submit" class="ab-btn is-accent">Save changes</button></div>
 				</form>
 				<?php endif; ?>
+				<?php if ( $rebook ) : ?>
+				<div class="ab-form ab-rebook" id="ab-rebook" hidden data-ab-rebook>
+					<p class="ab-muted">We show you the new price before anything changes. If it costs more, you pay the difference on the next page; if it costs less, we refund the difference to your card.</p>
+					<div class="ab-grid">
+						<div class="ab-field"><label for="rb-adults">Adults</label><input id="rb-adults" name="adults" type="number" min="1" max="60" value="<?php echo (int) $b['adults']; ?>"></div>
+						<div class="ab-field"><label for="rb-children">Children (babies included)</label><input id="rb-children" name="children" type="number" min="0" max="40" value="<?php echo (int) $b['children']; ?>"></div>
+					</div>
+					<div class="ab-field"><label for="rb-to"><?php echo $arr0 ? 'Drop-off address or hotel' : 'Pickup address or hotel'; ?></label><input id="rb-to" name="to" value="<?php echo esc_attr( $place ); ?>" autocomplete="off"></div>
+					<div class="ab-actions"><button type="button" class="ab-btn is-dark" data-ab-rbquote>See vehicles and prices</button></div>
+					<div data-ab-rbout aria-live="polite"></div>
+					<div class="ab-alert" role="alert" hidden data-ab-error></div>
+				</div>
+				<?php endif; ?>
 				<?php if ( $cancel ) : ?>
 				<div class="ab-cancelbox" id="ab-cancel" hidden data-ab-cancel>
-					<p><strong>Cancel and get <?php echo esc_html( self::money( (int) $b['total_cents'] ) ); ?> back on your card?</strong><br><span class="ab-muted">This can’t be undone. Banks usually show the refund within 5 to 10 days.</span></p>
+					<p><strong>Cancel and get <?php echo esc_html( self::money( $left ) ); ?> back on your card?</strong><br><span class="ab-muted">This can’t be undone. Banks usually show the refund within 5 to 10 days.</span></p>
 					<div class="ab-alert" role="alert" hidden data-ab-error></div>
 					<div class="ab-actions"><button type="button" class="ab-btn is-danger" data-ab-cancelgo>Yes, cancel my booking</button><button type="button" class="ab-btn is-line" data-ab-open="cancel">Keep my booking</button></div>
 				</div>

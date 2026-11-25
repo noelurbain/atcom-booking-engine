@@ -671,6 +671,13 @@ final class ATC_Checkout {
 		$obj   = $event['data']['object'] ?? array();
 		switch ( $event['type'] ?? '' ) {
 			case 'payment_intent.succeeded':
+				if ( 'rebook' === ( $obj['metadata']['kind'] ?? '' ) ) {
+					$b = self::find( '', (int) ( $obj['metadata']['booking_id'] ?? 0 ) );
+					if ( $b ) {
+						ATC_Rebook::mark_paid( $b, (string) ( $obj['metadata']['rebook'] ?? '' ), (string) $obj['id'], (int) ( $obj['amount_received'] ?? 0 ) );
+					}
+					break;
+				}
 				if ( 'extra' === ( $obj['metadata']['kind'] ?? '' ) ) {
 					$b = self::find( '', (int) ( $obj['metadata']['booking_id'] ?? 0 ) );
 					if ( $b ) {
