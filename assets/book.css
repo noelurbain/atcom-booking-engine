@@ -244,6 +244,8 @@
 .ab-dlgbody h2{font-size:18px}.ab-dlgbody h3{font-size:16px}
 .ab-dlgfoot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 22px;border-top:1px solid #ECE8E1}
 .ab-dlgfoot a{color:#9A5605;font-weight:700;font-size:14px}
+.ab-dlgbtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:560px){.ab-dlgfoot{flex-direction:column-reverse;align-items:stretch}.ab-dlgbtns{flex-direction:column-reverse}.ab-dlgbtns .ab-btn{width:100%}.ab-dlgfoot a{text-align:center}}
 .ab-dialog :focus-visible{outline:2px solid #E07A1F;outline-offset:2px}
 
 /* country code picker */

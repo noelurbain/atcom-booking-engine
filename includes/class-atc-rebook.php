@@ -126,8 +126,16 @@ final class ATC_Rebook {
 		if ( ! $offers ) {
 			return new WP_Error( 'atc_none', 'No vehicle is available for that change. Contact us and we will help.', array( 'status' => 409 ) );
 		}
+		// The vehicle asked for; else the one booked; else the cheapest that fits from the same provider; else the cheapest.
 		$want = (int) ( $in['service'] ?? 0 );
-		$sid  = isset( $offers[ $want ] ) ? $want : ( isset( $offers[ $current ] ) ? $current : (int) array_key_first( $offers ) );
+		$pid  = (int) ( $b['legs'][0]['party_id'] ?? 0 );
+		$same = 0;
+		foreach ( $offers as $id => $x ) {
+			if ( (int) $x['party_id'] === $pid && ( ! $same || $x['ride'] < $offers[ $same ]['ride'] ) ) {
+				$same = $id;
+			}
+		}
+		$sid = isset( $offers[ $want ] ) ? $want : ( isset( $offers[ $current ] ) ? $current : ( $same ?: (int) array_key_first( $offers ) ) );
 		$o    = $offers[ $sid ];
 
 		// Extras of that provider: what the traveler asked, or what they had (same provider only).
@@ -182,6 +190,7 @@ final class ATC_Rebook {
 			'adults'     => $q['adults'],
 			'children'   => $q['children'],
 			'offers'     => $list,
+			'current_provider' => (string) ( ATC_Catalog::party( $pid )['name'] ?? '' ),
 			'service'    => $sid,
 			'extras'     => array_map( static fn( $x ) => array( 'id' => $x['id'], 'name' => $x['name'], 'description' => $x['description'], 'unit' => $x['unit'], 'price' => $x['price'], 'max_qty' => $x['max_qty'], 'qty' => $x['qty'] ), $xs ),
 			'rides'      => $o['ride'],

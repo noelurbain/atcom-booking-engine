@@ -31,7 +31,7 @@ final class ATC_Policies {
 				'Change your times, flights, luggage, passengers, vehicle, address and extras online under Manage booking up to ' . $h . ' before pickup. You only pay, or get back, any difference in price.',
 				'We track your flight. Your driver waits from the time you actually land, not the time in your booking, for the free waiting time shown on your booking.',
 				'Your ride is private: only your group, door to door, in the vehicle category you booked or a better one.',
-				'If your driver does not show up, you get a full refund and we pay back a taxi or other transport you take instead, with a receipt, up to 150% of the price of that ride.',
+				'If your driver does not show up, you get a full refund.',
 				'Tell us about any problem within 30 days and we answer within 2 business days.',
 			),
 			'sections' => array(
@@ -91,7 +91,7 @@ final class ATC_Policies {
 					'A no-show ride is not refunded, and the driver may leave. If you have a return ride in the same booking, it stays valid: tell us that you still need it.',
 				) ),
 				array( '10. If the service is not as booked', array(
-					'If your driver does not show up, you get a full refund of that ride. If you take a taxi or other transport instead, we pay back what it cost, with a receipt, up to 150% of the price of that ride.',
+					'If your driver does not show up, you get a full refund of that ride.',
 					'If your driver is late, the vehicle is smaller or of a lower category than you booked, you are put in a shared ride, or the service is otherwise clearly worse than described, tell us within 30 days. We refund part or all of that ride according to what happened.',
 					'If you missed your flight because the driver was late, we refund the ride and pay your reasonable, documented extra costs (for example a change fee), up to 150% of the price of that ride.',
 					'We may upgrade you to a larger or better vehicle at no cost. That is never a reason for a charge.',

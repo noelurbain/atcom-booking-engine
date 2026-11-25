@@ -538,8 +538,21 @@
     dlg = document.createElement('dialog');
     dlg.className = 'ab-dialog';
     dlg.setAttribute('aria-labelledby', 'ab-dlg-title');
-    dlg.innerHTML = '<div class="ab-dlghead"><h2 id="ab-dlg-title"></h2><button type="button" class="ab-dlgx" aria-label="Close">✕</button></div><div class="ab-dlgbody" tabindex="0"></div><div class="ab-dlgfoot"><a target="_blank" rel="noopener">Open in a new tab ↗</a><button type="button" class="ab-btn is-dark">Close</button></div>';
-    dlg.querySelectorAll('.ab-dlgx, .ab-dlgfoot button').forEach(function (b) { b.addEventListener('click', function () { dlg.close(); }); });
+    dlg.innerHTML = '<div class="ab-dlghead"><h2 id="ab-dlg-title"></h2><button type="button" class="ab-dlgx" aria-label="Close">✕</button></div><div class="ab-dlgbody" tabindex="0"></div><div class="ab-dlgfoot"><a target="_blank" rel="noopener">Open in a new tab ↗</a><span class="ab-dlgbtns"><button type="button" class="ab-btn is-line" data-dlg-close>Close</button><button type="button" class="ab-btn is-accent" data-dlg-accept hidden>I agree</button></span></div>';
+    dlg.querySelectorAll('.ab-dlgx, [data-dlg-close]').forEach(function (b) { b.addEventListener('click', function () { dlg.close(); }); });
+    // From the checkout: agreeing here ticks the box, closes the pop-up and leaves the traveler on the Book button.
+    dlg.querySelector('[data-dlg-accept]').addEventListener('click', function () {
+      var cb = lastLink && lastLink.closest('label') && lastLink.closest('label').querySelector('[data-ab-agree]');
+      if (cb) {
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+        var form = cb.closest('form'), err = form && form.querySelector('[data-ab-error]');
+        if (err && /agree/i.test(err.textContent)) { err.textContent = ''; err.hidden = true; }
+        var go = form && form.querySelector('[type=submit]');
+        if (go) lastLink = go;
+      }
+      dlg.close();
+    });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
     dlg.addEventListener('close', function () { if (lastLink) lastLink.focus(); });
     document.body.appendChild(dlg);
@@ -554,6 +567,9 @@
       var title = d.querySelector('h2'), body = d.querySelector('.ab-dlgbody');
       title.textContent = a.textContent.charAt(0).toUpperCase() + a.textContent.slice(1);
       d.querySelector('.ab-dlgfoot a').href = a.href;
+      var acc = d.querySelector('[data-dlg-accept]'), box = a.closest('label') && a.closest('label').querySelector('[data-ab-agree]');
+      acc.hidden = !box;
+      acc.textContent = box && box.checked ? 'Agreed ✓' : 'I agree to the policies';
       body.textContent = 'Loading…';
       d.showModal();
       var p = cache[slug] || (cache[slug] = fetch(C.pages + (C.pages.indexOf('?') > -1 ? '&' : '?') + 'slug=' + encodeURIComponent(slug) + '&_fields=title,content').then(function (r) { return r.json(); }));
@@ -711,8 +727,8 @@
           });
           h += '</fieldset>';
         }
-        var cur = d.offers.filter(function (o) { return o.current; })[0], sel = d.offers.filter(function (o) { return o.service_id === d.service; })[0];
-        var moveTxt = cur && sel && cur.provider !== sel.provider ? '<p>Your provider changes to <strong>' + esc(sel.provider) + '</strong>. We send you their contact.</p>' : '';
+        var sel = d.offers.filter(function (o) { return o.service_id === d.service; })[0];
+        var moveTxt = d.current_provider && sel && d.current_provider !== sel.provider ? '<p>Your provider changes to <strong>' + esc(sel.provider) + '</strong>. We send you their contact.</p>' : '';
         var line = d.diff > 0 ? 'You pay <strong>' + usdR(d.diff) + '</strong> more.' : (d.diff < 0 ? 'We refund <strong>' + usdR(-d.diff) + '</strong> to your card.' : 'Same price, nothing to pay.');
         h += '<div class="ab-rbsum"><p>New total <strong>' + usdR(d.total) + '</strong>' + (d.discount ? ' (after your ' + usdR(d.discount) + ' discount)' : '') + ' · you paid ' + usdR(d.paid) + '</p><p>' + line + '</p>' + moveTxt + '</div>';
         h += '<div class="ab-actions"><button type="button" class="ab-btn is-accent" data-ab-rbgo>' + (d.diff > 0 ? 'Pay ' + usdR(d.diff) + ' and change my trip' : 'Confirm the change') + '</button></div>';
