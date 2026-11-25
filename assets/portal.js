@@ -97,7 +97,7 @@
     vehicles: { why: 'The vehicle categories you sell at your airport, and the cars you drive them with.',
       todo: ['Tick each category you sell. Each card shows example models: your car must be similar and carry as many people.', 'Check the passengers, bags and free waiting time, then press Save.', 'Optional: further down, add your cars with photos for your directory profile.'] },
     coverage: { why: 'The areas where you pick up and drop off travelers. Each zone gets its own price.',
-      todo: ['Type the name of an area (a town, a hotel zone) and press “Find on the map”. We draw it for you.', 'If the edge is not right, drag the white points. Then press “Save zone”. Do this for each area.', 'Not found? Press “Draw by hand” and click around the area on the map.'] },
+      todo: ['Type the name of an area (a town, a hotel zone) and press “Find on the map”. We draw it for you.', 'If the edge is not right, drag the white points. Then press “Save zone”. Do this for each area.', 'Not found? Press Circle or Square, move it over the area and set its size. You can switch shape at any time.'] },
     prices: { why: 'One price per zone and vehicle. Travelers can only book where there is a price.',
       todo: ['Click a box in the grid. Each row is a zone, each column a vehicle category.', 'Type the price the traveler pays, one way. We show what you get after our commission.', 'Press “Save price”, then the next box. Round trip prices are optional.'] },
     documents: { why: 'Your transport permit and your liability insurance. You can go live without them, but we ask for them to keep you live.',
@@ -362,7 +362,7 @@
     coverage: function () { return [
       { el: '[data-tour=find]', title: 'Start here: find an area by name', text: 'Type a town or area you drive to, like “Playa del Carmen” or “Hotel Zone”, and press “Find on the map”. We draw it for you.' },
       { el: '#atc-app .atc-map', title: 'The map', text: 'The area appears in orange. Drag the white points to move its edge, then press “Save zone”. Your saved zones are green.' },
-      { el: '[data-tour=drawhand]', title: 'Or draw by hand', text: 'If we cannot find a place, press this and click around the area on the map, point by point.' },
+      { el: '[data-tour=drawhand]', title: 'Or draw it yourself', text: 'Not found? Put a circle or a square on the map, move it over the area and set its size. You can switch shape at any time.' },
       { el: '[data-tour=ourzones]', title: 'Zones we already drew', text: 'Outlined in black on the map. Tick the ones you serve, then press “Save the zones I ticked”.' },
       { el: '[data-tour=nearby]', title: 'Zones near your airport', text: 'We drew these for a nearby airport. Press “Use this zone” to add one to your zones here, without drawing.' },
       { el: '[data-tour=next]', title: 'Next: your prices', text: 'Once you have your zones, go to step 4 and give each one a price.' }
@@ -1024,8 +1024,7 @@
     /* ----- side panel ----- */
     function drawSide() {
       clear(side);
-      add(side, h('div', { class: 'row-flat' }, h('h2', { text: 'Your zones' }),
-        h('button', { class: 'btn', type: 'button', 'data-tour': 'drawhand', text: 'Draw by hand', disabled: !!mode || !map, onclick: startDraw })));
+      add(side, h('h2', { text: 'Your zones' }));
       // Finding an area by name works at any time (it replaces a drawing in progress), except while reshaping.
       var busy = !map || !!(mode && mode.edit);
       var q = h('input', { type: 'search', placeholder: 'Type an area, e.g. Tulum, Playa del Carmen', disabled: busy, value: (mode && mode.suggest && mode.name) || '' });
@@ -1041,7 +1040,12 @@
           startSuggest(r.candidates, r.query);
         }).catch(function (e2) { findBtn.disabled = false; findBtn.textContent = 'Find'; fail(e2); });
       } }, q, findBtn));
-      if (!mine.length) add(side, h('p', { class: 'atc-muted', text: ours.length ? 'None yet. Find an area by name, draw one by hand, or tick ours below.' : 'None yet. Find an area by name, or press “Draw by hand” and click around it on the map.' }));
+      var drawBtns = h('div', { class: 'zd-draw', 'data-tour': 'drawhand' }, h('span', { class: 'small atc-muted', text: 'Or draw it yourself:' }),
+        h('button', { class: 'btn sm', type: 'button', text: '◯ Circle', disabled: !map || !!(mode && mode.edit), onclick: function () { beginNew('circle'); } }),
+        h('button', { class: 'btn sm', type: 'button', text: '▢ Square', disabled: !map || !!(mode && mode.edit), onclick: function () { beginNew('square'); } }));
+      if (!small) add(drawBtns, h('button', { class: 'btn sm', type: 'button', text: 'Points by hand', disabled: !map || !!(mode && mode.edit), onclick: function () { beginNew('points'); } }));
+      add(side, drawBtns);
+      if (!mine.length) add(side, h('p', { class: 'atc-muted', text: ours.length ? 'None yet. Find an area by name, draw a circle or square, or tick ours below.' : 'None yet. Find an area by name, or draw a circle or square on the map.' }));
       mine.forEach(function (z) {
         add(side, h('div', { class: 'zd-row' + (mode && mode.edit === z.id ? ' on' : '') },
           h('span', { class: 'zd-swatch' }), h('strong', { text: z.name }),
@@ -1091,58 +1095,219 @@
       api('POST', '/zones/copy', { zone_id: z.id }).then(function (d) { saved(d, z.name + ' added to your zones. Now give it a price.'); }).catch(fail);
     }
 
-    /* ----- toolbar over the map while drawing or reshaping ----- */
+    /* ----- the zone editor: one shape at a time, switch between found area, circle, square and points ----- */
+    var small = window.matchMedia && window.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
+    var STYLE = { strokeColor: '#E07A1F', strokeWeight: 3, fillColor: '#FBA53E', fillOpacity: 0.35, zIndex: 8 };
+    var R = 6371008.8, rad = Math.PI / 180;
+    function dist(a, b) { // metres between two LatLng
+      var dLat = (b.lat() - a.lat()) * rad, dLng = (b.lng() - a.lng()) * rad;
+      var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a.lat() * rad) * Math.cos(b.lat() * rad) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+    }
+    function offset(c, m, deg) { // the point m metres from c, heading deg
+      var d = m / R, br = deg * rad, la = c.lat() * rad, lo = c.lng() * rad;
+      var la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(br));
+      var lo2 = lo + Math.atan2(Math.sin(br) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2));
+      return new google.maps.LatLng(la2 / rad, lo2 / rad);
+    }
+    // Fewer points: Douglas-Peucker, tolerance raised until the outline has at most max points.
+    function simplify(pts, max) {
+      if (pts.length <= max) return pts;
+      function dp(list, tol) {
+        if (list.length < 3) return list;
+        var a = list[0], b = list[list.length - 1], far = 0, at = 0;
+        list.forEach(function (p, i) {
+          if (!i || i === list.length - 1) return;
+          var dx = b.lng() - a.lng(), dy = b.lat() - a.lat(), len = dx * dx + dy * dy;
+          var t = len ? ((p.lng() - a.lng()) * dx + (p.lat() - a.lat()) * dy) / len : 0;
+          t = Math.max(0, Math.min(1, t));
+          var ex = p.lng() - (a.lng() + t * dx), ey = p.lat() - (a.lat() + t * dy), dd = Math.sqrt(ex * ex + ey * ey);
+          if (dd > far) { far = dd; at = i; }
+        });
+        if (far <= tol) return [a, b];
+        var l = dp(list.slice(0, at + 1), tol), r = dp(list.slice(at), tol);
+        return l.slice(0, -1).concat(r);
+      }
+      var bb = new google.maps.LatLngBounds(); pts.forEach(function (p) { bb.extend(p); });
+      var span = Math.max(bb.toSpan().lat(), bb.toSpan().lng()), tol = span / 400, out = pts;
+      // Split the ring at its farthest point so the closing edge is kept.
+      var far = 0, at = 0; pts.forEach(function (p, i) { var d = Math.abs(p.lat() - pts[0].lat()) + Math.abs(p.lng() - pts[0].lng()); if (d > far) { far = d; at = i; } });
+      for (var k = 0; k < 40 && out.length > max; k++) {
+        var x = dp(pts.slice(0, at + 1), tol), y = dp(pts.slice(at).concat([pts[0]]), tol);
+        out = x.slice(0, -1).concat(y.slice(0, -1));
+        tol *= 1.6;
+      }
+      return out.length >= 3 ? out : pts;
+    }
+    function path(obj) { return obj.getPath().getArray().slice(); }
+    // Where the shape is now, as bounds (to put the next shape in the same place).
+    function curBounds() {
+      if (!mode) return null;
+      if (mode.shape === 'circle' && mode.obj) return mode.obj.getBounds();
+      if (mode.shape === 'square' && mode.obj) return mode.obj.getBounds();
+      var pts = mode.shape === 'points' ? (mode.obj ? path(mode.obj) : mode.draw || []) : (mode.obj ? path(mode.obj) : []);
+      if (!pts.length) return null;
+      var b = new google.maps.LatLngBounds(); pts.forEach(function (p) { b.extend(p); }); return b;
+    }
+    function startBounds() {
+      // Default: a 3 km shape in the middle of what the traveler sees.
+      var c = map.getCenter();
+      var b = new google.maps.LatLngBounds(); b.extend(offset(c, 4243, 225)); b.extend(offset(c, 4243, 45)); return b;
+    }
+    function clearShape() {
+      if (mode.obj) { mode.obj.setMap(null); mode.obj = null; }
+      if (mode.line) { mode.line.setMap(null); mode.line = null; }
+      (mode.dots || []).forEach(function (d) { d.setMap(null); }); mode.dots = []; mode.draw = null;
+      (mode.listen || []).forEach(function (l) { google.maps.event.removeListener(l); }); mode.listen = [];
+      map.setOptions({ draggableCursor: null });
+    }
+    // Change the shape kind, keeping the place.
+    function setShape(kind, opts) {
+      opts = opts || {};
+      var b = opts.bounds || curBounds() || startBounds();
+      var prevPath = mode.obj || mode.draw ? toPath() : [];
+      if (mode.edit && polys[mode.edit]) polys[mode.edit].setOptions({ visible: false });
+      clearShape();
+      mode.shape = kind;
+      if (kind === 'circle') {
+        var c = b.getCenter(), ne = b.getNorthEast();
+        var r = Math.max(300, Math.min(dist(c, new google.maps.LatLng(c.lat(), ne.lng())), dist(c, new google.maps.LatLng(ne.lat(), c.lng()))));
+        mode.obj = new google.maps.Circle(Object.assign({ map: map, center: c, radius: r, editable: !small, draggable: true }, STYLE));
+        mode.listen = [mode.obj.addListener('radius_changed', syncSize), mode.obj.addListener('center_changed', syncSize)];
+      } else if (kind === 'square') {
+        mode.obj = new google.maps.Rectangle(Object.assign({ map: map, bounds: b, editable: true, draggable: true }, STYLE));
+        mode.listen = [mode.obj.addListener('bounds_changed', syncSize)];
+      } else if (kind === 'found') {
+        var c2 = mode.suggest[mode.idx];
+        var pts = simplify(c2.polygon.map(function (p) { return new google.maps.LatLng(p[0], p[1]); }), small ? 8 : 12);
+        mode.obj = new google.maps.Polygon(Object.assign({ map: map, paths: pts, editable: true }, STYLE));
+        b = new google.maps.LatLngBounds(); pts.forEach(function (p) { b.extend(p); });
+      } else if (kind === 'points') {
+        if (opts.path) {
+          mode.obj = new google.maps.Polygon(Object.assign({ map: map, paths: opts.path, editable: true }, STYLE));
+        } else if (opts.fresh) {
+          mode.draw = []; mode.dots = [];
+          mode.line = new google.maps.Polyline({ map: map, strokeColor: '#E07A1F', strokeWeight: 3, clickable: false });
+          map.setOptions({ draggableCursor: 'crosshair' });
+        } else {
+          // From another shape: its outline, as points to drag.
+          var from = prevPath.length >= 3 ? simplify(prevPath, small ? 8 : 12) : [b.getNorthEast(), new google.maps.LatLng(b.getNorthEast().lat(), b.getSouthWest().lng()), b.getSouthWest(), new google.maps.LatLng(b.getSouthWest().lat(), b.getNorthEast().lng())];
+          mode.obj = new google.maps.Polygon(Object.assign({ map: map, paths: from, editable: true }, STYLE));
+        }
+      }
+      if (opts.fit !== false && (kind !== 'points' || !opts.fresh)) map.fitBounds(b, small ? 30 : 60);
+      drawTools(); drawSide();
+    }
+    // The shape as the outline we save.
+    function toPath(keepObj) {
+      var o = mode.obj, out = [];
+      if (mode.shape === 'circle' && o) {
+        var n = 24; for (var i = 0; i < n; i++) out.push(offset(o.getCenter(), o.getRadius(), i * 360 / n));
+      } else if (mode.shape === 'square' && o) {
+        var b = o.getBounds(), ne = b.getNorthEast(), sw = b.getSouthWest();
+        out = [ne, new google.maps.LatLng(ne.lat(), sw.lng()), sw, new google.maps.LatLng(sw.lat(), ne.lng())];
+      } else if (o) {
+        out = path(o);
+      } else if (mode.draw) {
+        out = mode.draw.slice();
+      }
+      return out;
+    }
+    function sizeKm() {
+      var o = mode.obj;
+      if (!o) return 0;
+      if (mode.shape === 'circle') return o.getRadius() / 1000;
+      var b = o.getBounds(), c = b.getCenter();
+      return Math.max(dist(c, new google.maps.LatLng(c.lat(), b.getNorthEast().lng())), dist(c, new google.maps.LatLng(b.getNorthEast().lat(), c.lng()))) / 1000;
+    }
+    function setSize(km) {
+      var o = mode.obj, m = km * 1000;
+      if (mode.shape === 'circle') { o.setRadius(m); return; }
+      var b = o.getBounds(), c = b.getCenter(), ne = b.getNorthEast();
+      var w = dist(c, new google.maps.LatLng(c.lat(), ne.lng())), hgt = dist(c, new google.maps.LatLng(ne.lat(), c.lng()));
+      var f = m / Math.max(w, hgt, 1);
+      var nb = new google.maps.LatLngBounds();
+      nb.extend(new google.maps.LatLng(offset(c, hgt * f, 180).lat(), offset(c, w * f, 270).lng()));
+      nb.extend(new google.maps.LatLng(offset(c, hgt * f, 0).lat(), offset(c, w * f, 90).lng()));
+      mode.syncing = true; o.setBounds(nb); mode.syncing = false;
+    }
+    function syncSize() {
+      if (!mode || mode.syncing || !mode.slider) return;
+      var km = sizeKm();
+      mode.slider.value = Math.min(+mode.slider.max, km).toFixed(1);
+      mode.sizeOut.textContent = km < 10 ? km.toFixed(1) + ' km' : Math.round(km) + ' km';
+    }
+
     function drawTools() {
       clear(tools);
       if (!mode) { tools.className = 'zd-tools hidden'; return; }
       tools.className = 'zd-tools';
-      if (mode.draw) {
-        var n = mode.draw.length;
-        var name = h('input', { type: 'text', maxlength: 100, placeholder: 'Zone name, e.g. Hotel Zone', value: mode.name || '' });
-        name.addEventListener('input', function () { mode.name = name.value; save.disabled = n < 3 || !name.value.trim(); });
-        var save = h('button', { class: 'btn dark', type: 'button', text: 'Save zone', disabled: n < 3 || !(mode.name || '').trim(), onclick: function () {
-          save.disabled = true;
-          api('POST', '/zones', { airport_id: airport.id, name: name.value, polygon: mode.draw.map(function (p) { return [p.lat(), p.lng()]; }) })
-            .then(function (d) { stopMode(); saved(d, name.value + ' saved. Now give it a price.'); }).catch(function (e) { save.disabled = false; fail(e); });
-        } });
-        add(tools, [h('strong', { text: n < 3 ? 'Click on the map around the area (' + n + ' of at least 3 points)' : n + ' points. Keep clicking to follow the edge, then name it and save.' }),
-          h('div', { class: 'zd-bar' }, name,
-            h('button', { class: 'btn', type: 'button', text: 'Undo point', disabled: !n, onclick: undoPoint }),
-            h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: stopMode }), save)]);
-        if (n >= 3) setTimeout(function () { if (!name.value) name.focus(); }, 0);
-      } else if (mode.suggest) {
+      var kinds = [];
+      if (mode.suggest) kinds.push(['found', 'Found area']);
+      kinds.push(['circle', 'Circle'], ['square', 'Square']);
+      if (!small || mode.shape === 'points' || mode.edit) kinds.push(['points', small ? 'Points' : 'Points (by hand)']);
+      var tabs = h('div', { class: 'zd-tabs', role: 'tablist', 'aria-label': 'Shape' });
+      kinds.forEach(function (k) {
+        add(tabs, h('button', { type: 'button', role: 'tab', class: 'zd-tab' + (mode.shape === k[0] ? ' on' : ''), 'aria-selected': mode.shape === k[0] ? 'true' : 'false', text: k[1], onclick: function () {
+          if (mode.shape === k[0]) return;
+          if (k[0] === 'points' && mode.shape !== 'points' && !mode.obj && !mode.edit) { setShape('points', { fresh: true }); return; }
+          setShape(k[0]);
+        } }));
+      });
+      var tip = {
+        found: 'This is the area we found. Drag the white points to adjust the edge.',
+        circle: small ? 'Drag the circle to move it. Use Size to make it bigger or smaller.' : 'Drag the circle to move it. Drag its edge, or use Size, to make it bigger or smaller.',
+        square: 'Drag the square to move it. Drag a corner, or use Size, to change it.',
+        points: mode.draw ? (mode.draw.length < 3 ? 'Tap the map around the area (' + mode.draw.length + ' of at least 3 points).' : mode.draw.length + ' points. Keep tapping to follow the edge, then save.') : 'Drag the white points to move the edge. Drag a small middle point to add a corner.',
+      }[mode.shape];
+      add(tools, [tabs, h('span', { class: 'small', text: tip })]);
+      if (mode.shape === 'found' && mode.suggest.length > 1) {
         var c = mode.suggest[mode.idx];
-        var nm = h('input', { type: 'text', maxlength: 100, value: mode.name || '' });
-        nm.addEventListener('input', function () { mode.name = nm.value; });
-        add(tools, [h('strong', { text: 'Option ' + (mode.idx + 1) + ' of ' + mode.suggest.length + ': ' + c.label.split(',').slice(0, 2).join(',') + ' · ' + c.kind + ', about ' + c.km2 + ' km²' }),
-          h('span', { class: 'small atc-muted', text: 'Drag the white points to adjust the edge before saving.' }),
-          h('div', { class: 'zd-bar' }, nm,
-            mode.suggest.length > 1 ? h('button', { class: 'btn', type: 'button', text: '‹ Previous', onclick: function () { showSuggest(mode.idx - 1); } }) : null,
-            mode.suggest.length > 1 ? h('button', { class: 'btn', type: 'button', text: 'Next ›', onclick: function () { showSuggest(mode.idx + 1); } }) : null,
-            h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: stopMode }),
-            h('button', { class: 'btn dark', type: 'button', text: 'Save zone', onclick: function (e) {
-              var b = e.currentTarget; b.disabled = true;
-              api('POST', '/zones', { airport_id: airport.id, name: nm.value, polygon: mode.poly.getPath().getArray().map(function (p) { return [p.lat(), p.lng()]; }) })
-                .then(function (d) { var n = nm.value; stopMode(); saved(d, n + ' saved. Now give it a price.'); }).catch(function (e2) { b.disabled = false; fail(e2); });
-            } }))]);
-      } else if (mode.edit) {
-        add(tools, [h('strong', { text: 'Drag the white points to move the edge. Drag a small middle point to add a corner.' }),
-          h('div', { class: 'zd-bar' },
-            h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: function () { stopMode(); paintAll(); } }),
-            h('button', { class: 'btn dark', type: 'button', text: 'Save shape', onclick: function () {
-              var pts = polys[mode.edit].getPath().getArray().map(function (p) { return [p.lat(), p.lng()]; });
-              api('PUT', '/zones/' + mode.edit, { polygon: pts }).then(function (d) { stopMode(); saved(d, 'Shape saved.'); }).catch(fail);
-            } }))]);
+        add(tools, h('div', { class: 'zd-bar' },
+          h('button', { class: 'btn sm', type: 'button', text: '‹', 'aria-label': 'Previous match', onclick: function () { mode.idx = (mode.idx - 1 + mode.suggest.length) % mode.suggest.length; setShape('found', { bounds: null }); } }),
+          h('span', { class: 'small grow', text: (mode.idx + 1) + ' of ' + mode.suggest.length + ': ' + c.label.split(',').slice(0, 2).join(',') + ' · about ' + c.km2 + ' km²' }),
+          h('button', { class: 'btn sm', type: 'button', text: '›', 'aria-label': 'Next match', onclick: function () { mode.idx = (mode.idx + 1) % mode.suggest.length; setShape('found', { bounds: null }); } })));
       }
+      if (mode.shape === 'circle' || mode.shape === 'square') {
+        mode.slider = h('input', { type: 'range', min: '0.5', max: '40', step: '0.5', 'aria-label': 'Size' });
+        mode.sizeOut = h('output', { class: 'zd-size-out' });
+        mode.slider.addEventListener('input', function () { setSize(+mode.slider.value); mode.sizeOut.textContent = (+mode.slider.value).toFixed(1) + ' km'; });
+        add(tools, h('label', { class: 'zd-size' }, h('span', { class: 'small', text: mode.shape === 'circle' ? 'Size (radius)' : 'Size (half width)' }), mode.slider, mode.sizeOut));
+        syncSize();
+      }
+      var n = toPath().length;
+      var bar = h('div', { class: 'zd-bar' });
+      var name = null;
+      if (!mode.edit) {
+        name = h('input', { type: 'text', maxlength: 100, placeholder: 'Zone name, e.g. Hotel Zone', value: mode.name || '' });
+        name.addEventListener('input', function () { mode.name = name.value; saveBtn.disabled = n < 3 || !name.value.trim(); });
+        add(bar, name);
+      }
+      if (mode.draw) add(bar, h('button', { class: 'btn', type: 'button', text: 'Undo point', disabled: !mode.draw.length, onclick: undoPoint }));
+      add(bar, h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: function () { stopMode(); if (mode === null) paintAll(); } }));
+      var saveBtn = h('button', { class: 'btn dark', type: 'button', text: mode.edit ? 'Save shape' : 'Save zone', disabled: n < 3 || (!mode.edit && !(mode.name || '').trim()), onclick: function () {
+        var pts = toPath().map(function (p) { return [p.lat(), p.lng()]; });
+        if (pts.length < 3) return;
+        saveBtn.disabled = true;
+        var req = mode.edit ? api('PUT', '/zones/' + mode.edit, { polygon: pts }) : api('POST', '/zones', { airport_id: airport.id, name: name.value, polygon: pts });
+        var nm = name ? name.value : '';
+        req.then(function (d) { stopMode(); saved(d, mode === null && nm ? nm + ' saved. Now give it a price.' : 'Shape saved.'); }).catch(function (e) { saveBtn.disabled = false; fail(e); });
+      } });
+      add(bar, saveBtn);
+      add(tools, bar);
+      if (mode.draw && mode.draw.length >= 3 && name && !name.value) setTimeout(function () { name.focus(); }, 0);
     }
 
-    function startDraw() {
-      mode = { draw: [], name: '', line: new google.maps.Polyline({ map: map, strokeColor: '#E07A1F', strokeWeight: 3, clickable: false }), dots: [] };
-      map.setOptions({ draggableCursor: 'crosshair' });
+    function beginNew(kind) {
+      if (mode) stopMode();
+      mode = { name: '', listen: [], dots: [] };
       Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: false }); });
-      drawTools(); drawSide();
+      if (kind === 'points') setShape('points', { fresh: true }); else setShape(kind, { bounds: startBounds(), fit: false });
+      if (small) mapBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+    function startDraw() { beginNew('points'); }
     function addPoint(p) {
+      if (!mode || !mode.draw) return;
       mode.draw.push(p);
       mode.line.setPath(mode.draw.concat(mode.draw.length > 2 ? [mode.draw[0]] : []));
       mode.dots.push(new google.maps.Marker({ map: map, position: p, clickable: false,
@@ -1157,33 +1322,24 @@
       drawTools();
     }
     function startSuggest(list, query) {
-      mode = { suggest: list, idx: 0, name: query.replace(/,.*$/, ''), poly: null };
+      if (mode) stopMode();
+      mode = { suggest: list, idx: 0, name: query.replace(/,.*$/, ''), listen: [], dots: [] };
       Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: false }); });
-      showSuggest(0);
-      drawSide();
-    }
-    function showSuggest(i) {
-      mode.idx = (i + mode.suggest.length) % mode.suggest.length;
-      if (mode.poly) mode.poly.setMap(null);
-      var path = mode.suggest[mode.idx].polygon.map(function (p) { return { lat: p[0], lng: p[1] }; });
-      mode.poly = new google.maps.Polygon({ map: map, paths: path, editable: true, strokeColor: '#E07A1F', strokeWeight: 3, fillColor: '#FBA53E', fillOpacity: 0.35, zIndex: 8 });
-      var b = new google.maps.LatLngBounds();
-      path.forEach(function (p) { b.extend(p); });
-      map.fitBounds(b, 60);
-      drawTools();
+      setShape('found', { bounds: null });
+      if (small) mapBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     function startEdit(z) {
-      mode = { edit: z.id };
-      polys[z.id].setOptions({ editable: true, zIndex: 9 });
-      var b = new google.maps.LatLngBounds();
-      z.polygon.forEach(function (p) { b.extend({ lat: p[0], lng: p[1] }); });
-      map.fitBounds(b, 60);
-      drawTools(); drawSide();
+      if (mode) stopMode();
+      mode = { edit: z.id, listen: [], dots: [] };
+      Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: false }); });
+      setShape('points', { path: z.polygon.map(function (p) { return new google.maps.LatLng(p[0], p[1]); }) });
+      if (small) mapBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     function stopMode() {
-      if (mode && mode.line) { mode.line.setMap(null); mode.dots.forEach(function (d) { d.setMap(null); }); }
-      if (mode && mode.poly) mode.poly.setMap(null);
-      if (mode && mode.edit && polys[mode.edit]) polys[mode.edit].setOptions({ editable: false });
+      if (mode) {
+        clearShape();
+        if (mode.edit && polys[mode.edit]) polys[mode.edit].setOptions({ visible: true, editable: false });
+      }
       mode = null;
       if (map) { map.setOptions({ draggableCursor: null }); Object.keys(polys).forEach(function (id) { polys[id].setOptions({ clickable: true }); }); }
       drawTools(); drawSide();

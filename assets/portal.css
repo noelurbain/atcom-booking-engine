@@ -175,3 +175,19 @@ h2.section{margin:8px 0 0;font-size:18px}
   .atc-auth-form{padding:28px 16px 48px;align-items:flex-start}
   .atc-auth-inner h1{font-size:28px}
 }
+/* Zone editor: shape tabs, size slider */
+.zd-tabs{display:flex;gap:4px;padding:4px;background:#fff;border:1px solid var(--line2);border-radius:999px;align-self:flex-start;max-width:100%;overflow-x:auto}
+.zd-tab{border:0;background:transparent;padding:8px 14px;border-radius:999px;font-weight:700;font-size:14px;white-space:nowrap;cursor:pointer;color:var(--muted)}
+.zd-tab.on{background:var(--ink);color:#fff}
+.zd-size{display:flex;align-items:center;gap:10px}
+.zd-size input[type=range]{flex:1 1 auto;accent-color:#E07A1F;min-width:0}
+.zd-size-out{font-weight:800;min-width:56px;text-align:right}
+.zd-draw{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.btn.sm{padding:7px 12px;font-size:13px}
+.grow{flex:1 1 auto;min-width:0}
+@media (max-width:760px){
+  .zd-tools{padding:12px;gap:8px}
+  .zd-tab{padding:9px 14px}
+  .zd-bar input{flex:1 1 100%}
+  .zd-bar .btn{flex:1 1 auto}
+}
