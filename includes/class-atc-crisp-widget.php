@@ -13,8 +13,6 @@ defined( 'ABSPATH' ) || exit;
 
 final class ATC_Crisp_Widget {
 
-	const COOKIE = 'atc_crisp';
-
 	public static function init(): void {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
 		add_action( 'template_redirect', array( __CLASS__, 'start_booking' ), 1 );
@@ -24,16 +22,20 @@ final class ATC_Crisp_Widget {
 
 	/* ---------- Step 3: a new booking from a chat ---------- */
 
-	/** The chat a team member is booking for (set by the panel's "New booking" button), or ''. */
+	/** The chat a team member is booking for (set by the panel's "New booking" button), or ''. Kept on the user, 3 hours. */
 	public static function session(): string {
 		if ( ! is_user_logged_in() || ! current_user_can( 'atc_manage' ) ) {
 			return '';
 		}
-		$s = sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ?? '' ) );
+		$v = get_user_meta( get_current_user_id(), 'atc_crisp_session', true );
+		if ( ! is_array( $v ) || (int) ( $v['until'] ?? 0 ) < time() ) {
+			return '';
+		}
+		$s = (string) ( $v['session'] ?? '' );
 		return preg_match( '/^session_[a-f0-9-]{36}$/', $s ) ? $s : '';
 	}
 
-	/** /?atc_crisp=<session>: remember the chat for 3 hours, then search as usual. ?atc_crisp=end stops. */
+	/** /?atc_crisp=<session> (or Crisp's own ?session_id=…&website_id=…): book for that chat. ?atc_crisp=end stops. */
 	public static function start_booking(): void {
 		// Crisp opens link buttons with its own ?session_id=…&website_id=…&token=… (it drops ours).
 		if ( ! isset( $_GET['atc_crisp'] ) && isset( $_GET['session_id'], $_GET['website_id'] ) && (string) ATC_Settings::get( 'crisp_id' ) === $_GET['website_id'] ) { // phpcs:ignore
@@ -48,13 +50,13 @@ final class ATC_Crisp_Widget {
 		$s = sanitize_text_field( wp_unslash( $_GET['atc_crisp'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
 		if ( current_user_can( 'atc_manage' ) ) {
 			if ( preg_match( '/^session_[a-f0-9-]{36}$/', $s ) ) {
-				setcookie( self::COOKIE, $s, array( 'expires' => time() + 3 * HOUR_IN_SECONDS, 'path' => '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax' ) );
-				$_COOKIE[ self::COOKIE ] = $s;
+				update_user_meta( get_current_user_id(), 'atc_crisp_session', array( 'session' => $s, 'until' => time() + 3 * HOUR_IN_SECONDS ) );
 				self::who( $s, true );
 			} else {
-				setcookie( self::COOKIE, '', array( 'expires' => time() - 3600, 'path' => '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax' ) );
+				delete_user_meta( get_current_user_id(), 'atc_crisp_session' );
 			}
 		}
+		nocache_headers();
 		wp_safe_redirect( remove_query_arg( array( 'atc_crisp', 'session_id', 'website_id', 'token', 'locale', 'theme' ) ) );
 		exit;
 	}
