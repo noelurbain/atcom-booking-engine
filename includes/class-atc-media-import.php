@@ -17,6 +17,7 @@ final class ATC_Media_Import {
 	const RX   = '#https?://cdn-atcom\.reflektlab\.ai/[^\s"\'()<>\\\\]+#i';
 
 	public static function init(): void {
+		add_action( 'atc_media_import_tick', array( __CLASS__, 'tick' ) );
 		add_action(
 			'rest_api_init',
 			static function () {
@@ -56,7 +57,20 @@ final class ATC_Media_Import {
 		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_atc' WHERE p.post_type NOT IN ('revision','attachment') AND ( p.post_content LIKE %s OR m.meta_value LIKE %s )", $like, $like ) );
 	}
 
+	/** Background: keep going every minute (WP-Cron) until nothing is left. */
+	public static function tick(): void {
+		$r = self::run( 45 );
+		if ( $r['posts_left'] > 0 && ( $r['posts_done'] > 0 || $r['images_copied'] > 0 ) ) {
+			wp_schedule_single_event( time() + 20, 'atc_media_import_tick' );
+		}
+		update_option( 'atc_cdn_last', array( 'at' => gmdate( 'c' ), 'result' => array_diff_key( $r, array( 'failed' => 1 ) ) ), false );
+	}
+
 	public static function run( int $seconds = 20 ): array {
+		// Only the sizes the site shows (faster import, less disk).
+		$sizes = static fn( $s ) => array_intersect_key( $s, array_flip( array( 'medium', 'large' ) ) );
+		add_filter( 'intermediate_image_sizes_advanced', $sizes, 99 );
+		add_filter( 'big_image_size_threshold', '__return_false' );
 		require_once ABSPATH . 'wp-admin/includes/media.php';
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		require_once ABSPATH . 'wp-admin/includes/image.php';
@@ -137,6 +151,10 @@ final class ATC_Media_Import {
 			++$done;
 		}
 		update_option( 'atc_cdn_skip', array_values( array_unique( $skip ) ), false );
+		remove_filter( 'intermediate_image_sizes_advanced', $sizes, 99 );
+		if ( ! wp_next_scheduled( 'atc_media_import_tick' ) && ! doing_action( 'atc_media_import_tick' ) && self::left() > count( $skip ) ) {
+			wp_schedule_single_event( time() + 20, 'atc_media_import_tick' );
+		}
 		return array(
 			'posts_done'   => $done,
 			'images_copied' => $copied,
