@@ -149,22 +149,19 @@ final class ATC_Crisp_Widget {
 		return self::out( self::value( $item, $b ) );
 	}
 
+	/** Crisp shows "succeeded" on a 200 and "failed" otherwise (private notes need a paid Crisp plan). */
 	private static function button( string $item, array $b, string $session ) {
-		$note = '';
 		if ( 'resend' === $item ) {
-			$res  = ATC_Ops::resend( $b['number'] );
-			$note = is_wp_error( $res ) ? 'Could not resend: ' . $res->get_error_message() : 'Confirmation for ' . $b['number'] . ' resent to ' . $b['email'] . '.';
-		} elseif ( 'manage' === $item ) {
-			if ( ! empty( $b['snap']['legacy'] ) ) {
-				$note = $b['number'] . ' comes from the old site: it has no manage link.';
-			} else {
-				ATC_Mail::manage_link( $b );
-				$note = 'Manage link for ' . $b['number'] . ' emailed to ' . $b['email'] . '.';
-				ATC_Install::log( 'booking', (int) $b['id'], 'manage_link_sent', array( 'via' => 'crisp' ) );
+			$res = ATC_Ops::resend( $b['number'] );
+			if ( is_wp_error( $res ) ) {
+				return new WP_Error( 'atc_crisp', $res->get_error_message(), array( 'status' => 409 ) );
 			}
-		}
-		if ( '' !== $note && '' !== $session ) {
-			ATC_Crisp::say( $session, $note, 'note' ); // Private note: only the team sees it.
+		} elseif ( 'manage' === $item ) {
+			if ( ! empty( $b['snap']['legacy'] ) || ! in_array( $b['status'], array( 'confirmed', 'completed' ), true ) ) {
+				return new WP_Error( 'atc_crisp', 'No manage link for this booking.', array( 'status' => 409 ) );
+			}
+			ATC_Mail::manage_link( $b );
+			ATC_Install::log( 'booking', (int) $b['id'], 'manage_link_sent', array( 'via' => 'crisp', 'session' => $session ) );
 		}
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
