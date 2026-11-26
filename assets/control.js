@@ -2133,8 +2133,8 @@
   function viewProvider(id) {
     clear(app);
     add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
-    Promise.all([api('GET', '/providers/' + id), api('GET', '/zones?airport_id=' + state.airportId + '&party_id=' + id)]).then(function (res) {
-      var d = res[0], zones = res[1], p = d.provider;
+    api('GET', '/providers/' + id).then(function (d) {
+      var p = d.provider;
       clear(app);
 
       var f = {
@@ -2187,7 +2187,7 @@
         form,
         h('h2', { class: 'pe-title', text: 'Prices' }),
         h('div', { class: 'pe-root', id: 'atc-prices' }),
-        servicesCard(id, d.services, zones),
+        servicesCard(id, d),
         vehiclesCard(id, d.vehicles),
         fleetCard(id, d.fleet || { counts: {} }),
         h('section', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('h2', { text: 'Extras' }), h('a', { class: 'btn', href: C.base + 'providers/' + id + '/extras/', 'data-go': 'providers/' + id + '/extras', text: 'Edit their extras' })))
@@ -2234,12 +2234,39 @@
     return card;
   }
 
-  function servicesCard(partyId, services, zones) {
-    var airport = state.boot.airports.find(function (a) { return a.id == state.airportId; });
-    var card = h('section', { class: 'card pad' },
-      h('h2', { text: 'Vehicles and zones at ' + (airport ? (airport.iata || airport.name) : 'the airport') }),
-      h('p', { class: 'atc-muted', text: 'Tick each vehicle category this provider sells, then the zones it covers. Prices come next (milestone 3).' }));
-    if (!zones.length) add(card, h('p', { class: 'chip orange', text: 'Draw zones first in Zones and hotels.' }));
+  // The provider's own airports (main airport + where they sell), never another airport's zones by default.
+  function servicesCard(partyId, d) {
+    var p = d.provider, mine = [];
+    function addAp(aid) { aid = parseInt(aid, 10); if (aid && mine.indexOf(aid) === -1) mine.push(aid); }
+    addAp(p.home_airport_id);
+    d.services.forEach(function (x) { addAp(x.airport_id); });
+    var outer = h('section', { class: 'card pad' });
+    var label = function (a) { return a ? (a.iata ? a.iata + ' · ' : '') + a.name + (a.city ? ', ' + a.city : '') : ''; };
+    var others = state.boot.airports.filter(function (a) { return mine.indexOf(parseInt(a.id, 10)) === -1; });
+    var sel = h('select', { 'aria-label': 'Airport' },
+      mine.map(function (aid) { var a = state.boot.airports.find(function (x) { return x.id == aid; }); return h('option', { value: aid, text: a ? label(a) : 'Airport ' + aid }); }),
+      others.length ? h('optgroup', { label: 'Add another airport' }, others.map(function (a) { return h('option', { value: a.id, text: label(a) }); })) : null);
+    var inner = h('div');
+    add(outer, [h('div', { class: 'row-flat' }, h('h2', { text: 'Vehicles and zones' }), sel), inner]);
+    function draw() {
+      clear(inner); add(inner, h('p', { class: 'atc-muted', text: 'Loading…' }));
+      var aid = parseInt(sel.value, 10);
+      api('GET', '/zones?airport_id=' + aid + '&party_id=' + partyId).then(function (zones) {
+        clear(inner);
+        add(inner, servicesBody(partyId, aid, d.services.filter(function (x) { return parseInt(x.airport_id, 10) === aid; }), zones));
+      }).catch(fail);
+    }
+    sel.addEventListener('change', draw);
+    if (!mine.length && state.airportId) sel.value = state.airportId;
+    draw();
+    return outer;
+  }
+
+  function servicesBody(partyId, airportId, services, zones) {
+    var airport = state.boot.airports.find(function (a) { return a.id == airportId; });
+    var card = h('div', null,
+      h('p', { class: 'atc-muted', text: 'At ' + (airport ? (airport.iata || airport.name) : 'this airport') + ': tick each vehicle category this provider sells, then the zones it covers.' }));
+    if (!zones.length) add(card, h('p', { class: 'chip orange', text: 'This airport has no zones yet. Draw them in Zones and hotels.' }));
 
     state.boot.vehicle_types.forEach(function (t) {
       var s = services.find(function (x) { return x.vehicle_type_id == t.id; });
@@ -2266,7 +2293,7 @@
       });
       function save() {
         api('POST', '/providers/' + partyId + '/services', {
-          airport_id: state.airportId, vehicle_type_id: t.id, status: offered.checked ? status.value : 'paused',
+          airport_id: airportId, vehicle_type_id: t.id, status: offered.checked ? status.value : 'paused',
           max_passengers: pax.value, max_bags: bags.value, free_wait_minutes: wait.value,
           min_notice_minutes: Math.round(parseFloat(notice.value || '0') * 60),
           zone_ids: zoneBoxes.filter(function (l) { return l.firstChild.checked; }).map(function (l) { return parseInt(l.firstChild.value, 10); })
