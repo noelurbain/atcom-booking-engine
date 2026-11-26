@@ -210,6 +210,14 @@ final class ATC_Partner {
 		);
 	}
 
+	/** When the provider last opened their portal (UTC date and time), or null. */
+	public static function last_seen( int $party_id ): ?string {
+		global $wpdb;
+		$uid  = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT user_id FROM ' . self::t( 'party_users' ) . ' WHERE party_id = %d ORDER BY user_id LIMIT 1', $party_id ) );
+		$seen = $uid ? (int) get_user_meta( $uid, 'atc_last_seen', true ) : 0;
+		return $seen ? gmdate( 'Y-m-d H:i', $seen ) : null;
+	}
+
 	/** Every provider's onboarding at a glance, for the control panel. */
 	public static function onboarding(): array {
 		global $wpdb;

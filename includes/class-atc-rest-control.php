@@ -345,6 +345,8 @@ final class ATC_REST_Control {
 							'payout'    => ATC_Partner::payout_summary( $id ),
 							'portal'    => ATC_Partner::portal_state( $id ),
 							'prices'    => ATC_Catalog::price_table( $id ),
+							'place'     => ATC_Directory::list_info()[ $id ] ?? null,
+							'last_seen' => ATC_Partner::last_seen( $id ),
 						)
 					);
 				},

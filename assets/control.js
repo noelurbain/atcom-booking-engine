@@ -1844,7 +1844,6 @@
         h('div', null, h('h1', { text: 'Providers' }), h('p', { class: 'atc-muted', text: 'Transport companies we sell. Providers brought over from the old site get a sign-up invitation to choose their password.' })),
         h('div', { class: 'atc-actions' },
           h('a', { class: 'btn', href: C.base + 'providers/onboarding/', 'data-go': 'providers/onboarding', text: 'Onboarding' }),
-          h('a', { class: 'btn', href: C.base + 'import/', 'data-go': 'import', text: 'Import from the old site' }),
           h('button', { class: 'btn', type: 'button', text: 'Fleet inventory (Excel)', onclick: function (e) {
             var b = e.target; b.disabled = true;
             api('GET', '/fleet/csv').then(function (r) {
@@ -2170,6 +2169,28 @@
           field('Payout method', f.payout_method), field('Payout currency', f.payout_currency)),
         h('div', { class: 'atc-actions' }, saveBtn));
 
+      function sec(key, el) { if (el) { el.id = 'pv-' + key; el.classList.add('pv-sec'); } return el; }
+      var about = p.about ? h('section', { class: 'card pad' }, h('h2', { text: 'About the company (from sign-up)' }), h('p', { class: 'prewrap', text: p.about })) : null;
+      var priceWrap = h('div', null, h('h2', { class: 'pe-title', text: 'Prices' }), h('div', { class: 'pe-root', id: 'atc-prices' }));
+      var sections = [
+        ['summary', 'Summary', summaryCard(id, d)],
+        ['directory', 'Directory', directoryCard(id)],
+        ['about', 'About', about],
+        ['documents', 'Documents', documentsCard(id, d)],
+        ['details', 'Details', form],
+        ['prices', 'Prices', priceWrap],
+        ['zones', 'Vehicles and zones', servicesCard(id, d)],
+        ['vehicles', 'Vehicle list', vehiclesCard(id, d.vehicles)],
+        ['fleet', 'Fleet', fleetCard(id, d.fleet || { counts: {} })],
+        ['extras', 'Extras', h('section', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('h2', { text: 'Extras' }), h('a', { class: 'btn', href: C.base + 'providers/' + id + '/extras/', 'data-go': 'providers/' + id + '/extras', text: 'Edit their extras' })))]
+      ].filter(function (x) { return x[2]; });
+      var links = {};
+      var nav = h('nav', { class: 'pv-nav', 'aria-label': 'Sections' }, sections.map(function (x) {
+        links[x[0]] = h('a', { href: '#pv-' + x[0], text: x[1], onclick: function (e) { e.preventDefault(); document.getElementById('pv-' + x[0]).scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+        return links[x[0]];
+      }));
+      var topBtn = h('button', { class: 'pv-top', type: 'button', 'aria-label': 'Back to top', text: '↑ Top', onclick: function () { window.scrollTo({ top: 0, behavior: 'smooth' }); } });
+
       add(app, [
         h('a', { class: 'back', href: C.base + 'providers/', 'data-go': 'providers', text: '← Providers' }),
         h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: p.name }), h('p', { class: 'atc-muted', text: 'Provider since ' + (p.created_at || '').slice(0, 10) + (p.contact_name ? ' · ' + p.contact_name : '') })),
@@ -2179,34 +2200,60 @@
               if (!confirm((notReady.length ? 'Not finished yet: ' + notReady.join(', ') + '.\n\n' : '') + 'Set ' + p.name + ' live? Their offered vehicle categories become bookable and they get an email.')) return;
               api('PUT', '/providers/' + id, { status: 'live' }).then(function () { toast('Live.'); viewProvider(id); }).catch(fail);
             }, text: 'Approve and set live' }) : null)),
-        h('div', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('strong', { text: 'Portal' }), portalCell({ id: id, name: p.name, email: p.email, portal: d.portal }, function () { viewProvider(id); }))),
-        setupCard(d),
-        directoryCard(id),
-        p.about ? h('section', { class: 'card pad' }, h('h2', { text: 'About the company (from sign-up)' }), h('p', { class: 'prewrap', text: p.about })) : null,
-        documentsCard(id, d),
-        form,
-        h('h2', { class: 'pe-title', text: 'Prices' }),
-        h('div', { class: 'pe-root', id: 'atc-prices' }),
-        servicesCard(id, d),
-        vehiclesCard(id, d.vehicles),
-        fleetCard(id, d.fleet || { counts: {} }),
-        h('section', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('h2', { text: 'Extras' }), h('a', { class: 'btn', href: C.base + 'providers/' + id + '/extras/', 'data-go': 'providers/' + id + '/extras', text: 'Edit their extras' })))
-      ]);
+        nav
+      ].concat(sections.map(function (x) { return sec(x[0], x[2]); })).concat([topBtn]));
+
+      // Highlight the section in view; show "Top" once scrolled down. Stops when the page changes.
+      function onScroll() {
+        if (!document.body.contains(nav)) { window.removeEventListener('scroll', onScroll); return; }
+        topBtn.classList.toggle('show', window.scrollY > 500);
+        var cur = sections[0][0];
+        sections.forEach(function (x) { var el = document.getElementById('pv-' + x[0]); if (el && el.getBoundingClientRect().top < 120) cur = x[0]; });
+        Object.keys(links).forEach(function (k) { links[k].classList.toggle('on', k === cur); });
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
       window.ATCPrices.mount(document.getElementById('atc-prices'), { api: api, base: '/providers/' + id + '/prices', who: 'staff', toast: toast, fail: fail });
     }).catch(fail);
   }
 
-  function setupCard(d) {
-    var keys = ['company', 'vehicles', 'coverage', 'prices', 'payout', 'agreement', 'directory', 'documents', 'approval'];
-    var pay = d.payout;
+  // First look at a provider: who, where, what they sell, and what is waiting on us or on them.
+  function summaryCard(id, d) {
+    var p = d.provider, pl = d.place || {}, keys = ['company', 'vehicles', 'coverage', 'prices', 'payout', 'agreement', 'directory', 'documents', 'approval'];
+    var ap = function (aid) { var a = state.boot.airports.find(function (x) { return x.id == aid; }); return a ? (a.iata || a.name) : ''; };
+    var byAp = {};
+    d.services.forEach(function (x) { var k = ap(x.airport_id) || '?'; (byAp[k] = byAp[k] || { live: [], other: [] })[x.status === 'live' ? 'live' : 'other'].push(x.vehicle_type); });
+    var docs = d.documents || [], waiting = docs.filter(function (x) { return x.status === 'pending'; }).length, okDocs = docs.filter(function (x) { return x.status === 'approved'; }).length;
+    var pay = d.payout, fl = d.fleet || {};
+    var linkTxt = { found: 'Links to us ✓', missing: 'No link to us', error: 'Their site did not answer', unchecked: 'Link not checked yet', no_site: 'No website', none: 'No directory profile' }[pl.link] || '';
+    function tile(label, main, sub, tone) {
+      return h('div', { class: 'pv-tile' + (tone ? ' ' + tone : '') }, h('span', { class: 'pv-l', text: label }), h('strong', { text: main || '—' }), sub ? h('span', { class: 'small atc-muted', text: sub }) : null);
+    }
+    var todo = [];
+    if (waiting) todo.push(waiting + ' document' + (waiting > 1 ? 's' : '') + ' to check');
+    if (p.status !== 'live' && ['company', 'vehicles', 'coverage', 'prices'].every(function (k) { return !d.steps[k] || d.steps[k].state === 'done'; })) todo.push('setup done: ready to approve');
+    if (d.portal && d.portal.state === 'invited') todo.push('invited, has not chosen a password yet');
+    var sell = Object.keys(byAp).map(function (k) { return k + ': ' + (byAp[k].live.length ? byAp[k].live.join(', ') : 'nothing live') + (byAp[k].other.length ? ' (+' + byAp[k].other.length + ' not live)' : ''); }).join(' · ');
+    var priced = (d.prices || []).map(function (a) { return a.zones.length + ' zone' + (a.zones.length === 1 ? '' : 's') + ' at ' + a.iata; }).join(', ');
     return h('section', { class: 'card pad' },
-      h('h2', { text: 'Setup in the provider portal' }),
-      h('div', { class: 'ticks' }, keys.map(function (k) {
+      h('div', { class: 'row-flat' }, h('h2', { text: 'Summary' }), portalCell({ id: id, name: p.name, email: p.email, portal: d.portal }, function () { viewProvider(id); })),
+      todo.length ? h('p', { class: 'pv-todo', text: 'Waiting: ' + todo.join(' · ') }) : null,
+      h('div', { class: 'pv-grid' },
+        tile('Contact', p.contact_name || p.email, [p.contact_name ? p.email : '', p.phone].filter(Boolean).join(' · ')),
+        tile('Based in', [pl.city, pl.country || p.country].filter(Boolean).join(', '), p.home_airport_id ? 'Main airport ' + ap(p.home_airport_id) : 'No main airport set'),
+        tile('Portal', d.portal && d.portal.state === 'active' ? 'Active' : d.portal && d.portal.state === 'invited' ? 'Invited' : 'Not invited', d.last_seen ? 'Last seen ' + d.last_seen + ' UTC' : 'Not seen yet'),
+        tile('Sells', sell ? Object.keys(byAp).reduce(function (n, k) { return n + byAp[k].live.length; }, 0) + ' live vehicle categories' : 'Nothing yet', sell, sell ? '' : 'grey'),
+        tile('Prices', priced ? 'Set' : 'Not set', priced, priced ? '' : 'grey'),
+        tile('Fleet', fl.total ? fl.total + ' vehicles' : (fl.size ? fl.size + ' (sign-up)' : 'Not given'), fl.drivers ? fl.drivers + ' drivers' : ''),
+        tile('Documents', docs.length ? okDocs + ' of ' + docs.length + ' approved' : 'None yet', waiting ? waiting + ' waiting for you' : '', waiting ? 'warn' : ''),
+        tile('Payout', pay.set ? (pay.method === 'wise' ? 'Wise' : (pay.bank || 'Bank')) + ' · ' + pay.currency : 'Not given', pay.set ? (pay.method === 'wise' ? pay.email : 'ending ' + pay.last4) : ''),
+        tile('Agreement', p.agreement_accepted_at ? 'Accepted' : 'Not yet', p.agreement_accepted_at ? p.agreement_version + ' · ' + p.agreement_accepted_at.slice(0, 10) : ''),
+        tile('Directory', d.steps.directory ? d.steps.directory.label : '', linkTxt, pl.link === 'found' ? 'good' : ''),
+        tile('Commission', p.commission_bp === null ? money(state.boot.commission_bp) + ' (default)' : money(p.commission_bp), p.languages ? 'Speaks ' + p.languages : '')),
+      h('div', { class: 'ticks pv-steps' }, keys.map(function (k) {
         var st = d.steps[k];
-        return h('span', { class: 'chip ' + ({ done: 'green', waiting: 'orange', todo: 'grey' }[st.state]), text: st.name + ': ' + st.label });
-      })),
-      h('p', { class: 'small atc-muted', text: 'Payout: ' + (pay.set ? (pay.method === 'wise' ? 'Wise · ' + pay.email : (pay.bank ? pay.bank + ' · ' : '') + 'ending ' + pay.last4) + ' · ' + pay.currency + ' · holder ' + pay.holder : 'not given yet') +
-        (d.provider.agreement_accepted_at ? ' · Agreement ' + d.provider.agreement_version + ' accepted ' + d.provider.agreement_accepted_at.slice(0, 16) + ' UTC' : '') }));
+        return st ? h('span', { class: 'chip ' + ({ done: 'green', waiting: 'orange', todo: 'grey' }[st.state]), text: st.name + ': ' + st.label }) : null;
+      })));
   }
 
   function documentsCard(partyId, d) {
