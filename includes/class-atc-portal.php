@@ -14,7 +14,9 @@ final class ATC_Portal {
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_render' ), 1 );
 		add_filter( 'login_redirect', array( __CLASS__, 'login_redirect' ), 10, 3 );
 		add_action( 'admin_init', array( __CLASS__, 'keep_out_of_wp_admin' ) );
-		add_action( 'wp_login_failed', array( __CLASS__, 'login_failed' ) );
+		add_action( 'wp_login_failed', array( __CLASS__, 'login_failed' ), 10, 2 );
+		add_filter( 'login_form_middle', array( __CLASS__, 'login_captcha' ) );
+		add_filter( 'authenticate', array( __CLASS__, 'check_login_captcha' ), 40 );
 		add_action( 'admin_post_nopriv_atc_form', array( __CLASS__, 'theme_signup' ), 1 );
 		add_action( 'admin_post_atc_form', array( __CLASS__, 'theme_signup' ), 1 );
 		add_filter( 'show_admin_bar', static fn( $show ) => ( current_user_can( 'atc_provider_portal' ) || current_user_can( 'atc_affiliate_portal' ) ) && ! current_user_can( 'edit_posts' ) ? false : $show );
@@ -65,7 +67,7 @@ final class ATC_Portal {
 	}
 
 	/** A wrong password on /login stays on /login. */
-	public static function login_failed(): void {
+	public static function login_failed( $username = '', $error = null ): void {
 		$ref = wp_get_referer();
 		if ( $ref && ( false !== strpos( $ref, '/login' ) ) && false === strpos( $ref, 'wp-login.php' ) ) {
 			$next = '';
@@ -74,7 +76,8 @@ final class ATC_Portal {
 			if ( ! empty( $args['next'] ) ) {
 				$next = (string) $args['next'];
 			}
-			wp_safe_redirect( add_query_arg( 'failed', class_exists( 'ATC_Guard' ) && ATC_Guard::locked() ? 'locked' : 1, self::login_url( $next ) ) );
+			$why = is_wp_error( $error ) && $error->get_error_code() === 'atc_captcha' ? 'captcha' : ( class_exists( 'ATC_Guard' ) && ATC_Guard::locked() ? 'locked' : 1 );
+			wp_safe_redirect( add_query_arg( 'failed', $why, self::login_url( $next ) ) );
 			exit;
 		}
 	}
@@ -216,7 +219,7 @@ final class ATC_Portal {
 
 		$fail = static function ( array $errors, string $general = '' ) use ( $in, $back ) {
 			$token = wp_generate_password( 12, false, false );
-			$keep  = array_intersect_key( $in, array_flip( array( 'company', 'name', 'email', 'phone', 'airport_id', 'airport_place_id', 'airport_q', 'fleet', 'about', 'accept' ) ) );
+			$keep  = array_intersect_key( $in, array_flip( array( 'company', 'name', 'email', 'phone', 'airport_id', 'airport_place_id', 'airport_q', 'fleet', 'about', 'accept', 'claim' ) ) );
 			set_transient( 'atc_su_' . $token, array( 'errors' => $errors, 'general' => $general, 'in' => $keep ), 15 * MINUTE_IN_SECONDS );
 			wp_safe_redirect( add_query_arg( 'atc_su', $token, $back ) . '#form' );
 			exit;
@@ -272,10 +275,21 @@ final class ATC_Portal {
 			}
 		}
 		$in  = $state['in'];
+		// "Claim this profile": the profile they come from, kept through the form.
+		$claim = (int) ( $in['claim'] ?? ( isset( $_GET['claim'] ) ? absint( wp_unslash( $_GET['claim'] ) ) : 0 ) ); // phpcs:ignore
+		$claim = $claim && ATC_Directory::claimable( $claim ) ? $claim : 0;
+		$title = $claim ? get_the_title( $claim ) : '';
+		if ( $claim && empty( $in['company'] ) ) {
+			$in['company'] = $title;
+		}
 		$v   = static fn( $k ) => esc_attr( isset( $in[ $k ] ) ? sanitize_text_field( (string) $in[ $k ] ) : '' );
 		$err = static fn( $k ) => isset( $state['errors'][ $k ] ) ? '<small class="atc-field-err" role="alert">' . esc_html( $state['errors'][ $k ] ) . '</small>' : '';
 
 		$out = '<input type="hidden" name="atc_signup" value="1">';
+		if ( $claim ) {
+			$out .= '<input type="hidden" name="claim" value="' . (int) $claim . '">';
+			$out .= '<p class="atc-formnote" style="background:#F7F5F1;border:1px solid #ECE8E1;border-radius:12px;padding:12px 14px;font-size:14px">You are claiming the profile of <strong>' . esc_html( $title ) . '</strong>. Use your company email: when it matches the one we have, your profile is yours right away. Otherwise our team checks it within one business day.</p>';
+		}
 		if ( $state['general'] || ( $state['errors'] && empty( array_intersect_key( $state['errors'], array_flip( array( 'company', 'name', 'email', 'phone', 'airport_id', 'password', 'accept', 'about' ) ) ) ) ) ) {
 			$msg  = $state['general'] ?: implode( ' ', $state['errors'] );
 			$out .= '<p class="atc-formnote is-err" role="alert">' . esc_html( $msg ) . '</p>';
@@ -382,7 +396,7 @@ final class ATC_Portal {
 		echo '<section class="atc-auth-form"><div class="atc-auth-inner">';
 		echo '<h1>Welcome back</h1><p class="atc-muted">Sign in to your account. Booked without one? Use <a href="' . esc_url( home_url( '/manage-booking/' ) ) . '">Manage booking</a>.</p>';
 		if ( isset( $_GET['failed'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			echo '<p class="chip red" role="alert">' . ( 'locked' === $_GET['failed'] ? 'Too many failed attempts. Please wait an hour, or use “Forgot your password?” below.' : 'Email or password is not right.' ) . '</p>'; // phpcs:ignore
+			echo '<p class="chip red" role="alert">' . ( 'locked' === $_GET['failed'] ? 'Too many failed attempts. Please wait an hour, or use “Forgot your password?” below.' : ( 'captcha' === $_GET['failed'] ? 'Please complete the security check, then sign in again.' : 'Email or password is not right.' ) ) . '</p>'; // phpcs:ignore
 		}
 		echo '<div class="atc-login">';
 		wp_login_form(
@@ -394,12 +408,42 @@ final class ATC_Portal {
 				'remember'       => true,
 			)
 		);
+		$captcha = self::captcha_site_key();
 		echo '</div><p class="atc-auth-forgot"><a href="' . esc_url( wp_lostpassword_url( self::login_url() ) ) . '">Forgot your password?</a></p>';
 		echo '<p class="atc-auth-new">New here? <a href="' . esc_url( self::signup_url() ) . '">Become a provider</a> · <a href="' . esc_url( home_url( '/partners/affiliate/' ) ) . '">Become an affiliate</a></p>';
 		echo '</div></section>';
 		echo '<aside class="atc-auth-art" aria-hidden="true"><p class="atc-auth-tag">Private airport transfers, <span>worldwide</span>.</p><img src="' . esc_url( $van ) . '" alt="" width="1600" height="1000" fetchpriority="low" decoding="async"><ul><li>Price per vehicle</li><li>Flight tracked</li><li>Free cancellation</li></ul></aside>';
 		echo '</main>';
-		self::frame_close();
+		self::frame_close( $captcha ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>' : '' );
+	}
+
+	/* ---------- Turnstile on our sign-in form (the theme's keys, Appearance → Customize) ---------- */
+
+	private static function captcha_site_key(): string {
+		return function_exists( 'atc_captcha_on' ) && atc_captcha_on() ? trim( (string) get_option( 'atc_turnstile_site' ) ) : '';
+	}
+
+	/** The widget, just above the Sign in button; a marker tells authenticate() the form is ours. */
+	public static function login_captcha( string $html ): string {
+		$key = self::captcha_site_key();
+		return $html . '<input type="hidden" name="atc_login" value="1">' . ( $key ? '<div class="cf-turnstile" data-sitekey="' . esc_attr( $key ) . '" data-theme="light" data-size="flexible" style="margin:4px 0 14px"></div>' : '' );
+	}
+
+	/** Sign-ins from our form need a passed Turnstile check (when keys are set). If Cloudflare can't be reached, let them in. */
+	public static function check_login_captcha( $user ) {
+		if ( empty( $_POST['atc_login'] ) || ! self::captcha_site_key() || is_wp_error( $user ) || ! $user ) { // phpcs:ignore
+			return $user;
+		}
+		$token = isset( $_POST['cf-turnstile-response'] ) ? sanitize_text_field( wp_unslash( $_POST['cf-turnstile-response'] ) ) : ''; // phpcs:ignore
+		if ( '' === $token ) {
+			return new WP_Error( 'atc_captcha', 'Please complete the security check.' );
+		}
+		$res = wp_remote_post( 'https://challenges.cloudflare.com/turnstile/v0/siteverify', array( 'timeout' => 10, 'body' => array( 'secret' => trim( (string) get_option( 'atc_turnstile_secret' ) ), 'response' => $token, 'remoteip' => isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '' ) ) );
+		if ( is_wp_error( $res ) ) {
+			return $user;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $res ), true );
+		return empty( $data['success'] ) ? new WP_Error( 'atc_captcha', 'Please complete the security check.' ) : $user;
 	}
 
 	/* ---------- The provider app ---------- */
@@ -413,7 +457,16 @@ final class ATC_Portal {
 		);
 		self::frame_open( 'Affiliate panel', 'Affiliate panel' );
 		echo '<div class="atc-wrap atc-shell"><nav id="atc-side" class="atc-side" aria-label="Affiliate menu"></nav><main id="atc-app" class="atc-main" aria-live="polite"><p class="atc-muted">Loading…</p></main></div><div id="atc-toast" role="status" aria-live="polite"></div>';
-		self::frame_close( '<script>window.ATC = ' . wp_json_encode( $config ) . ';</script><script src="' . esc_url( ATC_URL . 'assets/affiliate.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script>' );
+		ATC_Chat::partner( 'affiliate', (int) ATC_Affiliates::party_id_for_user( get_current_user_id() ) );
+		self::frame_close( ATC_Chat::markup() . '<script>window.ATC = ' . wp_json_encode( $config ) . ';</script><script src="' . esc_url( ATC_URL . 'assets/affiliate.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script>' );
+	}
+
+	/** "Last seen in the portal", for the onboarding page in Control (written at most every 10 minutes). */
+	private static function seen(): void {
+		$uid = get_current_user_id();
+		if ( $uid && time() - (int) get_user_meta( $uid, 'atc_last_seen', true ) > 600 ) {
+			update_user_meta( $uid, 'atc_last_seen', time() );
+		}
 	}
 
 	private static function app(): void {
@@ -428,6 +481,8 @@ final class ATC_Portal {
 		$js = ATC_URL . 'assets/portal.js?v=' . rawurlencode( ATC_VERSION );
 		self::frame_open( 'Provider portal', 'Provider portal' );
 		echo '<div class="atc-wrap atc-shell"><nav id="atc-side" class="atc-side" aria-label="Provider menu"></nav><main id="atc-app" class="atc-main" aria-live="polite"><p class="atc-muted">Loading…</p></main></div><div id="atc-toast" role="status" aria-live="polite"></div>';
-		self::frame_close( '<script>window.ATC = ' . wp_json_encode( $config ) . ';</script><script src="' . esc_url( ATC_URL . 'assets/prices.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script><script src="' . esc_url( ATC_URL . 'assets/meeting.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script><script src="' . esc_url( $js ) . '"></script>' );
+		self::seen();
+		ATC_Chat::partner( 'provider', (int) ATC_Partner::current_party_id() );
+		self::frame_close( ATC_Chat::markup() . '<script>window.ATC = ' . wp_json_encode( $config ) . ';</script><script src="' . esc_url( ATC_URL . 'assets/prices.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script><script src="' . esc_url( ATC_URL . 'assets/meeting.js?v=' . rawurlencode( ATC_VERSION ) ) . '"></script><script src="' . esc_url( $js ) . '"></script>' );
 	}
 }

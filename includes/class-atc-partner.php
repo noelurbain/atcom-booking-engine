@@ -162,7 +162,9 @@ final class ATC_Partner {
 		ATC_Install::log( 'party', $party_id, 'signed_up', array( 'user_id' => $user_id ) );
 		// Ticking the box on the sign-up form is the provider's signature on the agreement.
 		self::accept_agreement( $party_id );
+		ATC_Directory::$claiming = (int) ( $in['claim'] ?? 0 );
 		do_action( 'atc_provider_signed_up', $party_id );
+		ATC_Directory::$claiming = 0;
 
 		ATC_Mail::defer( static fn() => self::mail_welcome( $email, $contact, $company ) );
 		ATC_Mail::defer( static fn() => self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nMain airport: " . ATC_Catalog::airport_label( $airport ) . ( $new_airport ? "\n\nNEW AIRPORT, added from Google: {$airport['name']} ({$airport['city']}, {$airport['country']}, time zone {$airport['timezone']}). It has no IATA code and no zones yet." : '' ) . ( '' !== $fleet ? "\nFleet size: {$fleet}" : '' ) . "\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) ) );
@@ -208,10 +210,38 @@ final class ATC_Partner {
 		);
 	}
 
-	/**
-	 * Which invitation a provider gets: 'live' (has prices, gets bookings), 'applied' (applied on the old
-	 * site and never got an answer) or 'former' (in the old provider list, no active prices).
-	 */
+	/** Every provider's onboarding at a glance, for the control panel. */
+	public static function onboarding(): array {
+		global $wpdb;
+		$rows = $wpdb->get_results( 'SELECT p.id, p.name, p.email, p.country, p.status, p.invited_at, p.invite_count, p.created_at, p.fleet, a.iata FROM ' . self::t( 'parties' ) . ' p LEFT JOIN ' . self::t( 'airports' ) . " a ON a.id = p.home_airport_id WHERE p.type = 'provider' AND p.status <> 'archived' ORDER BY p.name", ARRAY_A ); // phpcs:ignore
+		$out = array();
+		foreach ( $rows as $r ) {
+			$id    = (int) $r['id'];
+			$state = self::portal_state( $id );
+			$uid   = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT user_id FROM ' . self::t( 'party_users' ) . ' WHERE party_id = %d ORDER BY user_id LIMIT 1', $id ) );
+			$seen  = $uid ? (int) get_user_meta( $uid, 'atc_last_seen', true ) : 0;
+			$steps = array();
+			foreach ( self::steps( $id ) as $k => $st ) {
+				$steps[ $k ] = array( 'state' => $st['state'], 'label' => $st['label'] );
+			}
+			$f     = self::fleet_shape( $r['fleet'] ? (array) json_decode( $r['fleet'], true ) : array() );
+			$out[] = array(
+				'id'        => $id,
+				'name'      => $r['name'],
+				'email'     => (string) $r['email'],
+				'country'   => (string) $r['country'],
+				'airport'   => (string) $r['iata'],
+				'status'    => $r['status'],
+				'group'     => self::invite_group( $r + array( 'id' => $id ) ),
+				'portal'    => $state,
+				'last_seen' => $seen ? gmdate( 'Y-m-d H:i', $seen ) : null,
+				'steps'     => $steps,
+				'fleet'     => $f['total'],
+			);
+		}
+		return $out;
+	}
+
 	/* ---------- Fleet inventory (our team only, never shown on the directory) ---------- */
 
 	/**
@@ -306,6 +336,10 @@ final class ATC_Partner {
 		}
 	}
 
+	/**
+	 * Which invitation a provider gets: 'live' (has prices, gets bookings), 'applied' (applied on the old
+	 * site and never got an answer) or 'former' (in the old provider list, no active prices).
+	 */
 	public static function invite_group( array $p ): string {
 		global $wpdb;
 		if ( 'live' === $p['status'] ) {

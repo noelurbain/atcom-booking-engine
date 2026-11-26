@@ -230,3 +230,10 @@ table.report{min-width:1150px}
 .dir-bl{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line2);border-radius:14px;padding:14px 16px;background:var(--bg)}
 .dir-snip{display:flex;gap:10px;align-items:center}.dir-snip input{flex:1 1 auto;min-width:0}
 .pe-offcol{opacity:.55}.pe-offcol .pe-c{background:#F7F5F1}th.pe-offcol{opacity:1}th.pe-offcol .strong{color:var(--muted)}.pe-on{display:block;margin-top:4px;font-size:12px;font-weight:800;color:var(--brown)}
+.ob-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.ob-tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 14px;border:1px solid var(--line,#E6E2DA);border-radius:12px;background:#fff;cursor:pointer;text-align:left;font:inherit}
+.ob-tile strong{font-size:22px}.ob-tile span{font-size:13px;color:var(--muted)}
+.ob-table td.ob-c,.ob-table th{text-align:center}.ob-table th:first-child,.ob-table td:first-child{text-align:left}
+.ob-dot{display:inline-block;width:12px;height:12px;border-radius:999px;background:#E3DFD7}
+.ob-dot.done{background:var(--green,#2E7D4F)}.ob-dot.waiting{background:#F0A030}
+@media (max-width:900px){.ob-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}

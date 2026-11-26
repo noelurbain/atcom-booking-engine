@@ -32,6 +32,30 @@ final class ATC_Chat {
 		);
 	}
 
+	/** Called by the provider and affiliate portals: Crisp shows our team which partner is writing. */
+	public static function partner( string $role, int $party_id ): void {
+		global $wpdb;
+		$p = $wpdb->get_row( $wpdb->prepare( 'SELECT id, name, contact_name, email, phone FROM ' . ATC_Schema::table( 'parties' ) . ' WHERE id = %d', $party_id ), ARRAY_A );
+		$u = wp_get_current_user();
+		self::$context = array_filter(
+			array(
+				'email'   => $u && $u->user_email ? (string) $u->user_email : (string) ( $p['email'] ?? '' ),
+				'name'    => $p ? trim( ( $p['contact_name'] ? $p['contact_name'] . ' · ' : '' ) . $p['name'] ) : (string) ( $u->display_name ?? '' ),
+				'phone'   => (string) ( $p['phone'] ?? '' ),
+				'segment' => $role,
+				'company' => (string) ( $p['name'] ?? '' ),
+				'control' => $p && 'provider' === $role ? home_url( '/control/providers/' . (int) $p['id'] . '/' ) : '',
+			)
+		);
+	}
+
+	/** The chat button and loader, as a string (the portals print their own page, without wp_footer). */
+	public static function markup(): string {
+		ob_start();
+		self::footer();
+		return (string) ob_get_clean();
+	}
+
 	public static function footer(): void {
 		$id = (string) ATC_Settings::get( 'crisp_id' );
 		if ( '' === $id || is_admin() ) {
@@ -57,10 +81,11 @@ final class ATC_Chat {
     if (x.name) window.$crisp.push(['set', 'user:nickname', [x.name]]);
     if (x.phone) window.$crisp.push(['set', 'user:phone', [x.phone]]);
     var data = [];
-    ['booking', 'status', 'airport', 'control'].forEach(function (k) { if (x[k]) data.push([k, x[k]]); });
+    ['booking', 'status', 'airport', 'company', 'control'].forEach(function (k) { if (x[k]) data.push([k, x[k]]); });
     data.push(['page', location.pathname]);
     window.$crisp.push(['set', 'session:data', [data]]);
-    if (x.booking) window.$crisp.push(['set', 'session:segments', [['booking']]]);
+    var seg = []; if (x.booking) seg.push('booking'); if (x.segment) seg.push(x.segment);
+    if (seg.length) window.$crisp.push(['set', 'session:segments', [seg]]);
     // Our button stays the only launcher (it moves above the booking bar on phones); Crisp's own shows only while chatting.
     window.$crisp.push(['on', 'session:loaded', function () {
       btn.classList.remove('is-loading');

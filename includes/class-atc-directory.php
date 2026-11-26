@@ -20,12 +20,18 @@ final class ATC_Directory {
 	const PT   = 'atc_provider';
 	const TAX  = 'atc_place';
 	const LINK = '_atc_party_id';
+	const CLAIM_CONTACT = '_atc_claim_contact'; // private: email etc. found for the company (outreach list), never shown
+	const CLAIM_PENDING = '_atc_claim_pending'; // provider id that asked to claim the profile, waiting for our team
+
+	/** Set by the sign-up while it runs: the profile the new provider is claiming. */
+	public static int $claiming = 0;
 
 	public static function init(): void {
 		add_action( 'init', array( __CLASS__, 'maybe_link_all' ), 99 );
 		add_action( 'atc_provider_signed_up', array( __CLASS__, 'on_signup' ) );
 		add_action( 'atc_provider_live', array( __CLASS__, 'on_live' ) );
 		add_action( 'atc_hourly', array( __CLASS__, 'hourly' ) );
+		add_action( 'wp_footer', array( __CLASS__, 'claim_box' ), 20 );
 		add_action( 'update_option_' . ATC_Settings::OPTION, array( __CLASS__, 'settings_changed' ), 10, 2 );
 	}
 
@@ -71,6 +77,7 @@ final class ATC_Directory {
 		}
 		if ( $post_id ) {
 			update_post_meta( $post_id, self::LINK, $party_id );
+			delete_post_meta( $post_id, self::CLAIM_PENDING );
 			self::apply( $post_id );
 		}
 		ATC_Install::log( 'party', $party_id, $post_id ? 'directory_linked' : 'directory_unlinked', array( 'post_id' => $post_id ?: $old ) );
@@ -166,6 +173,9 @@ final class ATC_Directory {
 		if ( self::post_id( $party_id ) ) {
 			return;
 		}
+		if ( self::$claiming && self::claim( $party_id, self::$claiming ) ) {
+			return;
+		}
 		$match = self::find_match( $party_id );
 		$match ? self::link( $party_id, $match ) : self::create( $party_id );
 	}
@@ -220,6 +230,84 @@ final class ATC_Directory {
 	private static function paras( string $text ): string {
 		$text = trim( $text );
 		return '' === $text ? '' : wpautop( esc_html( $text ) );
+	}
+
+	/* ---------- Claim this profile ---------- */
+
+	/** A profile nobody owns yet, that a company can claim. */
+	public static function claimable( int $post_id ): bool {
+		$post = get_post( $post_id );
+		return $post && self::PT === $post->post_type && 'publish' === $post->post_status && ! self::party_for_post( $post_id ) && ! get_post_meta( $post_id, self::CLAIM_PENDING, true );
+	}
+
+	/**
+	 * A new provider claims a profile. Linked right away when the sign-up email proves it is theirs (the email
+	 * we found for them, or an address on their website's domain); otherwise our team checks it in Control.
+	 * Returns true when handled (linked or waiting), so no second profile is made.
+	 */
+	public static function claim( int $party_id, int $post_id ): bool {
+		if ( ! self::claimable( $post_id ) ) {
+			return false;
+		}
+		$p     = ATC_Catalog::party( $party_id );
+		$email = strtolower( trim( (string) ( $p['email'] ?? '' ) ) );
+		$c     = (array) get_post_meta( $post_id, self::CLAIM_CONTACT, true );
+		$m     = self::meta( $post_id );
+		$dom   = substr( strrchr( $email, '@' ) ?: '', 1 );
+		$free  = in_array( $dom, array( 'gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'live.com', 'aol.com', 'hotmail.es', 'yahoo.es', 'outlook.es', 'proton.me', 'protonmail.com', 'msn.com', 'me.com', 'gmx.com', 'mail.com' ), true );
+		$site  = ! empty( $m['website'] ) ? self::host( (string) $m['website'] ) : self::host( (string) ( $c['website'] ?? '' ) );
+		$ok    = ( '' !== $email && ! empty( $c['email'] ) && in_array( $email, array_map( 'strtolower', array_map( 'trim', explode( ',', (string) $c['email'] ) ) ), true ) )
+			|| ( '' !== $dom && ! $free && '' !== $site && ( $site === $dom || substr( $site, -strlen( '.' . $dom ) ) === '.' . $dom ) );
+		if ( $ok ) {
+			self::link( $party_id, $post_id );
+			ATC_Install::log( 'party', $party_id, 'directory_claimed', array( 'post_id' => $post_id, 'checked_by' => 'email' ) );
+			return true;
+		}
+		update_post_meta( $post_id, self::CLAIM_PENDING, $party_id );
+		ATC_Install::log( 'party', $party_id, 'directory_claim_requested', array( 'post_id' => $post_id ) );
+		$title = get_the_title( $post_id );
+		ATC_Mail::defer( static fn() => ATC_Partner::mail_team( 'Profile claim to check: ' . $title, ( $p['name'] ?? '' ) . ' (' . $email . ') signed up and says the directory profile "' . $title . '" is theirs. Their email does not match the one we have' . ( ! empty( $c['email'] ) ? ' (' . $c['email'] . ')' : '' ) . ".\n\nProfile: " . get_permalink( $post_id ) . "\nApprove or ignore: " . home_url( '/control/providers/' . $party_id . '/' ) ) );
+		return true;
+	}
+
+	/** The profile a provider asked to claim, still waiting for our team. */
+	public static function pending_claim( int $party_id ): int {
+		global $wpdb;
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %d LIMIT 1", self::CLAIM_PENDING, $party_id ) );
+	}
+
+	/** Staff: store the contacts found for unclaimed profiles (rows of post_id, email, phone, whatsapp, contact, website). */
+	public static function import_claim_contacts( array $rows ): array {
+		$n = 0;
+		foreach ( $rows as $r ) {
+			$pid = (int) ( $r['post_id'] ?? 0 );
+			if ( ! $pid || self::PT !== get_post_type( $pid ) ) {
+				continue;
+			}
+			$c = array();
+			foreach ( array( 'email', 'phone', 'whatsapp', 'contact', 'website', 'confidence' ) as $k ) {
+				if ( ! empty( $r[ $k ] ) ) {
+					$c[ $k ] = sanitize_text_field( (string) $r[ $k ] );
+				}
+			}
+			update_post_meta( $pid, self::CLAIM_CONTACT, $c );
+			++$n;
+		}
+		return array( 'saved' => $n );
+	}
+
+	/** "Is this your company?" at the bottom of a profile nobody owns yet (the theme template has no hook, so it is placed by script). */
+	public static function claim_box(): void {
+		if ( ! is_singular( self::PT ) || ! self::claimable( (int) get_queried_object_id() ) ) {
+			return;
+		}
+		$url = add_query_arg( 'claim', (int) get_queried_object_id(), home_url( '/partners/provider/' ) ) . '#form';
+		?>
+<section class="atc-wrap atc-claim" id="atc-claim" style="padding-bottom:40px"><div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;border:1px dashed var(--line-2,#D9D4CA);border-radius:18px;padding:20px 24px;background:#fff">
+<div style="flex:1 1 420px"><strong style="font-size:17px">Is this your company?</strong><p class="atc-muted" style="margin:4px 0 0;font-size:15px">Claim this free profile to update it, add your logo and photos, and receive bookings from travelers.</p></div>
+<a class="atc-btn is-ghost" href="<?php echo esc_url( $url ); ?>" rel="nofollow">Claim this profile →</a></div></section>
+<script>(function(){var b=document.getElementById('atc-claim'),t=document.querySelector('.atc-contact-row');t=t?t.closest('section'):document.querySelector('section.atc-band');if(b&&t&&t.parentNode){t.parentNode.insertBefore(b,t.nextSibling);}})();</script>
+		<?php
 	}
 
 	/* ---------- The profile ---------- */
@@ -319,6 +407,8 @@ final class ATC_Directory {
 		if ( ! $pid ) {
 			$match           = self::find_match( $party_id );
 			$out['match']    = $match ? array( 'id' => $match, 'title' => get_the_title( $match ), 'url' => get_permalink( $match ) ) : null;
+			$claim           = self::pending_claim( $party_id );
+			$out['claim']    = $claim ? array( 'id' => $claim, 'title' => get_the_title( $claim ), 'url' => get_permalink( $claim ), 'contact' => (array) get_post_meta( $claim, self::CLAIM_CONTACT, true ) ) : null;
 			return $out;
 		}
 		$post = get_post( $pid );

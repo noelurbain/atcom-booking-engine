@@ -143,6 +143,7 @@ final class ATC_REST_Control {
 		self::route( '/providers/(?P<id>\\d+)/extras/(?P<x>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Extras::save_offer( (int) $r['id'], (int) $r['x'], self::body( $r ) ) ) ) );
 
 		// Directory profiles: the provider's, linking one by hand, search.
+		self::route( '/directory/claim-contacts', array( 'POST' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Directory::import_claim_contacts( (array) ( self::body( $r )['rows'] ?? array() ) ) ) ) );
 		self::route( '/directory/search', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Directory::search( (string) $r['q'] ) ) ) );
 		self::route(
 			'/providers/(?P<id>\\d+)/directory',
@@ -355,6 +356,10 @@ final class ATC_REST_Control {
 		self::route(
 			'/providers/(?P<id>\d+)/fleet',
 			array( 'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::save_fleet( (int) $r['id'], self::body( $r ), true ) ) ),
+		);
+		self::route(
+			'/providers/onboarding',
+			array( 'GET' => static fn() => rest_ensure_response( array( 'rows' => ATC_Partner::onboarding() ) ) ),
 		);
 		self::route(
 			'/fleet/csv',

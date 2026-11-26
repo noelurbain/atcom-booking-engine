@@ -90,6 +90,7 @@
     document.querySelectorAll('a[data-view]').forEach(function (a) {
       a.classList.toggle('on', a.getAttribute('data-view') === (parts[0] === 'import' ? 'providers' : parts[0]));
     });
+    if (parts[0] === 'providers' && parts[1] === 'onboarding') return viewOnboarding();
     if (parts[0] === 'providers' && parts[1] && parts[2] === 'extras') return viewProviderExtras(parseInt(parts[1], 10));
     if (parts[0] === 'providers' && parts[1] && parts[2] === 'directory') return viewProviderDirectory(parseInt(parts[1], 10));
     if (parts[0] === 'providers' && parts[1]) return viewProvider(parseInt(parts[1], 10));
@@ -1830,6 +1831,7 @@
       h('div', { class: 'atc-head' },
         h('div', null, h('h1', { text: 'Providers' }), h('p', { class: 'atc-muted', text: 'Transport companies we sell. Providers brought over from the old site get a sign-up invitation to choose their password.' })),
         h('div', { class: 'atc-actions' },
+          h('a', { class: 'btn', href: C.base + 'providers/onboarding/', 'data-go': 'providers/onboarding', text: 'Onboarding' }),
           h('a', { class: 'btn', href: C.base + 'import/', 'data-go': 'import', text: 'Import from the old site' }),
           h('button', { class: 'btn', type: 'button', text: 'Fleet inventory (Excel)', onclick: function (e) {
             var b = e.target; b.disabled = true;
@@ -1973,6 +1975,12 @@
         return;
       }
       add(card, h('p', { class: 'atc-muted', text: 'Not linked to a directory profile yet. Link the profile that is theirs, or make a new one from their details.' }));
+      if (d.claim) {
+        var cc = d.claim.contact || {};
+        add(card, h('div', { class: 'dir-hit', style: 'border-color:#F0A030' }, h('span', null, h('strong', { text: 'Claim to check: ' }), 'they say this profile is theirs: ', h('a', { href: d.claim.url, target: '_blank', rel: 'noopener', text: d.claim.title + ' ↗' }),
+          h('div', { class: 'small atc-muted', text: 'Email we have for that company: ' + (cc.email || 'none') + (cc.phone ? ' · phone ' + cc.phone : '') + '. Their sign-up email did not match, so check before approving (call them, or ask them to write from the company email).' })),
+          h('button', { class: 'btn dark', type: 'button', text: 'Approve claim', onclick: function () { if (confirm('Give ' + d.claim.title + ' to this provider? They can then edit it.')) linkTo(d.claim.id); } })));
+      }
       if (d.match) add(card, h('div', { class: 'dir-hit' }, h('span', null, 'Looks like theirs: ', h('a', { href: d.match.url, target: '_blank', rel: 'noopener', text: d.match.title + ' ↗' })),
         h('button', { class: 'btn dark', type: 'button', text: 'Link it', onclick: function () { linkTo(d.match.id); } })));
       var q = h('input', { type: 'search', placeholder: 'Search the directory by company name' });
@@ -2292,6 +2300,88 @@
         h('thead', null, h('tr', null, ['Vehicle', 'Category', 'Plate', 'Seats', 'Insurance until', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
         tbody)),
       h('p', { class: 'label', text: 'Add a vehicle' }), form);
+  }
+
+  /* ---------- Provider onboarding: everyone at a glance ---------- */
+
+  function viewOnboarding() {
+    clear(app);
+    var KEYS = [['company', 'Company'], ['vehicles', 'Vehicles'], ['coverage', 'Zones'], ['prices', 'Prices'], ['agreement', 'Agreement'], ['payout', 'Payout'], ['documents', 'Docs'], ['directory', 'Profile']];
+    var GROUPS = { live: 'A · live', applied: 'C · applied', former: 'B · former' };
+    var all = [], onlyDone = false;
+    var tiles = h('div', { class: 'ob-tiles' });
+    var tbody = h('tbody');
+    var search = h('input', { type: 'search', placeholder: 'Find a provider', 'aria-label': 'Find a provider' });
+    var grp = h('select', { 'aria-label': 'Group' }, [['', 'All groups'], ['live', GROUPS.live], ['applied', GROUPS.applied], ['former', GROUPS.former]].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+    var por = h('select', { 'aria-label': 'Portal' }, [['', 'Any portal state'], ['not_invited', 'Not invited'], ['invited', 'Invited, no password yet'], ['active', 'Chose a password']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+    var stuck = h('select', { 'aria-label': 'Step not done' }, [h('option', { value: '', text: 'Any step' })].concat(KEYS.map(function (k) { return h('option', { value: k[0], text: k[1] + ' not done' }); })));
+    var count = h('span', { class: 'atc-muted' });
+    add(app, [
+      h('a', { class: 'back', href: C.base + 'providers/', 'data-go': 'providers', text: '← Providers' }),
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Provider onboarding' }),
+        h('p', { class: 'atc-muted', text: 'Who got the invitation, who chose a password, and how far each provider is in their setup. Green = done, orange = waiting for us, grey = to do.' }))),
+      tiles,
+      h('div', { class: 'atc-actions' }, search, grp, por, stuck, count),
+      h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', { class: 'ob-table' },
+        h('thead', null, h('tr', null, ['Provider', 'Group', 'Portal', 'Last seen'].concat(KEYS.map(function (k) { return k[1]; })).concat(['Fleet', '']).map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+        tbody)))
+    ]);
+    function done(p) { return KEYS.every(function (k) { return p.steps[k[0]] && p.steps[k[0]].state === 'done'; }); }
+    function tile(n, label, onclick) { return h('button', { type: 'button', class: 'ob-tile', onclick: onclick }, h('strong', { text: String(n) }), h('span', { text: label })); }
+    function setF(g, p, s, d) { grp.value = g; por.value = p; stuck.value = s; onlyDone = !!d; render(); }
+    function paintTiles() {
+      clear(tiles);
+      var inv = all.filter(function (p) { return p.portal.state !== 'not_invited'; }).length;
+      var act = all.filter(function (p) { return p.portal.state === 'active'; }).length;
+      var wait = all.filter(function (p) { return p.portal.state === 'invited'; }).length;
+      var full = all.filter(done).length;
+      var liveN = all.filter(function (p) { return p.status === 'live'; }).length;
+      add(tiles, [tile(all.length, 'providers', function () { setF('', '', ''); }), tile(inv, 'invited', function () { setF('', '', ''); }),
+        tile(wait, 'no password yet', function () { setF('', 'invited', ''); }), tile(act, 'chose a password', function () { setF('', 'active', ''); }),
+        tile(full, 'all steps done', function () { setF('', '', '', true); }), tile(liveN, 'live', function () { setF('live', '', ''); })]);
+    }
+    function portalText(p) {
+      var s = p.portal;
+      if (s.state === 'active') return h('span', { class: 'chip green', text: 'Password ' + (s.active_since || '') });
+      if (s.state === 'invited') return h('span', { class: 'chip orange', text: 'Invited ' + String(s.invited_at || '').slice(5, 10) + (s.invite_count > 1 ? ' ×' + s.invite_count : '') });
+      return h('span', { class: 'chip grey', text: p.email ? 'Not invited' : 'No email' });
+    }
+    function render() {
+      clear(tbody);
+      var q = search.value.trim().toLowerCase();
+      var rows = all.filter(function (p) {
+        if (q && (p.name + ' ' + p.email + ' ' + p.airport).toLowerCase().indexOf(q) === -1) return false;
+        if (grp.value && p.group !== grp.value) return false;
+        if (por.value && p.portal.state !== por.value) return false;
+        if (stuck.value && p.steps[stuck.value] && p.steps[stuck.value].state === 'done') return false;
+        if (onlyDone && !done(p)) return false;
+        return true;
+      });
+      count.textContent = rows.length + ' of ' + all.length;
+      rows.forEach(function (p) {
+        var re = p.portal.state === 'invited' ? h('button', { type: 'button', class: 'link', text: 'Re-invite', onclick: function (e) {
+          if (!confirm('Send ' + p.name + ' a new invitation email?')) return;
+          e.target.disabled = true;
+          api('POST', '/providers/' + p.id + '/invite').then(function () { toast('Invitation sent.'); load(); }).catch(function (x) { e.target.disabled = false; fail(x); });
+        } }) : null;
+        add(tbody, h('tr', null,
+          h('td', null, h('a', { class: 'strong', href: C.base + 'providers/' + p.id + '/', 'data-go': 'providers/' + p.id, text: p.name }), h('div', { class: 'small atc-muted', text: [p.airport, p.country, p.status].filter(Boolean).join(' · ') })),
+          h('td', { class: 'small', text: GROUPS[p.group] || p.group }),
+          h('td', null, portalText(p)),
+          h('td', { class: 'small atc-muted', text: p.last_seen ? p.last_seen.slice(5) : '' }),
+          KEYS.map(function (k) { var st = p.steps[k[0]] || { state: 'todo', label: '' }; return h('td', { class: 'ob-c' }, h('span', { class: 'ob-dot ' + st.state, title: k[1] + ': ' + st.label, 'aria-label': k[1] + ': ' + st.label })); }),
+          h('td', { class: 'small', text: p.fleet ? String(p.fleet) : '' }),
+          h('td', null, re)));
+      });
+      if (!rows.length) add(tbody, h('tr', null, h('td', { colspan: 14, class: 'atc-muted', text: 'No provider matches.' })));
+    }
+    function load() {
+      count.textContent = 'Loading…';
+      api('GET', '/providers/onboarding').then(function (r) { all = r.rows; paintTiles(); render(); }).catch(fail);
+    }
+    search.addEventListener('input', render);
+    [grp, por, stuck].forEach(function (x) { x.addEventListener('change', function () { onlyDone = false; render(); }); });
+    load();
   }
 
   // Fleet inventory: our team only, never on the directory. The provider fills it on their Vehicles page (optional).
