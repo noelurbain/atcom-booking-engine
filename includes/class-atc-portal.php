@@ -374,7 +374,7 @@ final class ATC_Portal {
 		self::frame_open( 'Choose your password', 'Welcome' );
 		echo '<main class="atc-wrap atc-narrow">';
 		if ( is_wp_error( $user ) ) {
-			echo '<section class="card pad"><h1>This link has expired</h1><p>Links to choose a password work for 24 hours and only once. <a href="' . esc_url( wp_lostpassword_url( self::login_url() ) ) . '">Get a new link</a> with your email, or write to ' . esc_html( ATC_Settings::get( 'from_email' ) ) . '.</p></section>';
+			echo '<section class="card pad"><h1>This link has expired</h1><p>Links to choose a password work for 7 days and only once. <a href="' . esc_url( wp_lostpassword_url( self::login_url() ) ) . '">Get a new link</a> with your email, or write to ' . esc_html( ATC_Settings::get( 'from_email' ) ) . '.</p></section>';
 		} else {
 			echo '<div class="atc-head"><div><h1>Choose your password</h1><p class="atc-muted">You sign in with ' . esc_html( $user->user_email ) . '.</p></div></div><form method="post" class="card pad">';
 			if ( $error ) {

@@ -438,7 +438,7 @@ final class ATC_Affiliates {
 		$name    = $p['contact_name'] ?: $p['name'];
 		$rate    = self::rate_bp( $p ) / 100;
 		$subject = 'Welcome to the Airport Transportation affiliate program';
-		$body    = "Hi {$name},\n\nYour affiliate account is approved. You earn {$rate}% of every completed booking made through your links, for 30 days after each click.\n\nChoose your password here (the link works for 24 hours):\n{$link}\n\nYour link: " . self::link( (string) $p['ref_code'] ) . "\n\nIn your affiliate panel you can make a link to any page, see your clicks, bookings and commission, book for your clients, and add your payout details. Commissions are paid on the " . (int) ATC_Settings::get( 'payout_day' ) . "th of each month once you have at least " . ATC_Book::money( (int) ATC_Settings::get( 'payout_minimum_cents' ) ) . ".\n\nSign in any time at " . home_url( '/login/' ) . "\n\nAirport Transportation";
+		$body    = "Hi {$name},\n\nYour affiliate account is approved. You earn {$rate}% of every completed booking made through your links, for 30 days after each click.\n\nChoose your password here (the link works for 7 days):\n{$link}\n\nYour link: " . self::link( (string) $p['ref_code'] ) . "\n\nIn your affiliate panel you can make a link to any page, see your clicks, bookings and commission, book for your clients, and add your payout details. Commissions are paid on the " . (int) ATC_Settings::get( 'payout_day' ) . "th of each month once you have at least " . ATC_Book::money( (int) ATC_Settings::get( 'payout_minimum_cents' ) ) . ".\n\nSign in any time at " . home_url( '/login/' ) . "\n\nAirport Transportation";
 		$to      = $email;
 		$test    = (string) ATC_Settings::get( 'invite_test_to' );
 		if ( '' !== $test ) {
