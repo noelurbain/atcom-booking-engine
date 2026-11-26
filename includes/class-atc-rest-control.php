@@ -371,6 +371,7 @@ final class ATC_REST_Control {
 				},
 			)
 		);
+		self::route( '/content/seed-routes', array( 'POST' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Content::seed_routes( ! empty( self::body( $r )['existing'] ) ) ) ) );
 		self::route( '/content', array( 'GET' => static fn() => rest_ensure_response( ATC_Content::overview() ) ) );
 		self::route( '/content/(?P<id>\\d+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Content::airport( (int) $r['id'] ) ) ) );
 		self::route(

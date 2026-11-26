@@ -177,6 +177,89 @@ final class ATC_Catalog {
 	 * among live providers, the largest capacity sold, and our photo. No provider names: for public pages.
 	 * Cached for an hour.
 	 */
+	/**
+	 * Live price table of an airport for our pages: one row per destination (zone) that a bookable provider prices,
+	 * one column per vehicle category sold there, each cell the lowest one-way and round-trip price (cents).
+	 * Rows sorted by one-way price, cheapest first. Cached 30 minutes.
+	 * Returns array( 'cols' => [ {id, name, pax} ], 'rows' => [ {zone_id, name, slug, cells: { vehicle_id: [ow, rt] }, from} ] ).
+	 */
+	public static function price_grid( string $iata ): array {
+		global $wpdb;
+		$iata = strtoupper( preg_replace( '/[^A-Za-z]/', '', $iata ) );
+		if ( 3 !== strlen( $iata ) ) {
+			return array( 'cols' => array(), 'rows' => array() );
+		}
+		$key = 'atc_grid_' . $iata;
+		$hit = get_transient( $key );
+		if ( is_array( $hit ) ) {
+			return $hit;
+		}
+		$today = current_time( 'Y-m-d' );
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT z.id zone_id, z.name zone, z.slug, z.sort zsort, v.id vid, v.name vehicle, v.sort vsort, MAX(s.max_passengers) pax,
+					MIN(IF(pr.direction = \'one_way\', pr.retail_cents, NULL)) ow, MIN(IF(pr.direction = \'round_trip\', pr.retail_cents, NULL)) rt
+				FROM ' . self::t( 'airports' ) . ' a
+				JOIN ' . self::t( 'services' ) . " s ON s.airport_id = a.id AND s.status = 'live'
+				JOIN " . self::t( 'parties' ) . " p ON p.id = s.party_id AND p.status = 'live'
+				JOIN " . self::t( 'vehicle_types' ) . ' v ON v.id = s.vehicle_type_id
+				JOIN ' . self::t( 'prices' ) . ' pr ON pr.service_id = s.id AND pr.retail_cents > 0
+					AND (pr.valid_from IS NULL OR pr.valid_from <= %s) AND (pr.valid_to IS NULL OR pr.valid_to >= %s)
+				JOIN ' . self::t( 'zones' ) . " z ON z.id = pr.zone_id AND z.status = 'active'
+				WHERE a.iata = %s AND a.status = 'active'
+				GROUP BY z.id, v.id",
+				$today,
+				$today,
+				$iata
+			),
+			ARRAY_A
+		);
+		$cols = array();
+		$out  = array();
+		foreach ( $rows as $r ) {
+			$vid = (int) $r['vid'];
+			if ( ! isset( $cols[ $vid ] ) ) {
+				$cols[ $vid ] = array( 'id' => $vid, 'name' => $r['vehicle'], 'pax' => 0, 'sort' => (int) $r['vsort'] );
+			}
+			$cols[ $vid ]['pax'] = max( $cols[ $vid ]['pax'], (int) $r['pax'] );
+			$zid = (int) $r['zone_id'];
+			if ( ! isset( $out[ $zid ] ) ) {
+				$out[ $zid ] = array( 'zone_id' => $zid, 'name' => $r['zone'], 'slug' => $r['slug'], 'cells' => array(), 'from' => 0 );
+			}
+			$ow = null === $r['ow'] ? 0 : (int) $r['ow'];
+			$rt = null === $r['rt'] ? 0 : (int) $r['rt'];
+			$out[ $zid ]['cells'][ $vid ] = array( $ow, $rt );
+			if ( $ow && ( ! $out[ $zid ]['from'] || $ow < $out[ $zid ]['from'] ) ) {
+				$out[ $zid ]['from'] = $ow;
+			}
+		}
+		uasort( $cols, static fn( $a, $b ) => $a['sort'] <=> $b['sort'] );
+		$out = array_values( $out );
+		usort( $out, static fn( $a, $b ) => ( $a['from'] ?: PHP_INT_MAX ) <=> ( $b['from'] ?: PHP_INT_MAX ) ?: strcasecmp( $a['name'], $b['name'] ) );
+		$grid = array( 'cols' => array_values( $cols ), 'rows' => $out );
+		set_transient( $key, $grid, 30 * MINUTE_IN_SECONDS );
+		return $grid;
+	}
+
+	/** Hotels we know inside these zones of an airport (by zone id), for destination pages. Cached 1 hour. */
+	public static function zone_hotels( array $zone_ids ): array {
+		global $wpdb;
+		$ids = array_values( array_filter( array_map( 'intval', $zone_ids ) ) );
+		if ( ! $ids ) {
+			return array();
+		}
+		sort( $ids );
+		$key = 'atc_zhotels_' . md5( implode( ',', $ids ) );
+		$hit = get_transient( $key );
+		if ( is_array( $hit ) ) {
+			return $hit;
+		}
+		$in   = implode( ',', $ids );
+		$rows = $wpdb->get_results( 'SELECT p.id, p.name, p.address, p.zone_id, z.name zone FROM ' . self::t( 'places' ) . ' p JOIN ' . self::t( 'zones' ) . " z ON z.id = p.zone_id WHERE p.zone_id IN ({$in}) AND p.status = 'active' AND p.type = 'hotel' ORDER BY p.name", ARRAY_A ); // phpcs:ignore
+		set_transient( $key, $rows, HOUR_IN_SECONDS );
+		return $rows;
+	}
+
 	public static function airport_offer( string $iata ): array {
 		global $wpdb;
 		$iata = strtoupper( preg_replace( '/[^A-Za-z]/', '', $iata ) );

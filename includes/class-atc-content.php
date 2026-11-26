@@ -219,4 +219,55 @@ final class ATC_Content {
 			'orphans'   => $orphans,
 		);
 	}
+
+	/**
+	 * One-off: write the Cancún destination pages from data/cancun-routes.json. New pages are made as drafts for
+	 * review. Pages that already exist are only rewritten when $existing is true (their image is kept).
+	 */
+	public static function seed_routes( bool $existing = false ): array {
+		$file = ATC_DIR . 'data/cancun-routes.json';
+		$rows = is_readable( $file ) ? json_decode( (string) file_get_contents( $file ), true ) : array(); // phpcs:ignore
+		$out  = array();
+		// The maps key is not stored in the plugin: take it from an existing route page's map.
+		global $wpdb;
+		$key = '';
+		foreach ( $wpdb->get_col( "SELECT meta_value FROM {$wpdb->postmeta} m JOIN {$wpdb->posts} p ON p.ID = m.post_id AND p.post_type = 'atc_route' WHERE m.meta_key = '_atc' LIMIT 20" ) as $v ) { // phpcs:ignore
+			$v = maybe_unserialize( $v );
+			if ( is_array( $v ) && ! empty( $v['map'] ) && preg_match( '/[?&]key=([^&]+)/', $v['map'], $mm ) ) {
+				$key = $mm[1];
+				break;
+			}
+		}
+		foreach ( (array) $rows as $r ) {
+			if ( ! empty( $r['meta']['map'] ) ) {
+				$r['meta']['map'] = $key ? str_replace( '{key}', $key, $r['meta']['map'] ) : '';
+			}
+			$post = get_page_by_path( $r['slug'], OBJECT, 'atc_route' );
+			if ( $post && ! $existing ) {
+				$out[] = array( 'slug' => $r['slug'], 'id' => $post->ID, 'done' => 'skipped (exists)' );
+				continue;
+			}
+			$meta = (array) $r['meta'];
+			if ( $post ) {
+				$old = get_post_meta( $post->ID, '_atc', true );
+				$old = is_array( $old ) ? $old : array();
+				foreach ( array( 'image', 'og_image' ) as $k ) {
+					if ( ! empty( $old[ $k ] ) ) {
+						$meta[ $k ] = $old[ $k ];
+					}
+				}
+				wp_update_post( array( 'ID' => $post->ID, 'post_content' => wp_slash( $r['content'] ) ) );
+				$id = $post->ID;
+			} else {
+				$id = wp_insert_post( array( 'post_type' => 'atc_route', 'post_status' => 'draft', 'post_name' => $r['slug'], 'post_title' => wp_slash( $r['title'] ), 'post_content' => wp_slash( $r['content'] ) ), true );
+				if ( is_wp_error( $id ) ) {
+					$out[] = array( 'slug' => $r['slug'], 'done' => $id->get_error_message() );
+					continue;
+				}
+			}
+			update_post_meta( $id, '_atc', wp_slash( $meta ) );
+			$out[] = array( 'slug' => $r['slug'], 'id' => $id, 'done' => $post ? 'updated' : 'created (draft)' );
+		}
+		return $out;
+	}
 }
