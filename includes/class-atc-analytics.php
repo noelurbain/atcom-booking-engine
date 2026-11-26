@@ -6,7 +6,7 @@
  *   atcom_payment_captured. No names, emails or phones, only the booking reference.
  * - GA4 and the Google Ads conversion: page views, and one purchase per booking (value in USD, the
  *   reservation number as transaction id) on the first view of the confirmation.
- * Our team signed in is never tracked.
+ * Our team signed in is never tracked, nor visitors from the countries in "Don't track visitors from" (bots).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -33,26 +33,56 @@ final class ATC_Analytics {
 		$ph  = (string) ATC_Settings::get( 'posthog_key' );
 		$ga  = (string) ATC_Settings::get( 'ga4_id' );
 		$ads = (string) ATC_Settings::get( 'ads_id' );
+		if ( '' === $ph && '' === $ga && '' === $ads ) {
+			return;
+		}
+		self::gate();
 		if ( '' !== $ph ) {
 			$cfg = array( 'api_host' => self::host(), 'persistence' => 'memory', 'person_profiles' => 'identified_only', 'capture_pageleave' => true, 'bootstrap' => array( 'distinctID' => ATC_Insights::visitor() ) );
 			?>
 <script>!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag identify alias set_config".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-posthog.init(<?php echo wp_json_encode( $ph ); ?>,<?php echo wp_json_encode( $cfg ); ?>);posthog.register({site:<?php echo wp_json_encode( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>});</script>
+window.atcTrack.push(function(){posthog.init(<?php echo wp_json_encode( $ph ); ?>,<?php echo wp_json_encode( $cfg ); ?>);posthog.register({site:<?php echo wp_json_encode( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>});});</script>
 			<?php
 		}
 		$tag = $ga ?: $ads;
 		if ( '' !== $tag ) {
 			?>
-<script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo esc_attr( $tag ); ?>"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());<?php echo $ga ? "gtag('config'," . wp_json_encode( $ga ) . ');' : ''; ?><?php echo $ads ? "gtag('config'," . wp_json_encode( $ads ) . ');' : ''; ?></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}window.atcTrack.push(function(){var s=document.createElement('script');s.async=true;s.src=<?php echo wp_json_encode( 'https://www.googletagmanager.com/gtag/js?id=' . $tag ); ?>;document.head.appendChild(s);});gtag('js',new Date());<?php echo $ga ? "gtag('config'," . wp_json_encode( $ga ) . ');' : ''; ?><?php echo $ads ? "gtag('config'," . wp_json_encode( $ads ) . ');' : ''; ?></script>
 			<?php
 		}
+	}
+
+	/** Countries whose visitors we don't track (bot farms). */
+	private static function skip_countries(): array {
+		return array_values( array_filter( explode( ',', (string) ATC_Settings::get( 'analytics_skip_countries' ) ) ) );
+	}
+
+	/**
+	 * Pages are cached at the edge, so the country is checked in the browser: Cloudflare's /cdn-cgi/trace says
+	 * where the visitor is (remembered for the session). Trackers queue in window.atcTrack and start only
+	 * when the country is not on the list. If the check fails, we track.
+	 */
+	private static function gate(): void {
+		$skip = self::skip_countries();
+		?>
+<script>(function(){var q=[],go=null;window.atcTrack={push:function(f){go===true?f():q.push(f);}};function run(ok){go=ok;if(ok){q.forEach(function(f){try{f();}catch(e){}});}q=[];}var skip=<?php echo wp_json_encode( $skip ); ?>;if(!skip.length){run(true);return;}var c=null;try{c=sessionStorage.getItem('atc_cc');}catch(e){}if(c){run(skip.indexOf(c)<0);return;}fetch('/cdn-cgi/trace').then(function(r){return r.text();}).then(function(t){var m=t.match(/^loc=([A-Z]{2})/m);c=m?m[1]:'';try{sessionStorage.setItem('atc_cc',c);}catch(e){}run(skip.indexOf(c)<0);}).catch(function(){run(true);});})();</script>
+		<?php
+	}
+
+	/** Server events: Cloudflare tells the country in a header, when it is there. */
+	private static function from_skipped_country(): bool {
+		$cc = strtoupper( (string) ( $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '' ) ); // phpcs:ignore
+		return '' !== $cc && in_array( $cc, self::skip_countries(), true );
 	}
 
 	/** An event from the server (search, booking placed, payment): can't be blocked or faked in the browser. */
 	public static function server_event( string $event, string $distinct, array $props ): void {
 		$ph = (string) ATC_Settings::get( 'posthog_key' );
 		if ( '' === $ph || self::skip() ) {
+			return;
+		}
+		// Searches come from the visitor's own request; payments come from Stripe's webhook, so only searches are filtered.
+		if ( 'atcom_transfer_searched' === $event && self::from_skipped_country() ) {
 			return;
 		}
 		wp_remote_post(

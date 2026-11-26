@@ -174,6 +174,7 @@ define( 'ATC_MAPS_SERVER_KEY', 'AIza…' );</pre>
 					</td></tr>
 					<tr><th scope="row"><label for="ga4_id">GA4 Measurement ID</label></th><td><input type="text" id="ga4_id" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ga4_id]" value="<?php echo esc_attr( $o['ga4_id'] ); ?>" placeholder="G-…"></td></tr>
 					<tr><th scope="row"><label for="ads_id">Google Ads conversion</label></th><td><input type="text" id="ads_id" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ads_id]" value="<?php echo esc_attr( $o['ads_id'] ); ?>" placeholder="AW-…"> / <input type="text" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[ads_label]" value="<?php echo esc_attr( $o['ads_label'] ); ?>" placeholder="conversion label"><p class="description">Sent once per paid booking, with its value in USD.</p></td></tr>
+					<tr><th scope="row"><label for="analytics_skip_countries">Don't track visitors from</label></th><td><input type="text" id="analytics_skip_countries" class="regular-text code" name="<?php echo esc_attr( $n ); ?>[analytics_skip_countries]" value="<?php echo esc_attr( $o['analytics_skip_countries'] ); ?>" placeholder="SG,CN"><p class="description">Country codes, separated by commas. GA4 and PostHog don't load for these visitors (bot traffic). Empty = track everyone. Bookings still work for them.</p></td></tr>
 					<?php $num( 'traveler_base', 'Traveler count base', 'people (the public figure starts here and grows with real searches)' ); ?>
 				</table>
 				<h2>Directory</h2>

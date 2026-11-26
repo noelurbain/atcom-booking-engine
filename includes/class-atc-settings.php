@@ -44,6 +44,7 @@ final class ATC_Settings {
 			'ga4_id'                 => '',
 			'ads_id'                 => '',
 			'ads_label'              => '',
+			'analytics_skip_countries' => 'SG,CN', // bot farms: no GA4 or PostHog for visitors from these countries
 			// The public traveler count starts from this base.
 			'traveler_base'          => 1821,
 			// Directory: provider websites show only while they link back to one of these domains.
@@ -117,6 +118,8 @@ final class ATC_Settings {
 		$out['crisp_id']       = isset( $in['crisp_id'] ) && preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', strtolower( trim( (string) $in['crisp_id'] ) ) ) ? strtolower( trim( (string) $in['crisp_id'] ) ) : '';
 		$out['ga4_id']         = isset( $in['ga4_id'] ) && preg_match( '/^G-[A-Z0-9]{4,}$/', strtoupper( trim( (string) $in['ga4_id'] ) ) ) ? strtoupper( trim( (string) $in['ga4_id'] ) ) : '';
 		$out['ads_id']         = isset( $in['ads_id'] ) && preg_match( '/^AW-\d{6,}$/', strtoupper( trim( (string) $in['ads_id'] ) ) ) ? strtoupper( trim( (string) $in['ads_id'] ) ) : '';
+		$cc                              = strtoupper( (string) ( $in['analytics_skip_countries'] ?? '' ) );
+		$out['analytics_skip_countries'] = implode( ',', array_unique( array_filter( array_map( 'trim', explode( ',', $cc ) ), static fn( $c ) => (bool) preg_match( '/^[A-Z]{2}$/', $c ) ) ) );
 		$out['ads_label']      = isset( $in['ads_label'] ) ? substr( preg_replace( '/[^A-Za-z0-9_\-]/', '', (string) $in['ads_label'] ), 0, 60 ) : '';
 		$out['traveler_base']  = isset( $in['traveler_base'] ) ? max( 0, min( 10000000, (int) $in['traveler_base'] ) ) : $d['traveler_base'];
 		$out['dir_backlink_required'] = empty( $in['dir_backlink_required'] ) ? 0 : 1;
