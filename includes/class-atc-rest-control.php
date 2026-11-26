@@ -361,6 +361,16 @@ final class ATC_REST_Control {
 			'/providers/(?P<id>\d+)/fleet',
 			array( 'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::save_fleet( (int) $r['id'], self::body( $r ), true ) ) ),
 		);
+		self::route(
+			'/directory/claim-invites',
+			array(
+				'GET'  => static fn() => rest_ensure_response( ATC_Directory::claim_invites() ),
+				'POST' => static function ( WP_REST_Request $r ) {
+					$b = self::body( $r );
+					return self::out( ATC_Directory::send_claim_invites( 20, ! empty( $b['test'] ) ? wp_get_current_user()->user_email : '' ) );
+				},
+			)
+		);
 		self::route( '/content', array( 'GET' => static fn() => rest_ensure_response( ATC_Content::overview() ) ) );
 		self::route( '/content/(?P<id>\\d+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Content::airport( (int) $r['id'] ) ) ) );
 		self::route(

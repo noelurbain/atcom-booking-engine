@@ -1975,6 +1975,48 @@
     }).catch(fail);
   }
 
+  // Email the directory companies nobody has claimed yet (contacts we found for them), 20 at a time.
+  function claimCard(where) {
+    clear(where);
+    var card = h('section', { class: 'card pad' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    add(where, card);
+    function draw(d) {
+      clear(card);
+      var sendBtn = h('button', { class: 'btn dark', type: 'button', disabled: !d.waiting, text: d.waiting ? 'Send to the ' + d.waiting + ' not invited yet' : 'Everyone is invited' });
+      var testBtn = h('button', { class: 'btn', type: 'button', text: 'Send me a test' });
+      var note = h('p', { class: 'small atc-muted' });
+      testBtn.addEventListener('click', function () {
+        testBtn.disabled = true;
+        api('POST', '/directory/claim-invites', { test: 1 }).then(function (r) { toast('Test sent to ' + r.test + '.'); }).catch(fail).then(function () { testBtn.disabled = false; });
+      });
+      sendBtn.addEventListener('click', function () {
+        if (!confirm('Email ' + d.waiting + ' companies to claim their directory profile?')) return;
+        sendBtn.disabled = testBtn.disabled = true;
+        var total = 0;
+        (function batch() {
+          api('POST', '/directory/claim-invites', {}).then(function (r) {
+            total += r.sent;
+            note.textContent = total + ' sent' + (r.left ? ', ' + r.left + ' to go…' : '.');
+            if (r.failed) { toast(r.failed + ' could not be sent. Check the mail settings.', true); }
+            if (r.left && !r.failed && r.sent) return batch();
+            toast(total + ' invitations sent.');
+            api('GET', '/directory/claim-invites').then(draw);
+          }).catch(fail);
+        })();
+      });
+      add(card, [
+        h('div', { class: 'row-flat' }, h('h2', { text: 'Claim invitations' }), h('button', { class: 'link', type: 'button', text: 'Close', onclick: function () { clear(where); } })),
+        h('p', { class: 'atc-muted', text: d.rows.length + ' directory companies nobody has claimed yet have an email we found. The email invites them to claim their profile, free, and to sign up as a provider. ' + (d.rows.length - d.waiting) + ' already got it.' }),
+        h('div', { class: 'atc-actions' }, testBtn, sendBtn), note,
+        h('details', null, h('summary', { text: 'See the list' }),
+          h('div', { class: 'scroll' }, h('table', null, h('tbody', null, d.rows.map(function (r) {
+            return h('tr', null, h('td', null, h('a', { href: r.url, target: '_blank', rel: 'noopener', text: r.title + ' ↗' })), h('td', { text: r.email }), h('td', null, r.invited ? h('span', { class: 'chip green', text: 'Sent ' + r.invited.slice(0, 10) }) : h('span', { class: 'chip grey', text: 'Not yet' })));
+          })))))
+      ]);
+    }
+    api('GET', '/directory/claim-invites').then(draw).catch(fail);
+  }
+
   function viewProviders() {
     clear(app);
     var tbody = h('tbody');
@@ -1994,6 +2036,7 @@
         h('div', null, h('h1', { text: 'Providers' }), h('p', { class: 'atc-muted', text: 'Transport companies we sell. Providers brought over from the old site get a sign-up invitation to choose their password.' })),
         h('div', { class: 'atc-actions' },
           h('a', { class: 'btn', href: C.base + 'providers/onboarding/', 'data-go': 'providers/onboarding', text: 'Onboarding' }),
+          h('button', { class: 'btn', type: 'button', text: 'Claim invitations', onclick: function () { claimCard(banner); } }),
           h('button', { class: 'btn', type: 'button', text: 'Fleet inventory (Excel)', onclick: function (e) {
             var b = e.target; b.disabled = true;
             api('GET', '/fleet/csv').then(function (r) {

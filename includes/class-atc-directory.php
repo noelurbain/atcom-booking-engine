@@ -296,6 +296,89 @@ final class ATC_Directory {
 		return array( 'saved' => $n );
 	}
 
+	const CLAIM_INVITED = '_atc_claim_invited'; // when we emailed the company to claim its profile
+
+	/** First valid address in the contacts found for a profile. */
+	private static function claim_email( int $post_id ): string {
+		$c = (array) get_post_meta( $post_id, self::CLAIM_CONTACT, true );
+		foreach ( preg_split( '/[\s,;]+/', (string) ( $c['email'] ?? '' ) ) as $e ) {
+			$e = sanitize_email( $e );
+			if ( is_email( $e ) ) {
+				return $e;
+			}
+		}
+		return '';
+	}
+
+	/** Profiles nobody owns yet, with an email we found: who can get the claim invitation, and who already did. */
+	public static function claim_invites(): array {
+		global $wpdb;
+		$ids  = $wpdb->get_col( $wpdb->prepare( "SELECT m.post_id FROM {$wpdb->postmeta} m JOIN {$wpdb->posts} p ON p.ID = m.post_id AND p.post_type = %s AND p.post_status = 'publish' WHERE m.meta_key = %s", self::PT, self::CLAIM_CONTACT ) );
+		$rows = array();
+		foreach ( array_map( 'intval', $ids ) as $pid ) {
+			if ( ! self::claimable( $pid ) ) {
+				continue;
+			}
+			$email = self::claim_email( $pid );
+			if ( '' === $email ) {
+				continue;
+			}
+			$rows[] = array( 'id' => $pid, 'title' => get_the_title( $pid ), 'email' => $email, 'url' => get_permalink( $pid ), 'invited' => (string) get_post_meta( $pid, self::CLAIM_INVITED, true ) );
+		}
+		usort( $rows, static fn( $a, $b ) => strcasecmp( $a['title'], $b['title'] ) );
+		return array( 'rows' => $rows, 'waiting' => count( array_filter( $rows, static fn( $r ) => '' === $r['invited'] ) ) );
+	}
+
+	private static function claim_mail( int $pid ): array {
+		$title = get_the_title( $pid );
+		$m     = self::meta( $pid );
+		$where = trim( (string) ( $m['location'] ?? '' ) );
+		$claim = add_query_arg( 'claim', $pid, home_url( '/partners/provider/' ) ) . '#form';
+		$body  = '<p style="margin:0 0 14px">Hello,</p>'
+			. '<p style="margin:0 0 14px">' . esc_html( $title ) . ' has a profile in the AirportTransportation.com directory of airport transfer companies' . ( $where ? ' in ' . esc_html( $where ) : '' ) . ': <a href="' . esc_url( get_permalink( $pid ) ) . '">see your profile</a>.</p>'
+			. '<p style="margin:0 0 14px">Claim it to write your own description, add your logo and website, and start receiving bookings from travelers arriving at your airport. Joining is free: we only earn a commission on the bookings we send you, and you set your own prices.</p>'
+			. '<p style="margin:0 0 14px">If this is not your company, or you would rather not be listed, just reply to this email and we will take care of it.</p>';
+		return array(
+			'subject' => $title . ', your profile on AirportTransportation.com',
+			'html'    => ATC_Mail::wrap( 'Your company is in our directory', $body, 'Claim my profile', $claim ),
+		);
+	}
+
+	/**
+	 * Staff: send the claim invitation. With $test, one sample (the first profile) goes to $test instead.
+	 * Otherwise up to $limit companies not invited yet get it; call again until "left" is 0.
+	 */
+	public static function send_claim_invites( int $limit = 20, string $test = '' ) {
+		$list = self::claim_invites()['rows'];
+		if ( '' !== $test ) {
+			if ( ! $list || ! is_email( $test ) ) {
+				return new WP_Error( 'atc_claim', 'Nothing to send.', array( 'status' => 400 ) );
+			}
+			$m = self::claim_mail( $list[0]['id'] );
+			ATC_Mail::send( $test, '[TEST, would go to ' . $list[0]['email'] . '] ' . $m['subject'], $m['html'], array( 'kind' => 'directory_claim_test' ) );
+			return array( 'sent' => 0, 'test' => $test, 'left' => count( array_filter( $list, static fn( $r ) => '' === $r['invited'] ) ) );
+		}
+		$sent = 0;
+		$fail = 0;
+		foreach ( $list as $r ) {
+			if ( '' !== $r['invited'] ) {
+				continue;
+			}
+			if ( $sent + $fail >= $limit ) {
+				break;
+			}
+			$m = self::claim_mail( $r['id'] );
+			if ( ATC_Mail::send( $r['email'], $m['subject'], $m['html'], array( 'kind' => 'directory_claim' ) ) ) {
+				update_post_meta( $r['id'], self::CLAIM_INVITED, current_time( 'mysql', true ) );
+				++$sent;
+			} else {
+				++$fail;
+			}
+		}
+		$left = count( array_filter( self::claim_invites()['rows'], static fn( $r ) => '' === $r['invited'] ) );
+		return array( 'sent' => $sent, 'failed' => $fail, 'left' => $fail ? 0 : $left );
+	}
+
 	/** "Is this your company?" at the bottom of a profile nobody owns yet (the theme template has no hook, so it is placed by script). */
 	public static function claim_box(): void {
 		if ( ! is_singular( self::PT ) || ! self::claimable( (int) get_queried_object_id() ) ) {
