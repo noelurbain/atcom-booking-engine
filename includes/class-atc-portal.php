@@ -290,7 +290,7 @@ final class ATC_Portal {
 			$out .= '<option' . selected( (string) ( $in['fleet'] ?? '' ), $f, false ) . '>' . esc_html( $f ) . '</option>';
 		}
 		$out .= '</select></label>';
-		$out .= '<label class="atc-field"><span>Tell us about your company: fleet, areas you cover, years in business (optional)</span><textarea name="about" rows="4" maxlength="2000">' . esc_textarea( (string) ( $in['about'] ?? '' ) ) . '</textarea>' . $err( 'about' ) . '</label>';
+		$out .= '<label class="atc-field"><span>About your company: areas you cover, years in business (optional)</span><textarea name="about" rows="4" maxlength="2000">' . esc_textarea( (string) ( $in['about'] ?? '' ) ) . '</textarea><small style="display:block;margin-top:4px;opacity:.75">' . esc_html__( "This text appears on your public directory profile. Don't include phone numbers, emails or websites, travelers book through us.", 'atcom-booking-engine' ) . '</small>' . $err( 'about' ) . '</label>';
 		$out .= '<label class="atc-field"><span>Password (at least 10 characters)</span><input type="password" name="password" required minlength="10" autocomplete="new-password">' . $err( 'password' ) . '</label>';
 		// The agreement: its key points in view, the full text one click away, and an unticked box (the signature).
 		$out .= '<div class="atc-keypoints" style="background:#F7F5F1;border:1px solid #ECE8E1;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.5"><strong>Provider Agreement: the key points</strong><ul style="margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';

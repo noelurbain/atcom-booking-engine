@@ -1831,6 +1831,12 @@
         h('div', null, h('h1', { text: 'Providers' }), h('p', { class: 'atc-muted', text: 'Transport companies we sell. Providers brought over from the old site get a sign-up invitation to choose their password.' })),
         h('div', { class: 'atc-actions' },
           h('a', { class: 'btn', href: C.base + 'import/', 'data-go': 'import', text: 'Import from the old site' }),
+          h('button', { class: 'btn', type: 'button', text: 'Fleet inventory (Excel)', onclick: function (e) {
+            var b = e.target; b.disabled = true;
+            api('GET', '/fleet/csv').then(function (r) {
+              var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + r.csv], { type: 'text/csv' })); a.download = 'provider-fleet-' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+            }).catch(fail).then(function () { b.disabled = false; });
+          } }),
           h('button', { class: 'btn dark', type: 'button', onclick: newProvider, text: 'Add a provider' }))),
       banner,
       h('div', { class: 'atc-actions' }, search, filter, count, groupSel, bulk),
@@ -2160,6 +2166,7 @@
         h('div', { class: 'pe-root', id: 'atc-prices' }),
         servicesCard(id, d.services, zones),
         vehiclesCard(id, d.vehicles),
+        fleetCard(id, d.fleet || { counts: {} }),
         h('section', { class: 'card pad' }, h('div', { class: 'row-flat' }, h('h2', { text: 'Extras' }), h('a', { class: 'btn', href: C.base + 'providers/' + id + '/extras/', 'data-go': 'providers/' + id + '/extras', text: 'Edit their extras' })))
       ]);
       window.ATCPrices.mount(document.getElementById('atc-prices'), { api: api, base: '/providers/' + id + '/prices', who: 'staff', toast: toast, fail: fail });
@@ -2285,6 +2292,28 @@
         h('thead', null, h('tr', null, ['Vehicle', 'Category', 'Plate', 'Seats', 'Insurance until', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
         tbody)),
       h('p', { class: 'label', text: 'Add a vehicle' }), form);
+  }
+
+  // Fleet inventory: our team only, never on the directory. The provider fills it on their Vehicles page (optional).
+  function fleetCard(partyId, fl) {
+    var ins = {};
+    var grid = h('div', { class: 'grid6' }, state.boot.vehicle_types.map(function (t) {
+      ins[t.id] = h('input', { type: 'number', min: 0, max: 9999, placeholder: '0', value: (fl.counts && fl.counts[t.id]) || '' });
+      return field(t.name, ins[t.id]);
+    }));
+    var drivers = h('input', { type: 'number', min: 0, max: 9999, value: fl.drivers === null || fl.drivers === undefined ? '' : fl.drivers });
+    var notes = h('textarea', { rows: 2, maxlength: 2000, value: fl.notes || '', placeholder: 'What they told you on the phone, big events they handled…' });
+    var btn = h('button', { class: 'btn dark', type: 'button', text: 'Save fleet', onclick: function () {
+      var counts = {}; Object.keys(ins).forEach(function (k) { if (ins[k].value) counts[k] = ins[k].value; });
+      btn.disabled = true;
+      api('PUT', '/providers/' + partyId + '/fleet', { counts: counts, drivers: drivers.value, notes: notes.value }).then(function () { toast('Fleet saved.'); viewProvider(partyId); }).catch(function (e) { btn.disabled = false; fail(e); });
+    } });
+    var info = [fl.total ? fl.total + ' vehicles' : 'No counts yet', fl.size ? 'said ' + fl.size + ' at sign-up' : '', fl.updated_at ? 'updated ' + fl.updated_at.slice(0, 10) : ''].filter(Boolean).join(' · ');
+    return h('section', { class: 'card pad' },
+      h('div', { class: 'row-flat' }, h('h2', { text: 'Fleet inventory' }), h('span', { class: 'chip grey', text: 'Team only' })),
+      h('p', { class: 'small atc-muted', text: info + '. Vehicles they own in each category, all airports together. Not shown on the directory.' }),
+      grid, h('div', { class: 'grid3' }, field('Drivers', drivers)), field('Team notes', notes),
+      h('div', { class: 'atc-actions' }, btn));
   }
 
   /* ---------- start ---------- */

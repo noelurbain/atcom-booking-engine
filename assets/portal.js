@@ -762,7 +762,7 @@
           field('Contact person', f.contact_name), field('Email for bookings', f.email, 'New bookings and reminders go here.'),
           field('Mobile with WhatsApp', f.phone, 'Our team uses it on arrival days.'), field('Languages your drivers speak', f.languages),
           field('Website', f.website), field('Minimum notice before pickup', f.notice, 'The shorter your notice, the more bookings you get.')),
-        field('About your company: fleet, areas you cover, years in business', f.about),
+        field('About your company: areas you cover, years in business, what makes you different', f.about, 'This text appears on your public directory profile. Don\'t include phone numbers, emails or websites, travelers book through us.'),
         h('div', { class: 'atc-actions' }, btn))
     ]);
   }
@@ -863,7 +863,7 @@
         h('h2', { text: 'What travelers read' }),
         field('Company name', f.title),
         h('label', { class: 'field' }, h('span', { text: 'Short description (shows under your name)' }), f.summary, count),
-        field('About your company', f.about, 'Your fleet, the areas you cover, years in business, languages your drivers speak.'),
+        field('About your company', f.about, 'The areas you cover, years in business, languages your drivers speak. This text appears on your public directory profile. Don\'t include phone numbers, emails or websites, travelers book through us.'),
         h('label', { class: 'field' }, h('span', { text: 'Services (separate with commas)' }), f.services, h('small', null, 'For example: Private SUV, Minivan, Sprinter. ', useBtn(f.services, sug.services, 'Use my vehicle categories'))),
         h('label', { class: 'field' }, h('span', { text: 'Destinations you serve (separate with commas)' }), f.destinations, h('small', null, useBtn(f.destinations, sug.destinations, 'Use my zones'))),
         h('h2', { text: 'Contact' }),
@@ -973,7 +973,25 @@
       field('Make and model', f.model), field('Year', f.year), field('Category', f.type), field('Plate', f.plate), field('Seats', f.seats), field('Insurance until', f.ins),
       h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'submit', text: 'Add car' })));
 
-    add(app, [cats, h('section', { class: 'card pad', 'data-tour': 'cars' },
+    // Fleet inventory (optional, our team only): how many vehicles they own per category, all airports together.
+    var fl = me.fleet || { counts: {} }, flIn = {};
+    var flGrid = h('div', { class: 'grid4 fleet-grid' }, me.vehicle_types.map(function (t) {
+      flIn[t.id] = h('input', { type: 'number', min: 0, max: 9999, inputmode: 'numeric', placeholder: '0', value: (fl.counts && fl.counts[t.id]) || '' });
+      return field(t.name, flIn[t.id]);
+    }));
+    var flDrivers = h('input', { type: 'number', min: 0, max: 9999, inputmode: 'numeric', value: fl.drivers === null || fl.drivers === undefined ? '' : fl.drivers });
+    var flBtn = h('button', { class: 'btn dark', type: 'button', text: 'Save my fleet', onclick: function () {
+      var counts = {}; Object.keys(flIn).forEach(function (k) { if (flIn[k].value) counts[k] = flIn[k].value; });
+      flBtn.disabled = true;
+      api('PUT', '/fleet', { counts: counts, drivers: flDrivers.value }).then(function (d) { saved(d, 'Fleet saved. Thank you!'); }).catch(function (e) { flBtn.disabled = false; fail(e); });
+    } });
+    var fleetCard = h('section', { class: 'card pad', 'data-tour': 'fleet' },
+      h('div', { class: 'row-flat' }, h('h2', { text: 'Your whole fleet' }), h('span', { class: 'chip grey', text: 'Optional' })),
+      h('p', { class: 'small atc-muted', text: 'How many vehicles your company has in each category, all airports together. Only our team sees this: it helps us plan large groups and events with you. It is not shown on your profile, and you can skip it and come back later.' }),
+      flGrid, h('div', { class: 'grid4' }, field('Drivers', flDrivers)),
+      h('div', { class: 'atc-actions' }, flBtn, fl.updated_at ? h('span', { class: 'small atc-muted', text: 'Last saved ' + fl.updated_at.slice(0, 10) }) : null));
+
+    add(app, [cats, fleetCard, h('section', { class: 'card pad', 'data-tour': 'cars' },
       h('div', { class: 'row-flat' }, h('h2', { text: 'Your cars and their photos' }), h('span', { class: 'chip grey', text: 'Optional' })),
       h('p', { class: 'small atc-muted', text: 'Add the cars you really drive, with up to 3 photos each. The photos show on your directory profile, and you can pick the car when you assign a booking so the traveler knows what to look for. You can go live without this.' }),
       list,

@@ -57,6 +57,9 @@ final class ATC_Install {
 			if ( version_compare( $from, '21', '<' ) ) {
 				update_option( 'atc_dir_link_pending', 1, false ); // linked on the next page load, once the theme has registered the directory
 			}
+			if ( version_compare( $from, '25', '<' ) ) {
+				ATC_Partner::fleet_from_about();
+			}
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
 		}

@@ -71,9 +71,6 @@ final class ATC_Partner {
 		}
 		$about   = mb_substr( sanitize_textarea_field( (string) ( $in['about'] ?? '' ) ), 0, 2000 );
 		$fleet   = sanitize_text_field( (string) ( $in['fleet'] ?? '' ) );
-		if ( '' !== $fleet ) {
-			$about = trim( 'Fleet size: ' . $fleet . "\n" . $about );
-		}
 
 		$errors = new WP_Error();
 		if ( '' === $company ) {
@@ -95,6 +92,10 @@ final class ATC_Partner {
 		}
 		if ( ! $airport && '' === $place ) {
 			$errors->add( 'airport_id', 'Search for your main airport and pick it from the list.' );
+		}
+		$found = ATC_Directory::contact_in( $about );
+		if ( '' !== $found ) {
+			$errors->add( 'about', 'This text contains ' . $found . '. It appears on your public directory profile, so leave out phone numbers, emails and websites: travelers book through us.' );
 		}
 		if ( empty( $in['accept'] ) ) {
 			$errors->add( 'accept', 'Please tick the box to accept the Provider Agreement.' );
@@ -144,6 +145,7 @@ final class ATC_Partner {
 				'name'            => mb_substr( $company, 0, 190 ),
 				'contact_name'    => mb_substr( $contact, 0, 190 ),
 				'about'           => '' === $about ? null : $about,
+				'fleet'           => '' === $fleet ? null : wp_json_encode( array( 'size' => mb_substr( $fleet, 0, 20 ), 'updated_at' => self::now() ) ),
 				'email'           => $email,
 				'phone'           => mb_substr( $phone, 0, 40 ),
 				'country'         => $airport['country'],
@@ -163,7 +165,7 @@ final class ATC_Partner {
 		do_action( 'atc_provider_signed_up', $party_id );
 
 		ATC_Mail::defer( static fn() => self::mail_welcome( $email, $contact, $company ) );
-		ATC_Mail::defer( static fn() => self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nMain airport: " . ATC_Catalog::airport_label( $airport ) . ( $new_airport ? "\n\nNEW AIRPORT, added from Google: {$airport['name']} ({$airport['city']}, {$airport['country']}, time zone {$airport['timezone']}). It has no IATA code and no zones yet." : '' ) . "\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) ) );
+		ATC_Mail::defer( static fn() => self::mail_team( 'New provider sign-up: ' . $company, "Company: {$company}\nContact: {$contact}\nEmail: {$email}\nWhatsApp: {$phone}\nMain airport: " . ATC_Catalog::airport_label( $airport ) . ( $new_airport ? "\n\nNEW AIRPORT, added from Google: {$airport['name']} ({$airport['city']}, {$airport['country']}, time zone {$airport['timezone']}). It has no IATA code and no zones yet." : '' ) . ( '' !== $fleet ? "\nFleet size: {$fleet}" : '' ) . "\n\nAbout:\n{$about}\n\nReview: " . home_url( '/control/providers/' . $party_id . '/' ) ) );
 
 		return (int) $user_id;
 	}
@@ -210,6 +212,100 @@ final class ATC_Partner {
 	 * Which invitation a provider gets: 'live' (has prices, gets bookings), 'applied' (applied on the old
 	 * site and never got an answer) or 'former' (in the old provider list, no active prices).
 	 */
+	/* ---------- Fleet inventory (our team only, never shown on the directory) ---------- */
+
+	/**
+	 * How many vehicles the provider owns in each of our categories, across all their airports.
+	 * Optional: it never blocks a setup step. Used by our team to plan large groups and events (DMC needs).
+	 */
+	public static function fleet( int $party_id ): array {
+		global $wpdb;
+		$raw = (string) $wpdb->get_var( $wpdb->prepare( 'SELECT fleet FROM ' . self::t( 'parties' ) . ' WHERE id = %d', $party_id ) );
+		return self::fleet_shape( '' === $raw ? array() : (array) json_decode( $raw, true ) );
+	}
+
+	private static function fleet_shape( array $f ): array {
+		$counts = array();
+		foreach ( (array) ( $f['counts'] ?? array() ) as $type => $n ) {
+			if ( (int) $n > 0 ) {
+				$counts[ (string) (int) $type ] = (int) $n;
+			}
+		}
+		return array(
+			'counts'     => (object) $counts,
+			'total'      => array_sum( $counts ),
+			'drivers'    => isset( $f['drivers'] ) && '' !== $f['drivers'] ? (int) $f['drivers'] : null,
+			'size'       => (string) ( $f['size'] ?? '' ),   // the range picked on the sign-up form
+			'notes'      => (string) ( $f['notes'] ?? '' ),  // our team's notes, staff only
+			'updated_at' => (string) ( $f['updated_at'] ?? '' ),
+		);
+	}
+
+	/** Save the counts. $staff lets our team keep private notes too. */
+	public static function save_fleet( int $party_id, array $in, bool $staff = false ) {
+		global $wpdb;
+		$cur    = self::fleet( $party_id );
+		$types  = array_map( static fn( $t ) => (string) (int) $t['id'], ATC_Catalog::vehicle_types() );
+		$counts = array();
+		foreach ( (array) ( $in['counts'] ?? array() ) as $type => $n ) {
+			$type = (string) (int) $type;
+			$n    = (int) $n;
+			if ( in_array( $type, $types, true ) && $n > 0 ) {
+				$counts[ $type ] = min( $n, 9999 );
+			}
+		}
+		$drivers = $in['drivers'] ?? null;
+		$data    = array(
+			'counts'     => $counts,
+			'drivers'    => ( null === $drivers || '' === $drivers ) ? null : max( 0, min( 9999, (int) $drivers ) ),
+			'size'       => $cur['size'],
+			'notes'      => $staff && isset( $in['notes'] ) ? mb_substr( sanitize_textarea_field( (string) $in['notes'] ), 0, 2000 ) : $cur['notes'],
+			'updated_at' => self::now(),
+		);
+		$wpdb->update( self::t( 'parties' ), array( 'fleet' => wp_json_encode( $data ), 'updated_at' => self::now() ), array( 'id' => $party_id ) );
+		ATC_Install::log( 'party', $party_id, 'fleet_saved', array( 'total' => array_sum( $counts ), 'by' => $staff ? 'staff' : 'provider' ) );
+		return self::fleet( $party_id );
+	}
+
+	/** One row per provider, for the "Fleet inventory" download in the control panel. */
+	public static function fleet_csv(): string {
+		global $wpdb;
+		$types = ATC_Catalog::vehicle_types();
+		$rows  = $wpdb->get_results( 'SELECT p.id, p.name, p.country, p.status, p.fleet, a.iata, a.city FROM ' . self::t( 'parties' ) . ' p LEFT JOIN ' . self::t( 'airports' ) . " a ON a.id = p.home_airport_id WHERE p.type = 'provider' AND p.status <> 'archived' ORDER BY p.name", ARRAY_A ); // phpcs:ignore
+		$head  = array_merge( array( 'Provider', 'Status', 'Country', 'Main airport', 'City' ), array_map( static fn( $t ) => $t['name'], $types ), array( 'Total vehicles', 'Drivers', 'Size at sign-up', 'Updated', 'Notes' ) );
+		$out   = fopen( 'php://temp', 'r+' );
+		fputcsv( $out, $head );
+		foreach ( $rows as $r ) {
+			$f      = self::fleet_shape( $r['fleet'] ? (array) json_decode( $r['fleet'], true ) : array() );
+			$counts = (array) $f['counts'];
+			$line   = array( $r['name'], $r['status'], $r['country'], (string) $r['iata'], (string) $r['city'] );
+			foreach ( $types as $t ) {
+				$line[] = $counts[ (string) (int) $t['id'] ] ?? '';
+			}
+			array_push( $line, $f['total'] ?: '', $f['drivers'] ?? '', $f['size'], substr( $f['updated_at'], 0, 10 ), $f['notes'] );
+			fputcsv( $out, $line );
+		}
+		rewind( $out );
+		$csv = stream_get_contents( $out );
+		fclose( $out );
+		return (string) $csv;
+	}
+
+	/** One time (DB 25): the sign-up form used to put "Fleet size: …" at the top of the about text. Move it. */
+	public static function fleet_from_about(): void {
+		global $wpdb;
+		$rows = $wpdb->get_results( 'SELECT id, about, fleet FROM ' . self::t( 'parties' ) . " WHERE about LIKE 'Fleet size:%'", ARRAY_A ); // phpcs:ignore
+		foreach ( $rows as $r ) {
+			if ( ! preg_match( '/^Fleet size:\s*(.*)$/m', (string) $r['about'], $m ) ) {
+				continue;
+			}
+			$f         = $r['fleet'] ? (array) json_decode( $r['fleet'], true ) : array();
+			$f['size'] = mb_substr( trim( $m[1] ), 0, 20 );
+			$about     = trim( preg_replace( '/^Fleet size:.*\n?/m', '', (string) $r['about'] ) );
+			$wpdb->update( self::t( 'parties' ), array( 'fleet' => wp_json_encode( $f ), 'about' => '' === $about ? null : $about ), array( 'id' => (int) $r['id'] ) );
+		}
+	}
+
 	public static function invite_group( array $p ): string {
 		global $wpdb;
 		if ( 'live' === $p['status'] ) {

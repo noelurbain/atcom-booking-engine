@@ -67,6 +67,7 @@ final class ATC_REST_Portal {
 			'vehicle_types' => ATC_Catalog::vehicle_types(),
 			'services'      => ATC_Catalog::services( $pid ),
 			'vehicles'      => ATC_Catalog::vehicles( $pid ),
+			'fleet'         => array_diff_key( ATC_Partner::fleet( $pid ), array( 'notes' => 1 ) ),
 			'documents'     => ATC_Partner::documents( $pid ),
 			'doc_types'     => $types,
 			'payout'        => ATC_Partner::payout_summary( $pid ),
@@ -134,6 +135,15 @@ final class ATC_REST_Portal {
 			)
 		);
 
+		self::route(
+			'/fleet',
+			array(
+				'PUT' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Partner::save_fleet( self::pid(), self::body( $r ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( self::me() );
+				},
+			)
+		);
 		self::route(
 			'/vehicles',
 			array(

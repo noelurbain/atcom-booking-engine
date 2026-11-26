@@ -191,3 +191,6 @@ h2.section{margin:8px 0 0;font-size:18px}
   .zd-bar input{flex:1 1 100%}
   .zd-bar .btn{flex:1 1 auto}
 }
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}
+.fleet-grid{margin-bottom:12px}
+@media (max-width:900px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}

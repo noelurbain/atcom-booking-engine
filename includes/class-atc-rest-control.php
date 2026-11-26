@@ -335,6 +335,7 @@ final class ATC_REST_Control {
 							'provider' => $party,
 							'services' => ATC_Catalog::services( $id ),
 							'vehicles' => ATC_Catalog::vehicles( $id ),
+							'fleet'    => ATC_Partner::fleet( $id ),
 							'documents' => ATC_Partner::documents( $id ),
 							'doc_types' => ATC_Partner::doc_types(),
 							'steps'     => ATC_Partner::steps( $id ),
@@ -350,6 +351,14 @@ final class ATC_REST_Control {
 		self::route(
 			'/providers/(?P<id>\d+)/invite',
 			array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::invite( (int) $r['id'] ) ) ),
+		);
+		self::route(
+			'/providers/(?P<id>\d+)/fleet',
+			array( 'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::save_fleet( (int) $r['id'], self::body( $r ), true ) ) ),
+		);
+		self::route(
+			'/fleet/csv',
+			array( 'GET' => static fn() => rest_ensure_response( array( 'csv' => ATC_Partner::fleet_csv() ) ) ),
 		);
 		self::route(
 			'/providers/invite-all',
