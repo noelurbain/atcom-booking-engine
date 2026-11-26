@@ -995,7 +995,12 @@
       add(app, [
         h('div', { class: 'atc-head' },
           h('div', null, h('h1', { text: 'Dashboard' }), h('p', { class: 'atc-muted', text: 'Every site, every airport. ' + (d.legacy ? d.legacy + ' bookings came over from the old site (no traveler names or contacts; those stay there).' : '') })),
-          h('span', { class: 'small atc-muted', text: 'Updated ' + d.now })),
+          h('div', { class: 'atc-actions' }, h('button', { class: 'btn', type: 'button', text: 'Blog images to replace (Excel)', onclick: function (e) {
+            var b = e.target; b.disabled = true; b.textContent = 'Preparing…';
+            api('GET', '/media/blog-images').then(function (r) {
+              var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + r.csv], { type: 'text/csv' })); a.download = 'blog-images-to-replace-' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+            }).catch(fail).then(function () { b.disabled = false; b.textContent = 'Blog images to replace (Excel)'; });
+          } }), h('span', { class: 'small atc-muted', text: 'Updated ' + d.now }))),
 
         h('section', { class: 'stats' },
           stat('Paid bookings, last 30 days', m.paid, all.paid + ' all time'),

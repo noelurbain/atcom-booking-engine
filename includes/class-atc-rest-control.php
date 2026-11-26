@@ -362,6 +362,10 @@ final class ATC_REST_Control {
 			array( 'GET' => static fn() => rest_ensure_response( array( 'rows' => ATC_Partner::onboarding() ) ) ),
 		);
 		self::route(
+			'/media/blog-images',
+			array( 'GET' => static fn() => rest_ensure_response( array( 'csv' => ATC_Media_Import::blog_images_csv() ) ) ),
+		);
+		self::route(
 			'/fleet/csv',
 			array( 'GET' => static fn() => rest_ensure_response( array( 'csv' => ATC_Partner::fleet_csv() ) ) ),
 		);

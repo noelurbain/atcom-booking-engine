@@ -276,4 +276,63 @@ final class ATC_Media_Import {
 		}
 		return $n;
 	}
+
+	/* ---------- Blog images to replace (copyright) ---------- */
+
+	/**
+	 * Every image in published blog posts, one row each, with a ready-to-use prompt to make an original
+	 * replacement with GPT. Images whose caption names a photographer, an agency or a copyright come first.
+	 */
+	public static function blog_images_csv(): string {
+		$posts = get_posts( array( 'post_type' => 'post', 'post_status' => 'publish', 'posts_per_page' => -1, 'orderby' => 'date', 'order' => 'DESC' ) );
+		$risky = '/(©|\(c\)|copyright|photo by|photograph by|image by|credit|courtesy|getty|shutterstock|istock|alamy|adobe stock|depositphotos|dreamstime|unsplash|pexels|pixabay|wikimedia|creative commons|cc by|images llc|flickr)/i';
+		$rows  = array();
+		foreach ( $posts as $p ) {
+			$title = html_entity_decode( get_the_title( $p ), ENT_QUOTES );
+			$link  = get_permalink( $p );
+			$thumb = (int) get_post_thumbnail_id( $p->ID );
+			if ( $thumb ) {
+				$alt    = (string) get_post_meta( $thumb, '_wp_attachment_image_alt', true );
+				$cap    = (string) wp_get_attachment_caption( $thumb );
+				$rows[] = array( 'risk' => preg_match( $risky, $cap . ' ' . get_the_title( $thumb ) ) ? 'High' : 'Check', 'post' => $p->ID, 'title' => $title, 'link' => $link, 'where' => 'Featured image', 'id' => $thumb, 'url' => (string) wp_get_attachment_url( $thumb ), 'alt' => $alt ?: get_the_title( $thumb ), 'caption' => $cap, 'section' => '' );
+			}
+			$html = (string) $p->post_content;
+			// Figures first (they carry the caption), then lone images.
+			preg_match_all( '#<figure\b[^>]*>(.*?)</figure>|<img\b[^>]*>#is', $html, $mm, PREG_SET_ORDER | PREG_OFFSET_CAPTURE );
+			$n = 0;
+			foreach ( $mm as $m ) {
+				$chunk = $m[0][0];
+				if ( ! preg_match( '#<img\b[^>]*>#i', $chunk, $img ) ) {
+					continue;
+				}
+				++$n;
+				$src = preg_match( '#\ssrc=["\']([^"\']+)#i', $img[0], $x ) ? $x[1] : '';
+				$alt = preg_match( '#\salt=["\']([^"\']*)#i', $img[0], $x ) ? html_entity_decode( $x[1], ENT_QUOTES ) : '';
+				$id  = preg_match( '#wp-image-(\d+)#', $img[0], $x ) ? (int) $x[1] : 0;
+				$cap = preg_match( '#<figcaption\b[^>]*>(.*?)</figcaption>#is', $chunk, $x ) ? trim( wp_strip_all_tags( html_entity_decode( $x[1], ENT_QUOTES ) ) ) : '';
+				// The heading just above the image, to say what the picture should show.
+				$before = substr( $html, 0, (int) $m[0][1] );
+				$sec    = preg_match_all( '#<h[2-4]\b[^>]*>(.*?)</h[2-4]>#is', $before, $hh ) ? trim( wp_strip_all_tags( html_entity_decode( end( $hh[1] ), ENT_QUOTES ) ) ) : '';
+				$rows[] = array( 'risk' => preg_match( $risky, $cap . ' ' . $alt ) ? 'High' : 'Check', 'post' => $p->ID, 'title' => $title, 'link' => $link, 'where' => 'In article, image ' . $n, 'id' => $id, 'url' => $src, 'alt' => $alt, 'caption' => $cap, 'section' => $sec );
+			}
+		}
+		usort( $rows, static fn( $a, $b ) => ( 'High' === $b['risk'] ) <=> ( 'High' === $a['risk'] ) );
+		$out = fopen( 'php://temp', 'r+' );
+		fputcsv( $out, array( 'How to use: for each row, give GPT the prompt in the last column (one image per prompt). Save the result as a JPG, about 1600x900, and replace the old image in that post (Media Library: open the image ID, or edit the post). Rows marked High have a photographer, agency or copyright in their caption: do those first.' ) );
+		fputcsv( $out, array( 'Priority', 'Post ID', 'Post title', 'Post link', 'Where', 'Image ID', 'Current image', 'Alt text', 'Caption / credit', 'Section', 'Done', 'GPT prompt' ) );
+		foreach ( $rows as $r ) {
+			$subject = $r['alt'] ?: ( $r['caption'] ?: ( $r['section'] ?: $r['title'] ) );
+			$subject = preg_replace( '/\s*(©|\(c\)|photo by|credit|courtesy).*$/i', '', $subject );
+			$prompt  = 'Create an original, photorealistic editorial travel photograph for the article "' . $r['title'] . '"'
+				. ( $r['section'] ? ', section "' . $r['section'] . '"' : '' )
+				. '. It should show: ' . $subject . '. '
+				. ( 'Featured image' === $r['where'] ? 'This is the hero image at the top of the article: a wide, inviting scene. ' : '' )
+				. 'Landscape 16:9, natural daylight, true-to-life colors, sharp detail. No text, no logos, no watermarks, no brand names, no recognizable faces. Do not copy or imitate any existing photograph: make a new image.';
+			fputcsv( $out, array( $r['risk'], $r['post'], $r['title'], $r['link'], $r['where'], $r['id'] ?: '', $r['url'], $r['alt'], $r['caption'], $r['section'], '', $prompt ) );
+		}
+		rewind( $out );
+		$csv = stream_get_contents( $out );
+		fclose( $out );
+		return (string) $csv;
+	}
 }

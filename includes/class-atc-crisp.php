@@ -8,6 +8,8 @@
  * - otherwise: only the status, and the booking link goes to the email on the booking (anyone can type a number);
  * - unknown number: we say so and ask for the email used.
  * No number in the message: we stay quiet. Each number gets one answer per conversation per 10 minutes.
+ * A complaint (refund, no-show, dispute… in English, Spanish, French, Portuguese or Italian) or a booking from the
+ * old site never gets an automatic status: the chat is tagged "complaint" and handed to our team with one reply.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -79,10 +81,16 @@ final class ATC_Crisp {
 		if ( $website !== (string) ATC_Settings::get( 'crisp_id' ) || '' === $session ) {
 			return rest_ensure_response( array( 'ok' => true ) );
 		}
-		$numbers = self::numbers( (string) ( $d['content'] ?? '' ) );
-		if ( $numbers && ATC_Settings::get( 'crisp_autoreply' ) ) {
+		$content   = (string) ( $d['content'] ?? '' );
+		$numbers   = self::numbers( $content );
+		$complaint = self::is_complaint( $content );
+		if ( ( $numbers || $complaint ) && ATC_Settings::get( 'crisp_autoreply' ) ) {
 			// Answer after Crisp has its 200 (it retries slow hooks).
-			ATC_Mail::defer( static function () use ( $session, $numbers ) {
+			ATC_Mail::defer( static function () use ( $session, $numbers, $complaint ) {
+				if ( $complaint ) {
+					self::hand_over( $session, $numbers );
+					return;
+				}
 				foreach ( array_slice( $numbers, 0, 2 ) as $n ) {
 					self::answer( $session, $n );
 				}
@@ -102,10 +110,55 @@ final class ATC_Crisp {
 		return array_values( array_unique( $out ) );
 	}
 
-	private static function answer( string $session, string $number ): void {
-		$key = 'atc_crisp_' . md5( $session . $number );
+	/** Words of a traveler who is unhappy or wants money back: no automatic status, a person answers. */
+	public static function is_complaint( string $text ): bool {
+		$t = mb_strtolower( remove_accents( $text ) );
+		$words = array(
+			// English
+			'complain', 'refund', 'money back', 'chargeback', 'charge back', 'dispute', 'no show', 'no-show', 'did not show', "didn't show", 'didnt show', 'never showed', 'never came', 'never arrived', 'nobody came', 'no one came', 'no driver', 'driver did not', "driver didn't", 'scam', 'fraud', 'lawyer', 'unacceptable', 'terrible', 'worst', 'compensation', 'reimburse', 'stranded', 'left us', 'missed my flight', 'missed our flight',
+			// Spanish
+			'queja', 'reclamo', 'reclamacion', 'reembolso', 'devolucion', 'devuelvan', 'mi dinero', 'nadie llego', 'no llego', 'no vino', 'nunca llego', 'estafa', 'fraude', 'denuncia', 'profeco', 'abogado', 'pesimo', 'indignad',
+			// French
+			'plainte', 'remboursement', 'rembourser', 'arnaque', 'personne n\'est venu', 'pas venu', 'litige', 'inadmissible',
+			// Portuguese
+			'reclamacao', 'reembolso', 'ninguem veio', 'nao apareceu', 'golpe',
+			// Italian
+			'reclamo', 'rimborso', 'truffa', 'nessuno e venuto', 'non e venuto',
+		);
+		foreach ( $words as $w ) {
+			if ( false !== strpos( $t, $w ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** A complaint: one reply per conversation, the chat tagged for our team, the booking kept on it. */
+	private static function hand_over( string $session, array $numbers ): void {
+		$key = 'atc_crisp_ho_' . md5( $session );
 		if ( get_transient( $key ) ) {
 			return;
+		}
+		set_transient( $key, 1, DAY_IN_SECONDS );
+		$b = $numbers ? ATC_Checkout::find( $numbers[0] ) : null;
+		self::say( $session, "Thanks for telling us, and sorry about this. I'm passing your message to our team now: a person will answer you here, within 2 business days and usually much sooner." . ( $b ? '' : ' Please add your booking number (it starts with AT) if you have it.' ) );
+		$path = 'website/' . ATC_Settings::get( 'crisp_id' ) . '/conversation/' . rawurlencode( $session ) . '/meta';
+		$meta = self::api( 'GET', $path );
+		$segs = is_array( $meta['segments'] ?? null ) ? $meta['segments'] : array();
+		if ( ! in_array( 'complaint', $segs, true ) ) {
+			$segs[] = 'complaint';
+			self::api( 'PATCH', $path, array( 'segments' => array_values( $segs ) ) );
+		}
+		if ( $b ) {
+			self::remember( $session, $b );
+			ATC_Install::log( 'booking', (int) $b['id'], 'crisp_complaint', array( 'session' => $session ) );
+		}
+	}
+
+	private static function answer( string $session, string $number ): void {
+		$key = 'atc_crisp_' . md5( $session . $number );
+		if ( get_transient( $key ) || get_transient( 'atc_crisp_ho_' . md5( $session ) ) ) {
+			return; // Already answered, or handed to our team after a complaint: no more automatic replies.
 		}
 		set_transient( $key, 1, 10 * MINUTE_IN_SECONDS );
 		$b = ATC_Checkout::find( $number );
@@ -114,6 +167,13 @@ final class ATC_Crisp {
 				return; // Probably a word ("ATMOSPHERE"), not a reservation number: stay quiet.
 			}
 			self::say( $session, 'I could not find a confirmed booking with the number ' . $number . '. Please check it (it starts with AT, followed by letters and numbers), or write the email you booked with and our team will help you.' );
+			return;
+		}
+		if ( ! empty( $b['snap']['legacy'] ) ) {
+			// Booked on the old site: its status here may be out of date, so a person answers.
+			self::say( $session, 'Thanks! Booking ' . $b['number'] . ' was made on our previous system, so a person from our team will check it and answer you here shortly.' );
+			self::remember( $session, $b );
+			ATC_Install::log( 'booking', (int) $b['id'], 'crisp_autoreply', array( 'session' => $session, 'legacy' => true ) );
 			return;
 		}
 		$meta  = self::api( 'GET', 'website/' . ATC_Settings::get( 'crisp_id' ) . '/conversation/' . rawurlencode( $session ) . '/meta' );
