@@ -361,6 +361,8 @@ final class ATC_REST_Control {
 			'/providers/(?P<id>\d+)/fleet',
 			array( 'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::save_fleet( (int) $r['id'], self::body( $r ), true ) ) ),
 		);
+		self::route( '/content', array( 'GET' => static fn() => rest_ensure_response( ATC_Content::overview() ) ) );
+		self::route( '/content/(?P<id>\\d+)', array( 'GET' => static fn( WP_REST_Request $r ) => self::out( ATC_Content::airport( (int) $r['id'] ) ) ) );
 		self::route(
 			'/providers/onboarding',
 			array( 'GET' => static fn() => rest_ensure_response( array( 'rows' => ATC_Partner::onboarding() ) ) ),

@@ -118,6 +118,8 @@
     if (parts[0] === 'providers' && parts[1] && parts[2] === 'extras') return viewProviderExtras(parseInt(parts[1], 10));
     if (parts[0] === 'providers' && parts[1] && parts[2] === 'directory') return viewProviderDirectory(parseInt(parts[1], 10));
     if (parts[0] === 'providers' && parts[1]) return viewProvider(parseInt(parts[1], 10));
+    if (parts[0] === 'content' && parts[1]) return viewContentAirport(parseInt(parts[1], 10));
+    if (parts[0] === 'content') return viewContent();
     if (parts[0] === 'extras') return viewExtrasCatalog();
     if (parts[0] === 'providers') return viewProviders();
     if (parts[0] === 'import') return viewImport();
@@ -1850,6 +1852,127 @@
     var m = { found: ['green', 'Links to us'], missing: ['grey', 'No link yet'], error: ['orange', "Site didn't answer"], unchecked: ['grey', 'Not checked yet'], no_site: ['grey', 'No website'], none: ['grey', 'No profile'] }[p.link] || ['grey', p.link];
     var chip = h('span', { class: 'chip ' + m[0], text: m[1] });
     return p.link === 'found' && p.link_page ? h('a', { href: p.link_page, target: '_blank', rel: 'noopener', title: 'Where we found the link' }, chip) : chip;
+  }
+
+  // Content: every airport page seen from what we can sell there.
+  var CT_STATES = { sellable: ['Bookable', 'green'], not_sellable: ['Providers, not bookable', 'orange'], no_provider: ['No provider', 'grey'], no_page: ['Providers, no page', 'red'] };
+  function wpEdit(id) { return C.base.replace(/control\/?$/, '') + 'wp-admin/post.php?post=' + id + '&action=edit'; }
+  function viewContent() {
+    clear(app);
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/content').then(function (rows) {
+      clear(app);
+      var params = new URLSearchParams(location.search);
+      var search = h('input', { type: 'search', placeholder: 'Find an airport, city or country', 'aria-label': 'Find an airport', value: params.get('q') || '' });
+      var filter = h('select', { 'aria-label': 'Show' }, [['all', 'All airports'], ['sellable', 'Bookable'], ['not_sellable', 'Providers, not bookable'], ['no_provider', 'No provider'], ['no_page', 'Providers, no page'], ['no_routes', 'Bookable, no destination pages'], ['no_hotels', 'Bookable, no hotels']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+      filter.value = params.get('f') || 'all';
+      var countries = rows.map(function (r) { return r.country; }).filter(function (c, i, a) { return c && a.indexOf(c) === i; }).sort();
+      var ctry = h('select', { 'aria-label': 'Country' }, [h('option', { value: '', text: 'Every country' })].concat(countries.map(function (c) { return h('option', { value: c, text: c }); })));
+      var count = h('span', { class: 'atc-muted' });
+      var tbody = h('tbody');
+      var n = function (k) { return rows.filter(function (r) { return r.state === k; }).length; };
+      var sum = function (k) { return rows.reduce(function (t, r) { return t + (k === 'routes' ? (r.page ? r.page.routes : 0) : r[k]); }, 0); };
+      function tileLink(label, value, sub, f) {
+        return h('a', { class: 'stat link', href: '#', onclick: function (e) { e.preventDefault(); filter.value = f; render(); } }, h('span', { class: 'small atc-muted strong', text: label }), h('strong', { class: 'big', text: String(value) }), h('span', { class: 'small atc-muted', text: sub }));
+      }
+      add(app, [
+        h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Content' }), h('p', { class: 'atc-muted', text: 'Every airport page, next to what we can sell there: providers, destinations with live prices, destination pages and hotels. Open an airport to go destination by destination.' }))),
+        h('div', { class: 'stats' },
+          tileLink('Bookable airports', n('sellable'), 'a live provider with prices', 'sellable'),
+          tileLink('Providers, not bookable', n('not_sellable'), 'providers still setting up', 'not_sellable'),
+          tileLink('Pages with no provider', n('no_provider'), 'nothing to sell yet', 'no_provider'),
+          tileLink('Providers, no page', n('no_page'), 'we sell there, no airport page', 'no_page'),
+          tileLink('Destination pages', sum('routes'), sum('priced') + ' destinations have live prices', 'no_routes')),
+        h('div', { class: 'atc-actions' }, search, filter, ctry, count),
+        h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
+          h('thead', null, h('tr', null, ['Airport page', 'Country', 'Status', 'Providers', 'Destinations priced', 'Price table on the page', 'Destination pages', 'Hotels'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+          tbody)))
+      ]);
+      function render() {
+        clear(tbody);
+        var q = search.value.trim().toLowerCase(), f = filter.value, c = ctry.value;
+        var list = rows.filter(function (r) {
+          if (c && r.country !== c) return false;
+          if (q && [r.iata, r.airport, r.city, r.country, r.page ? r.page.title : ''].join(' ').toLowerCase().indexOf(q) === -1) return false;
+          if (f === 'no_routes') return r.state === 'sellable' && (!r.page || !r.page.routes);
+          if (f === 'no_hotels') return r.state === 'sellable' && !r.hotels;
+          return f === 'all' || r.state === f;
+        });
+        var order = { sellable: 0, not_sellable: 1, no_page: 2, no_provider: 3 };
+        list.sort(function (a, b) { return order[a.state] - order[b.state] || b.sellable - a.sellable || b.priced - a.priced || String(a.iata).localeCompare(String(b.iata)); });
+        count.textContent = list.length + ' of ' + rows.length;
+        try { history.replaceState({}, '', C.base + 'content/?' + new URLSearchParams({ q: search.value, f: f }).toString()); } catch (e) {}
+        if (!list.length) add(tbody, h('tr', null, h('td', { colspan: 8, class: 'atc-muted', text: 'Nothing matches.' })));
+        list.slice(0, 500).forEach(function (r) {
+          var st = CT_STATES[r.state];
+          var open = r.airport_id ? function () { go('content/' + r.airport_id); } : null;
+          add(tbody, h('tr', { class: open ? 'click' : '', onclick: open },
+            h('td', null, h('strong', { text: (r.iata || '—') + ' ' }), r.page ? h('span', { text: r.page.title }) : h('span', { class: 'atc-muted', text: r.airport || 'Airport without a code' }),
+              r.page && r.page.status !== 'publish' ? h('span', { class: 'chip grey', text: r.page.status }) : null),
+            h('td', { text: r.country || '' }),
+            h('td', null, h('span', { class: 'chip ' + st[1], text: st[0] })),
+            h('td', { text: r.providers ? r.sellable + ' of ' + r.providers + ' bookable' : '—' }),
+            h('td', { text: r.zones ? r.priced + ' of ' + r.zones + (r.from_cents ? ' · from ' + cash(r.from_cents) : '') : (r.priced ? String(r.priced) : 'No zones') }),
+            h('td', { text: r.page ? (r.page.table ? r.page.table + ' rows (old site)' : 'None') : '—' }),
+            h('td', { text: r.page ? String(r.page.routes) : '—' }),
+            h('td', { text: String(r.hotels) })));
+        });
+      }
+      search.addEventListener('input', render); filter.addEventListener('change', render); ctry.addEventListener('change', render);
+      render();
+    }).catch(fail);
+  }
+
+  function viewContentAirport(id) {
+    clear(app);
+    add(app, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    api('GET', '/content/' + id).then(function (d) {
+      clear(app);
+      var a = d.airport, pg = d.page;
+      var bookable = d.providers.filter(function (p) { return p.status === 'live' && p.live_services; });
+      var priced = d.zones.filter(function (z) { return z.from_cents !== null; });
+      var withPage = d.zones.filter(function (z) { return z.page; });
+      var hotels = d.zones.reduce(function (t, z) { return t + z.hotels; }, 0);
+      add(app, [
+        h('a', { class: 'back', href: C.base + 'content/', 'data-go': 'content', text: '← Content' }),
+        h('div', { class: 'atc-head' },
+          h('div', null, h('h1', { text: (a.iata ? a.iata + ' · ' : '') + a.name }), h('p', { class: 'atc-muted', text: [a.city, a.country].filter(Boolean).join(', ') })),
+          h('div', { class: 'atc-actions' },
+            pg ? h('a', { class: 'btn', href: pg.url, target: '_blank', rel: 'noopener', text: 'View the page ↗' }) : h('span', { class: 'chip red', text: 'No airport page' }),
+            pg ? h('a', { class: 'btn', href: wpEdit(pg.id), target: '_blank', rel: 'noopener', text: 'Edit in WordPress ↗' }) : null,
+            h('a', { class: 'btn dark', href: C.base + 'zones/', onclick: function (e) { e.preventDefault(); state.airportId = a.id; go('zones'); }, text: 'Zones and hotels' }))),
+        h('div', { class: 'stats' },
+          stat('Providers', bookable.length + ' of ' + d.providers.length, 'bookable now'),
+          stat('Destinations priced', priced.length + ' of ' + d.zones.length, 'zones with a live price'),
+          stat('Destination pages', withPage.length + d.orphans.length, withPage.length + ' match a zone'),
+          stat('Price table on the page', pg ? (pg.table ? pg.table + ' rows' : 'None') : '—', pg && pg.table ? 'imported from the old site' : ''),
+          stat('Hotels', hotels, hotels ? 'matched to zones' : 'none yet')),
+        h('section', { class: 'card' },
+          h('div', { class: 'pad' }, h('h2', { text: 'Destinations' }), h('p', { class: 'small atc-muted', text: 'Each zone drawn at this airport is a destination. Green providers can be booked now; grey ones have prices but are not live yet.' })),
+          h('div', { class: 'scroll' }, h('table', null,
+            h('thead', null, h('tr', null, ['Destination (zone)', 'Priced by', 'From (one way)', 'Destination page', 'Hotels'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+            h('tbody', null, d.zones.length ? d.zones.map(function (z) {
+              return h('tr', null,
+                h('td', null, h('strong', { text: z.name }), z.owner ? h('div', { class: 'small atc-muted', text: 'drawn by ' + z.owner }) : null),
+                h('td', null, z.priced_by.length ? h('div', { class: 'ticks' }, z.priced_by.map(function (p) { return h('a', { class: 'chip ' + (p.sellable ? 'green' : 'grey'), href: C.base + 'providers/' + p.id + '/', 'data-go': 'providers/' + p.id, text: p.name }); })) : h('span', { class: 'atc-muted', text: 'Nobody' })),
+                h('td', { text: z.from_cents !== null ? cash(z.from_cents) : '—' }),
+                h('td', null, z.page ? h('a', { href: z.page.url, target: '_blank', rel: 'noopener', text: z.page.title + ' ↗' }) : h('span', { class: 'atc-muted', text: z.from_cents !== null ? 'None yet' : '—' })),
+                h('td', { text: String(z.hotels) }));
+            }) : h('tr', null, h('td', { colspan: 5, class: 'atc-muted', text: 'No zones drawn at this airport yet.' })))))),
+        d.orphans.length ? h('section', { class: 'card pad' }, h('h2', { text: 'Destination pages with no matching zone' }),
+          h('p', { class: 'small atc-muted', text: 'These pages show the old site\'s prices only. Draw or rename a zone with the same name to connect them.' }),
+          h('ul', null, d.orphans.map(function (o) { return h('li', null, h('a', { href: o.url, target: '_blank', rel: 'noopener', text: o.title + ' ↗' })); }))) : null,
+        h('section', { class: 'card' },
+          h('div', { class: 'pad' }, h('h2', { text: 'Providers at this airport' })),
+          h('div', { class: 'scroll' }, h('table', null,
+            h('thead', null, h('tr', null, ['Provider', 'Status', 'Vehicle categories', 'Destinations priced'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+            h('tbody', null, d.providers.length ? d.providers.map(function (p) {
+              return h('tr', { class: 'click', onclick: function () { go('providers/' + p.id); } },
+                h('td', null, h('strong', { text: p.name })), h('td', null, statusChip(p.status)),
+                h('td', { text: p.live_services + ' live of ' + p.services }), h('td', { text: String(p.zones) }));
+            }) : h('tr', null, h('td', { colspan: 4, class: 'atc-muted', text: 'No provider sells at this airport yet.' }))))))
+      ]);
+    }).catch(fail);
   }
 
   function viewProviders() {

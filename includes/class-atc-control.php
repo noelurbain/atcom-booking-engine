@@ -119,6 +119,7 @@ final class ATC_Control {
 		<a href="<?php echo esc_url( home_url( '/control/' ) ); ?>" data-view="">Dashboard</a>
 		<a href="<?php echo esc_url( home_url( '/control/bookings/' ) ); ?>" data-view="bookings">Bookings</a>
 		<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>
+		<a href="<?php echo esc_url( home_url( '/control/content/' ) ); ?>" data-view="content">Content</a>
 		<a href="<?php echo esc_url( home_url( '/control/affiliates/' ) ); ?>" data-view="affiliates">Affiliates</a>
 		<span class="off">Prices <i class="soon">soon</i></span>
 		<a href="<?php echo esc_url( home_url( '/control/zones/' ) ); ?>" data-view="zones">Zones and hotels</a>
