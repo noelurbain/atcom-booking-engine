@@ -600,6 +600,41 @@ final class ATC_Directory {
 		return in_array( $m, array( 'always', 'never' ), true ) ? $m : 'auto';
 	}
 
+	/**
+	 * For the providers list in Control: where each provider is (main airport, else its directory place)
+	 * and whether its website links to us. One query for the airports, post meta for the rest.
+	 */
+	public static function list_info(): array {
+		global $wpdb;
+		$rows = $wpdb->get_results( 'SELECT p.id, a.iata, a.city, a.country FROM ' . self::t( 'parties' ) . ' p LEFT JOIN ' . self::t( 'airports' ) . " a ON a.id = p.home_airport_id WHERE p.type = 'provider'", OBJECT_K ); // phpcs:ignore
+		$posts = $wpdb->get_results( $wpdb->prepare( "SELECT m.meta_value AS party, m.post_id FROM {$wpdb->postmeta} m JOIN {$wpdb->posts} po ON po.ID = m.post_id AND po.post_type = %s WHERE m.meta_key = %s", self::PT, self::LINK ), OBJECT_K );
+		$out   = array();
+		foreach ( $rows as $id => $r ) {
+			$pid  = isset( $posts[ $id ] ) ? (int) $posts[ $id ]->post_id : 0;
+			$city = (string) $r->city;
+			$ctry = (string) $r->country;
+			if ( $pid ) {
+				$terms = get_the_terms( $pid, self::TAX );
+				if ( $terms && ! is_wp_error( $terms ) ) {
+					foreach ( $terms as $t ) {
+						if ( $t->parent ) {
+							$city = $city ?: $t->name;
+							$par  = get_term( $t->parent, self::TAX );
+							$ctry = ( $par && ! is_wp_error( $par ) ) ? $par->name : $ctry;
+							break;
+						}
+					}
+				}
+			}
+			$link = 'none';
+			if ( $pid ) {
+				$link = '' === self::site( $pid ) ? 'no_site' : ( (string) get_post_meta( $pid, '_atc_bl_status', true ) ?: 'unchecked' );
+			}
+			$out[ (int) $id ] = array( 'city' => $city, 'country' => $ctry, 'iata' => (string) $r->iata, 'link' => $link, 'link_page' => $pid ? ( (string) get_post_meta( $pid, '_atc_bl_page', true ) ?: self::site( $pid ) ) : '' );
+		}
+		return $out;
+	}
+
 	public static function backlink( int $pid ): array {
 		return array(
 			'required' => (bool) ATC_Settings::get( 'dir_backlink_required' ),

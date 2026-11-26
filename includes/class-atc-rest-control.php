@@ -313,9 +313,11 @@ final class ATC_REST_Control {
 			array(
 				'GET'  => static function () {
 					$rows = ATC_Catalog::parties( 'provider' );
+					$info = ATC_Directory::list_info();
 					foreach ( $rows as &$row ) {
 						$row['portal'] = ATC_Partner::portal_state( (int) $row['id'] );
 						$row['group']  = ATC_Partner::invite_group( $row );
+						$row          += $info[ (int) $row['id'] ] ?? array( 'city' => '', 'country' => '', 'iata' => '', 'link' => 'none', 'link_page' => '' );
 					}
 					return rest_ensure_response( array( 'providers' => $rows, 'invite_test_to' => (string) ATC_Settings::get( 'invite_test_to' ) ) );
 				},

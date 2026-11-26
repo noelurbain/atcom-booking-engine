@@ -1818,6 +1818,13 @@
     return h('div', { class: 'atc-actions' }, chip, btn);
   }
 
+  // Does the provider's website link back to us (checked daily by the directory)?
+  function linkChip(p) {
+    var m = { found: ['green', 'Links to us'], missing: ['grey', 'No link yet'], error: ['orange', "Site didn't answer"], unchecked: ['grey', 'Not checked yet'], no_site: ['grey', 'No website'], none: ['grey', 'No profile'] }[p.link] || ['grey', p.link];
+    var chip = h('span', { class: 'chip ' + m[0], text: m[1] });
+    return p.link === 'found' && p.link_page ? h('a', { href: p.link_page, target: '_blank', rel: 'noopener', title: 'Where we found the link' }, chip) : chip;
+  }
+
   function viewProviders() {
     clear(app);
     var tbody = h('tbody');
@@ -1825,7 +1832,7 @@
     var search = h('input', { type: 'search', placeholder: 'Find a provider', 'aria-label': 'Find a provider' });
     search.value = new URLSearchParams(location.search).get('q') || '';
     var filter = h('select', { 'aria-label': 'Filter' },
-      [['all', 'All'], ['live', 'Live'], ['pending', 'Pending'], ['not_invited', 'Not invited yet'], ['invited', 'Invited, no password yet'], ['active', 'Using the portal']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+      [['all', 'All'], ['live', 'Live'], ['pending', 'Pending'], ['not_invited', 'Not invited yet'], ['invited', 'Invited, no password yet'], ['active', 'Using the portal'], ['links', 'Links to us'], ['nolink', 'Website, no link to us']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
     var bulk = h('button', { class: 'btn', type: 'button', text: 'Invite everyone not invited yet' });
     var groupSel = h('select', { 'aria-label': 'Who to invite' },
       [['live', 'Live providers (email A)'], ['applied', 'Applied, never answered (email C)'], ['former', 'Former providers without prices (email B)']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
@@ -1848,25 +1855,28 @@
       banner,
       h('div', { class: 'atc-actions' }, search, filter, count, groupSel, bulk),
       h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
-        h('thead', null, h('tr', null, ['Provider', 'Contact', 'Airports', 'Status', 'Portal'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+        h('thead', null, h('tr', null, ['Provider', 'Contact', 'City, country', 'Link to us', 'Status', 'Portal'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
         tbody)))
     ]);
     function render() {
       clear(tbody);
       var q = search.value.trim().toLowerCase(), f = filter.value;
       var rows = all.filter(function (p) {
-        if (q && (p.name + ' ' + (p.email || '')).toLowerCase().indexOf(q) === -1) return false;
+        if (q && (p.name + ' ' + (p.email || '') + ' ' + (p.city || '') + ' ' + (p.country || '')).toLowerCase().indexOf(q) === -1) return false;
         if (f === 'live' || f === 'pending') return p.status === f;
         if (f === 'not_invited' || f === 'invited' || f === 'active') return p.portal.state === f;
+        if (f === 'links') return p.link === 'found';
+        if (f === 'nolink') return p.link === 'missing' || p.link === 'unchecked' || p.link === 'error';
         return true;
       });
       count.textContent = rows.length + ' of ' + all.length;
-      if (!rows.length) add(tbody, h('tr', null, h('td', { colspan: 5, class: 'atc-muted', text: all.length ? 'No provider matches.' : 'No providers yet.' })));
+      if (!rows.length) add(tbody, h('tr', null, h('td', { colspan: 6, class: 'atc-muted', text: all.length ? 'No provider matches.' : 'No providers yet.' })));
       rows.slice(0, 300).forEach(function (p) {
         add(tbody, h('tr', null,
           h('td', null, h('a', { class: 'strong', href: C.base + 'providers/' + p.id + '/', 'data-go': 'providers/' + p.id, text: p.name })),
           h('td', { class: 'atc-muted', text: [p.email, p.phone].filter(Boolean).join(' · ') }),
-          h('td', { text: p.airports || '' }),
+          h('td', null, h('div', { text: [p.city, p.country].filter(Boolean).join(', ') }), p.iata ? h('div', { class: 'small atc-muted', text: p.iata }) : null),
+          h('td', null, linkChip(p)),
           h('td', null, statusChip(p.status)),
           h('td', null, portalCell(p, load))));
       });
