@@ -131,6 +131,9 @@ final class ATC_Book {
 		$wp_query->is_404 = false;
 		status_header( 200 );
 		nocache_headers();
+		// Search results, checkout, payment and booking pages: never in search engines.
+		header( 'X-Robots-Tag: noindex, follow', true );
+		add_filter( 'wp_robots', static fn() => array( 'noindex' => true, 'follow' => true ), 99 );
 		// phpcs:disable WordPress.Security.NonceVerification -- public pages; the booking key is the access check.
 		$key = isset( $_GET['k'] ) ? sanitize_text_field( wp_unslash( $_GET['k'] ) ) : '';
 		if ( in_array( $view, array( 'pay', 'reservation' ), true ) || ( 'checkout' === $view && isset( $_GET['b'] ) ) ) {
