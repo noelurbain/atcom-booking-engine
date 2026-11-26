@@ -114,6 +114,7 @@ final class ATC_Control {
 </header>
 <div class="atc-wrap atc-shell">
 	<nav class="atc-sidenav" aria-label="Control menu">
+		<a class="atc-site" href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank" rel="noopener">View the site ↗</a>
 		<a href="<?php echo esc_url( home_url( '/control/' ) ); ?>" data-view="">Dashboard</a>
 		<a href="<?php echo esc_url( home_url( '/control/bookings/' ) ); ?>" data-view="bookings">Bookings</a>
 		<a href="<?php echo esc_url( home_url( '/control/providers/' ) ); ?>" data-view="providers">Providers</a>

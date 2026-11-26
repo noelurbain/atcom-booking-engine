@@ -936,8 +936,11 @@
   /* ---------- Dashboard ---------- */
 
   function cash(c) { return 'USD ' + (c / 100).toLocaleString('en-US', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }); }
-  function stat(label, value, sub) {
-    return h('div', { class: 'stat' }, h('span', { class: 'small atc-muted strong', text: label }), h('strong', { class: 'big', text: String(value) }), sub ? h('span', { class: 'small atc-muted', text: sub }) : null);
+  // A dashboard number; with a path it opens that list (e.g. 'bookings/?status=paid').
+  function stat(label, value, sub, path) {
+    var kids = [h('span', { class: 'small atc-muted strong', text: label }), h('strong', { class: 'big', text: String(value) }), sub ? h('span', { class: 'small atc-muted', text: sub }) : null];
+    if (!path) return h('div', { class: 'stat' }, kids);
+    return h('a', { class: 'stat link', href: C.base + path, onclick: function (e) { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); history.pushState({}, '', C.base + path); route(); window.scrollTo(0, 0); } }, kids);
   }
   function tripsTable(rows, empty) {
     if (!rows.length) return h('p', { class: 'atc-muted pad-x', text: empty });
@@ -1003,11 +1006,11 @@
           } }), h('span', { class: 'small atc-muted', text: 'Updated ' + d.now }))),
 
         h('section', { class: 'stats' },
-          stat('Paid bookings, last 30 days', m.paid, all.paid + ' all time'),
+          stat('Paid bookings, last 30 days', m.paid, all.paid + ' all time', 'bookings/?status=paid'),
           stat('Sales, last 30 days', cash(m.sales), cash(all.sales) + ' all time'),
           stat('Ours, last 30 days', cash(m.ours), 'Providers get ' + cash(m.providers)),
-          stat('Not paid, last 30 days', m.unpaid, 'Started and never paid'),
-          stat('Cancelled, last 30 days', m.cancelled, all.cancelled + ' all time')),
+          stat('Not paid, last 30 days', m.unpaid, 'Started and never paid', 'bookings/?status=unpaid'),
+          stat('Cancelled, last 30 days', m.cancelled, all.cancelled + ' all time', 'bookings/?status=cancelled')),
 
         d.no_provider.length ? h('section', { class: 'card warn' },
           h('div', { class: 'card-head' }, h('h2', { text: 'Paid trips nobody is driving yet' }), h('span', { class: 'chip red', text: String(d.no_provider.length) })),
