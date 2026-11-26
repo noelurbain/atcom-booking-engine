@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.29.1
+ * Version:           0.29.2
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.29.1' );
+define( 'ATC_VERSION', '0.29.2' );
 define( 'ATC_DB_VERSION', '25' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
@@ -97,6 +97,17 @@ ATC_Crisp_Widget::init();
 ATC_Media_Import::init();
 // Invitation and password links work for 7 days (people open invitations days later).
 add_filter( 'password_reset_expiration', static fn() => 7 * DAY_IN_SECONDS );
+// "Password changed for user: …" goes to the site admin email each time a provider, affiliate or traveler
+// chooses a password (also through wp-login's "Forgot your password"). Keep it only for administrators.
+add_action(
+	'after_password_reset',
+	static function ( $user ) {
+		if ( ! user_can( $user, 'manage_options' ) ) {
+			remove_action( 'after_password_reset', 'wp_password_change_notification' );
+		}
+	},
+	1
+);
 // The sitemap does not list WordPress users (it would show sign-in names).
 add_filter( 'wp_sitemaps_add_provider', static fn( $provider, $name ) => 'users' === $name ? false : $provider, 10, 2 );
 add_action( 'init', array( 'ATC_Checkout', 'repair_provider_names' ), 30 );
