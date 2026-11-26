@@ -71,11 +71,11 @@
   function go(p) { history.pushState({}, '', C.base + p + (p ? '/' : '')); route(); }
   window.addEventListener('popstate', route);
 
-  // World clocks under the header: the places our travelers and providers are, updated every 15 seconds.
+  // World clocks under the header: spread around the globe, updated every 15 seconds.
   (function clocks() {
     var box = document.getElementById('atc-clocks');
     if (!box || !window.Intl) return;
-    var cities = [['Los Angeles', 'America/Los_Angeles'], ['Cancún', 'America/Cancun'], ['New York', 'America/New_York'], ['Punta Cana', 'America/Santo_Domingo'], ['London', 'Europe/London'], ['Paris', 'Europe/Paris']];
+    var cities = [['Los Angeles', 'America/Los_Angeles'], ['Cancún', 'America/Cancun'], ['Paris', 'Europe/Paris'], ['Dubai', 'Asia/Dubai'], ['Hong Kong', 'Asia/Hong_Kong'], ['Sydney', 'Australia/Sydney']];
     var mine = Intl.DateTimeFormat().resolvedOptions().timeZone;
     var cells = cities.map(function (c) {
       var t = h('strong', { class: 'ck-t' }), d = h('span', { class: 'ck-d' });
