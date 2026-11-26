@@ -40,6 +40,9 @@ final class ATC_Followup {
 			return;
 		}
 		update_option( 'atc_followup_day', $today, false );
+		if ( ! ATC_Settings::get( 'provider_reminders' ) ) {
+			return; // Reminders paused (launch): no document or expiry emails, no automatic pauses.
+		}
 		self::documents();
 		self::expiring();
 	}

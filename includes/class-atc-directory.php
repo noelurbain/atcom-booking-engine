@@ -358,7 +358,38 @@ final class ATC_Directory {
 	}
 
 	/** Saves the profile. $staff: our team (can switch the website on). */
+	/**
+	 * Contact details hidden in a text (email, website, phone or WhatsApp number): travelers must book
+	 * through us, and the profile has its own contact fields. Returns what was found, or ''.
+	 */
+	public static function contact_in( string $text ): string {
+		if ( preg_match( '/[A-Z0-9._%+-]+\s*(@|\(at\)|\[at\])\s*[A-Z0-9.-]+\.[A-Z]{2,}/i', $text ) ) {
+			return 'an email address';
+		}
+		if ( preg_match( '#\b(?:https?://|www\.)\S+|\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|mx|co|io|info|biz|travel|tours?|us|ca|uk|es|fr|de|it|nl|pt|br|ar|cl|pe|cr|do|jm|bs|aw|cw|tc|vi|pr)(?:\.[a-z]{2})?(?:/\S*)?\b#i', $text ) ) {
+			return 'a website address';
+		}
+		$text = preg_replace( '/\b(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}\b/u', ' ', $text ); // Year ranges are not phones.
+		if ( preg_match_all( '/\+?\d[\d\s().\-]{6,}\d/', $text, $m ) ) {
+			foreach ( $m[0] as $num ) {
+				if ( strlen( preg_replace( '/\D/', '', $num ) ) >= 8 ) {
+					return 'a phone number';
+				}
+			}
+		}
+		return '';
+	}
+
 	public static function save( int $party_id, array $in, bool $staff = false ) {
+		$labels = array( 'title' => 'company name', 'about' => 'description', 'summary' => 'summary', 'services' => 'services', 'destinations' => 'destinations' );
+		foreach ( $labels as $k => $label ) {
+			if ( isset( $in[ $k ] ) ) {
+				$found = self::contact_in( is_array( $in[ $k ] ) ? implode( ' ', array_map( 'strval', $in[ $k ] ) ) : (string) $in[ $k ] );
+				if ( '' !== $found ) {
+					return new WP_Error( 'atc_dir_contact', 'Your ' . $label . ' contains ' . $found . '. Travelers book through Airport Transportation, so contact details cannot go in the texts. Use the phone, WhatsApp and website fields instead.', array( 'status' => 400 ) );
+				}
+			}
+		}
 		$pid = self::post_id( $party_id ) ?: self::create( $party_id );
 		if ( ! $pid ) {
 			return new WP_Error( 'atc_dir_none', 'The directory is not available right now.', array( 'status' => 500 ) );

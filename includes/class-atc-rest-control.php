@@ -314,6 +314,7 @@ final class ATC_REST_Control {
 					$rows = ATC_Catalog::parties( 'provider' );
 					foreach ( $rows as &$row ) {
 						$row['portal'] = ATC_Partner::portal_state( (int) $row['id'] );
+						$row['group']  = ATC_Partner::invite_group( $row );
 					}
 					return rest_ensure_response( array( 'providers' => $rows, 'invite_test_to' => (string) ATC_Settings::get( 'invite_test_to' ) ) );
 				},
@@ -353,9 +354,13 @@ final class ATC_REST_Control {
 		self::route(
 			'/providers/invite-all',
 			array(
-				'POST' => static function () {
+				'POST' => static function ( WP_REST_Request $r ) {
 					global $wpdb;
-					$ids  = array_map( 'intval', $wpdb->get_col( 'SELECT id FROM ' . ATC_Schema::table( 'parties' ) . " WHERE type = 'provider' AND invited_at IS NULL AND status <> 'archived' AND email IS NOT NULL AND email <> '' ORDER BY id" ) );
+					$group = (string) ( self::body( $r )['group'] ?? '' );
+					$ids   = array_map( 'intval', $wpdb->get_col( 'SELECT id FROM ' . ATC_Schema::table( 'parties' ) . " WHERE type = 'provider' AND invited_at IS NULL AND status NOT IN ('archived','suspended') AND email IS NOT NULL AND email <> '' ORDER BY id" ) );
+					if ( in_array( $group, array( 'live', 'applied', 'former' ), true ) ) {
+						$ids = array_values( array_filter( $ids, static fn( $id ) => ATC_Partner::invite_group( ATC_Catalog::party( $id ) ) === $group ) );
+					}
 					$sent = 0;
 					$fail = array();
 					foreach ( array_slice( $ids, 0, 40 ) as $id ) {

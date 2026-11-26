@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.27.7
+ * Version:           0.28.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.27.7' );
+define( 'ATC_VERSION', '0.28.0' );
 define( 'ATC_DB_VERSION', '24' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
@@ -95,6 +95,10 @@ ATC_Chat::init();
 ATC_Crisp::init();
 ATC_Crisp_Widget::init();
 ATC_Media_Import::init();
+// Invitation and password links work for 7 days (people open invitations days later).
+add_filter( 'password_reset_expiration', static fn() => 7 * DAY_IN_SECONDS );
+// The sitemap does not list WordPress users (it would show sign-in names).
+add_filter( 'wp_sitemaps_add_provider', static fn( $provider, $name ) => 'users' === $name ? false : $provider, 10, 2 );
 add_action( 'init', array( 'ATC_Checkout', 'repair_provider_names' ), 30 );
 add_shortcode( 'atc_provider_agreement', array( 'ATC_Partner', 'agreement_html' ) );
 

@@ -206,6 +206,64 @@ final class ATC_Partner {
 		);
 	}
 
+	/**
+	 * Which invitation a provider gets: 'live' (has prices, gets bookings), 'applied' (applied on the old
+	 * site and never got an answer) or 'former' (in the old provider list, no active prices).
+	 */
+	public static function invite_group( array $p ): string {
+		global $wpdb;
+		if ( 'live' === $p['status'] ) {
+			return 'live';
+		}
+		$applied = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . self::t( 'events' ) . " WHERE object_type = 'party' AND object_id = %d AND action = 'imported_application'", (int) $p['id'] ) );
+		return $applied ? 'applied' : 'former';
+	}
+
+	/** Subject, title, body (HTML) and button of each invitation. */
+	private static function invite_mail( string $group, array $p, string $link ): array {
+		$e       = static fn( $t ) => esc_html( (string) $t );
+		$name    = $p['contact_name'] ?: $p['name'];
+		$company = $p['name'];
+		$pid     = class_exists( 'ATC_Directory' ) ? ATC_Directory::post_id( (int) $p['id'] ) : 0;
+		$profile = $pid ? (string) get_permalink( $pid ) : '';
+		$prof    = $profile ? '<a href="' . esc_url( $profile ) . '">' . $e( $profile ) . '</a>' : '';
+		$li      = static fn( array $items ) => '<ol style="padding-left:20px;margin:0 0 16px">' . implode( '', array_map( static fn( $i ) => '<li style="margin:0 0 6px">' . $i . '</li>', $items ) ) . '</ol>';
+		$pw      = 'Choose your password with the button below (the link works for 7 days).';
+		$backlink = 'If you add a link to us from your website, we show your website on your profile too, and you get a link back from us. Your portal shows the exact code to copy.';
+		$p_      = static fn( $t ) => '<p style="margin:0 0 14px">' . $t . '</p>';
+		if ( 'live' === $group ) {
+			return array(
+				'subject' => 'Your Airport Transportation provider account is ready: please check your details',
+				'title'   => 'Your provider account is ready',
+				'body'    => $p_( 'Hi ' . $e( $name ) . ',' )
+					. $p_( 'We have moved Airport Transportation to a new platform, and ' . $e( $company ) . ' is already in it: your company details, vehicles, zones and prices were brought over from the previous system.' )
+					. $p_( 'Please take 10 minutes to check everything is right before new bookings come in:' )
+					. $li( array( $pw, 'Check your company details, vehicles, zones and prices.', 'Accept the new provider agreement and add your payout details. Our commission is now 25% (it was 30%), and your prices for travelers stay the same.', 'Upload your documents (insurance, permits).' ) )
+					. ( $prof ? $p_( 'You also have a free public profile in our directory: ' . $prof . '. Check it and add your logo, photos and a short description. ' . $backlink ) : '' ),
+			);
+		}
+		if ( 'applied' === $group ) {
+			return array(
+				'subject' => 'Your application to Airport Transportation: sorry for the wait',
+				'title'   => 'Your provider account is ready',
+				'body'    => $p_( 'Hi ' . $e( $name ) . ',' )
+					. $p_( 'You applied to become a transportation provider with Airport Transportation, and we are sorry we did not get back to you. We have been building a new platform, and it is now ready for you.' )
+					. $p_( $e( $company ) . ' already has an account. To start receiving bookings:' )
+					. $li( array( $pw, 'Add your vehicles, the zones you cover and your prices per vehicle.', 'Accept the provider agreement, add your payout details and upload your documents.' ) )
+					. $p_( 'Once those steps are done, your listing goes live and travelers can book you. It is free to join; we take a 25% commission only on the bookings we send you.' )
+					. ( $prof ? $p_( 'You also get a free public profile in our directory: ' . $prof . '. ' . $backlink ) : '' ),
+			);
+		}
+		return array(
+			'subject' => 'Airport Transportation has a new provider platform: add your prices to get bookings',
+			'title'   => 'Add your prices to get bookings',
+			'body'    => $p_( 'Hi ' . $e( $name ) . ',' )
+				. $p_( $e( $company ) . ' is a provider partner of Airport Transportation, but your account had no active prices, so travelers could not book you. Our new platform makes this much easier.' )
+				. $li( array( $pw, 'Check your company details, then add your vehicles, zones and prices.', 'Accept the new provider agreement (our commission is now 25%), add your payout details and upload your documents.' ) )
+				. ( $prof ? $p_( 'Your free directory profile: ' . $prof . '. ' . $backlink ) : '' ),
+		);
+	}
+
 	/** Creates (or finds) the provider's sign-in and emails a link to choose a password. */
 	public static function invite( int $party_id ) {
 		global $wpdb;
@@ -253,22 +311,23 @@ final class ATC_Partner {
 		if ( is_wp_error( $key ) ) {
 			return $key;
 		}
-		$link    = add_query_arg( array( 'key' => $key, 'login' => rawurlencode( $user->user_login ) ), home_url( '/portal/set-password/' ) );
-		$name    = $p['contact_name'] ?: $p['name'];
-		$subject = 'Your new Airport Transportation provider portal';
-		$body    = "Hi {$name},\n\nAirport Transportation has a new provider portal, and {$p['name']} is already in it: your company details, the areas you cover and your prices have been brought over from the previous system.\n\nChoose your password here (the link works for 24 hours):\n{$link}\n\nThen check your details, upload your documents, add your payout details and accept the new provider agreement. Our commission is now 25% of the price travelers pay (it was 30%), and your prices stay the same for travelers.\n\nSign in any time at " . home_url( '/login/' ) . "\n\nAirport Transportation";
-		$to      = $email;
-		$test    = (string) ATC_Settings::get( 'invite_test_to' );
+		$link  = add_query_arg( array( 'key' => $key, 'login' => rawurlencode( $user->user_login ) ), home_url( '/portal/set-password/' ) );
+		$group = self::invite_group( $p );
+		$m     = self::invite_mail( $group, $p, $link );
+		$to    = $email;
+		$test  = (string) ATC_Settings::get( 'invite_test_to' );
+		$subj  = $m['subject'];
 		if ( '' !== $test ) {
-			$to      = $test;
-			$subject = '[TEST, would go to ' . $email . '] ' . $subject;
+			$to   = $test;
+			$subj = '[TEST, would go to ' . $email . '] ' . $subj;
 		}
-		$sent = wp_mail( $to, $subject, $body, array( 'From: Airport Transportation <' . ATC_Settings::get( 'from_email' ) . '>' ) );
+		$html = ATC_Mail::wrap( $m['title'], $m['body'] . '<p style="margin:0 0 14px">Sign in any time at <a href="' . esc_url( home_url( '/login/' ) ) . '">' . esc_html( home_url( '/login/' ) ) . '</a></p>', 'Choose my password', $link );
+		$sent = ATC_Mail::send( $to, $subj, $html, array( 'kind' => 'provider_invite_' . $group ) );
 		if ( ! $sent ) {
 			return new WP_Error( 'atc_invite_mail', 'The email could not be sent. Check the mail settings (FluentSMTP).', array( 'status' => 500 ) );
 		}
 		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'parties' ) . ' SET invited_at = %s, invite_count = invite_count + 1 WHERE id = %d', self::now(), $party_id ) );
-		ATC_Install::log( 'party', $party_id, 'invited', array( 'to' => $to, 'test' => '' !== $test ) );
+		ATC_Install::log( 'party', $party_id, 'invited', array( 'to' => $to, 'test' => '' !== $test, 'group' => $group ) );
 		return self::portal_state( $party_id ) + array( 'sent_to' => $to, 'test' => '' !== $test );
 	}
 

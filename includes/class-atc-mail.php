@@ -478,8 +478,10 @@ final class ATC_Mail {
 		}
 		$url  = home_url( '/portal/bookings/' . $b['number'] . '/' );
 		$body = self::p( 'Please confirm you got booking <strong>' . self::e( $b['number'] ) . '</strong>. The traveler is counting on it.' ) . self::table( self::trip_rows( $b, true ) );
-		self::send( self::provider_to( $p ), 'Please confirm booking ' . $b['number'], self::wrap( 'Please confirm booking ' . $b['number'], $body, 'Confirm in the portal', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_nudge' ) );
-		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking within its confirmation time. We reminded them. Call them, or give the booking to another provider in Control.' ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		if ( ATC_Settings::get( 'provider_reminders' ) ) {
+			self::send( self::provider_to( $p ), 'Please confirm booking ' . $b['number'], self::wrap( 'Please confirm booking ' . $b['number'], $body, 'Confirm in the portal', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_nudge' ) );
+		}
+		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking within its confirmation time.' . ( ATC_Settings::get( 'provider_reminders' ) ? ' We reminded them.' : ' (Provider reminders are paused, so they were not reminded.)' ) . ' Call them, or give the booking to another provider in Control.' ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	/** Manage booking: the link to a booking, sent to the email on it. */

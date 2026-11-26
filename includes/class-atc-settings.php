@@ -31,6 +31,7 @@ final class ATC_Settings {
 			'from_email'             => 'hello@airporttransportation.com',
 			// While this is set, provider invitations go to this address instead of the providers (test site).
 			'invite_test_to'         => 'hello@airporttransportation.com',
+			'provider_reminders'     => 0,        // document, expiry and "please confirm" reminders to providers
 			// Analytics (all public ids, not secrets).
 			'posthog_key'            => '',
 			'posthog_region'         => 'us',     // us | eu
@@ -101,6 +102,7 @@ final class ATC_Settings {
 
 		$test                  = isset( $in['invite_test_to'] ) ? sanitize_email( $in['invite_test_to'] ) : '';
 		$out['invite_test_to'] = is_email( $test ) ? $test : '';
+		$out['provider_reminders'] = empty( $in['provider_reminders'] ) ? 0 : 1;
 
 		$out['posthog_key']    = isset( $in['posthog_key'] ) && preg_match( '/^phc_[A-Za-z0-9]{20,}$/', trim( (string) $in['posthog_key'] ) ) ? trim( (string) $in['posthog_key'] ) : '';
 		$out['posthog_region'] = isset( $in['posthog_region'] ) && 'eu' === $in['posthog_region'] ? 'eu' : 'us';

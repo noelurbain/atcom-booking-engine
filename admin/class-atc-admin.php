@@ -153,7 +153,8 @@ define( 'ATC_MAPS_SERVER_KEY', 'AIza…' );</pre>
 					$num( 'service_code_length', 'Service code length', 'characters (4–6)' );
 					$num( 'service_code_attempts', 'Service code tries before locking', '' );
 					?>
-					<tr><th scope="row"><label for="invite_test_to">Test mode: send provider invitations to</label></th><td><input type="email" id="invite_test_to" class="regular-text" name="<?php echo esc_attr( $n ); ?>[invite_test_to]" value="<?php echo esc_attr( $o['invite_test_to'] ); ?>"><p class="description">While this has an address, invitations go there instead of to the providers. Empty it on the live site to invite providers for real.</p></td></tr>
+					<tr><th scope="row">Provider reminders</th><td><input type="hidden" name="<?php echo esc_attr( $n ); ?>[provider_reminders]" value="0"><label><input type="checkbox" name="<?php echo esc_attr( $n ); ?>[provider_reminders]" value="1" <?php checked( ! empty( $o['provider_reminders'] ) ); ?>> Send reminders to providers (missing documents, documents expiring, "please confirm this booking")</label><p class="description">Unticked: no reminders go out and nobody is paused for missing documents. Invitations and booking emails still go out.</p></td></tr>
+					<tr><th scope="row"><label for="invite_test_to">Test mode: send all provider emails to</label></th><td><input type="email" id="invite_test_to" class="regular-text" name="<?php echo esc_attr( $n ); ?>[invite_test_to]" value="<?php echo esc_attr( $o['invite_test_to'] ); ?>"><p class="description">While this has an address, every email meant for a provider (invitations, bookings) goes there instead. Empty it to email providers for real.</p></td></tr>
 					<tr><th scope="row"><label for="from_email">Send emails from</label></th><td><input type="email" id="from_email" class="regular-text" name="<?php echo esc_attr( $n ); ?>[from_email]" value="<?php echo esc_attr( $o['from_email'] ); ?>"></td></tr>
 				</table>
 				<h2>Analytics</h2>

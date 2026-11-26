@@ -103,6 +103,12 @@ final class ATC_REST_Portal {
 			array(
 				'PUT' => static function ( WP_REST_Request $r ) {
 					$in      = array_intersect_key( self::body( $r ), array_flip( array( 'name', 'legal_name', 'contact_name', 'email', 'phone', 'languages', 'website', 'about', 'min_notice_minutes' ) ) );
+					foreach ( array( 'name' => 'company name', 'about' => 'description' ) as $k => $label ) {
+						$found = isset( $in[ $k ] ) ? ATC_Directory::contact_in( (string) $in[ $k ] ) : '';
+						if ( '' !== $found ) {
+							return new WP_Error( 'atc_contact', 'Your ' . $label . ' contains ' . $found . '. Travelers book through Airport Transportation, so contact details cannot go in the texts. Use the phone and website fields instead.', array( 'status' => 400 ) );
+						}
+					}
 					$saved   = ATC_Catalog::save_party( $in, self::pid() );
 					return is_wp_error( $saved ) ? $saved : rest_ensure_response( self::me() );
 				},

@@ -1821,6 +1821,9 @@
     var filter = h('select', { 'aria-label': 'Filter' },
       [['all', 'All'], ['live', 'Live'], ['pending', 'Pending'], ['not_invited', 'Not invited yet'], ['invited', 'Invited, no password yet'], ['active', 'Using the portal']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
     var bulk = h('button', { class: 'btn', type: 'button', text: 'Invite everyone not invited yet' });
+    var groupSel = h('select', { 'aria-label': 'Who to invite' },
+      [['live', 'Live providers (email A)'], ['applied', 'Applied, never answered (email C)'], ['former', 'Former providers without prices (email B)']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+    function waiting(p) { return p.portal.state === 'not_invited' && p.email && p.status !== 'archived' && p.status !== 'suspended' && p.group === groupSel.value; }
     var count = h('span', { class: 'atc-muted' });
     var all = [];
     add(app, [
@@ -1830,7 +1833,7 @@
           h('a', { class: 'btn', href: C.base + 'import/', 'data-go': 'import', text: 'Import from the old site' }),
           h('button', { class: 'btn dark', type: 'button', onclick: newProvider, text: 'Add a provider' }))),
       banner,
-      h('div', { class: 'atc-actions' }, search, filter, count, bulk),
+      h('div', { class: 'atc-actions' }, search, filter, count, groupSel, bulk),
       h('section', { class: 'card' }, h('div', { class: 'scroll' }, h('table', null,
         h('thead', null, h('tr', null, ['Provider', 'Contact', 'Airports', 'Status', 'Portal'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
         tbody)))
@@ -1854,8 +1857,8 @@
           h('td', null, statusChip(p.status)),
           h('td', null, portalCell(p, load))));
       });
-      var notInvited = all.filter(function (p) { return p.portal.state === 'not_invited' && p.email && p.status !== 'archived'; }).length;
-      bulk.textContent = 'Invite everyone not invited yet (' + notInvited + ')';
+      var notInvited = all.filter(waiting).length;
+      bulk.textContent = 'Invite (' + notInvited + ' not invited yet)';
       bulk.disabled = !notInvited;
     }
     function load() {
@@ -1868,11 +1871,12 @@
     }
     search.addEventListener('input', render);
     filter.addEventListener('change', render);
+    groupSel.addEventListener('change', render);
     bulk.addEventListener('click', function () {
-      var n = all.filter(function (p) { return p.portal.state === 'not_invited' && p.email && p.status !== 'archived'; }).length;
-      if (!confirm('Send the sign-up invitation to ' + n + ' providers? They go out 40 at a time; click again for the rest.')) return;
+      var n = all.filter(waiting).length;
+      if (!confirm('Send the invitation to ' + n + ' providers (' + groupSel.options[groupSel.selectedIndex].text + ')? They go out 40 at a time; click again for the rest.')) return;
       bulk.disabled = true; bulk.textContent = 'Sending…';
-      api('POST', '/providers/invite-all').then(function (r) {
+      api('POST', '/providers/invite-all', { group: groupSel.value }).then(function (r) {
         toast(r.sent + ' invitations sent' + (r.test_to ? ' to ' + r.test_to + ' (test mode)' : '') + (r.remaining ? '. ' + r.remaining + ' left: click again.' : '.') + (r.failed.length ? ' ' + r.failed.length + ' failed.' : ''), !!r.failed.length);
         load();
       }).catch(fail).then(function () { bulk.disabled = false; });
