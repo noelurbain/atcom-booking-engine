@@ -184,19 +184,27 @@ final class ATC_Content {
 				++$provs[ $pid ]['zones'];
 			}
 		}
-		// Match destination pages to zones by name ("Cancún Airport to Tulum" ↔ zone "Tulum").
+		// Match destination pages to zones by name ("Cancún Airport to Tulum" ↔ zone "Tulum"): exact names first, then one name inside the other.
 		$used = array();
-		foreach ( $zones as &$z ) {
-			$zn = self::norm( $z['name'] );
-			foreach ( $pages as $i => $pg ) {
-				if ( '' !== $zn && ( $pg['dest'] === $zn || false !== strpos( $zn, $pg['dest'] ) || false !== strpos( $pg['dest'], $zn ) ) ) {
-					$z['page']  = array( 'title' => $pg['title'], 'url' => $pg['url'], 'status' => $pg['status'] );
-					$used[ $i ] = true;
-					break;
+		foreach ( array( true, false ) as $exact ) {
+			foreach ( $zones as &$z ) {
+				if ( $z['page'] ) {
+					continue;
+				}
+				$zn = self::norm( $z['name'] );
+				foreach ( $pages as $i => $pg ) {
+					if ( isset( $used[ $i ] ) || '' === $zn || '' === $pg['dest'] ) {
+						continue;
+					}
+					if ( $exact ? $pg['dest'] === $zn : ( false !== strpos( $zn, $pg['dest'] ) || false !== strpos( $pg['dest'], $zn ) ) ) {
+						$z['page']  = array( 'title' => $pg['title'], 'url' => $pg['url'], 'status' => $pg['status'] );
+						$used[ $i ] = true;
+						break;
+					}
 				}
 			}
+			unset( $z );
 		}
-		unset( $z );
 		$orphans = array();
 		foreach ( $pages as $i => $pg ) {
 			if ( ! isset( $used[ $i ] ) ) {
