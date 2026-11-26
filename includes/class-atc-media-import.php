@@ -14,7 +14,18 @@ final class ATC_Media_Import {
 
 	const HOST = 'cdn-atcom.reflektlab.ai';
 	const MAP  = 'atc_cdn_map';
-	const RX   = '#https?://cdn-atcom\.reflektlab\.ai/[^\s"\'()<>\\\\]+#i';
+	const RX   = '#(?:https?://cdn-atcom\.reflektlab\.ai/|https?://airporttransportation\.com/static/|(?<=["\'(])/static/img/)[^\s"\'()<>\\\\]+#i';
+	const OLD  = 'https://airporttransportation.com';
+
+	/** Where to download a found reference from (old-site paths may be relative). */
+	private static function src( string $u ): string {
+		return 0 === strpos( $u, '/static/' ) ? self::OLD . $u : $u;
+	}
+
+	/** Does this text still point at an old image host? */
+	private static function has_old( string $t ): bool {
+		return (bool) preg_match( self::RX, $t );
+	}
 
 	public static function init(): void {
 		add_action( 'atc_media_import_tick', array( __CLASS__, 'tick' ) );
@@ -42,7 +53,7 @@ final class ATC_Media_Import {
 			$wpdb->get_col(
 				$wpdb->prepare(
 					"SELECT DISTINCT p.ID FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_atc'
-					WHERE p.post_type NOT IN ('revision','attachment') AND ( p.post_content LIKE %s OR m.meta_value LIKE %s ) ORDER BY p.ID LIMIT %d",
+					WHERE p.post_type NOT IN ('revision','attachment') AND ( p.post_content LIKE %s OR m.meta_value LIKE %s OR p.post_content LIKE '%%/static/img/%%' OR m.meta_value LIKE '%%/static/img/%%' ) ORDER BY p.ID LIMIT %d",
 					$like,
 					$like,
 					$limit
@@ -54,7 +65,7 @@ final class ATC_Media_Import {
 	public static function left(): int {
 		global $wpdb;
 		$like = '%' . $wpdb->esc_like( self::HOST ) . '%';
-		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_atc' WHERE p.post_type NOT IN ('revision','attachment') AND ( p.post_content LIKE %s OR m.meta_value LIKE %s )", $like, $like ) );
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_atc' WHERE p.post_type NOT IN ('revision','attachment') AND ( p.post_content LIKE %s OR m.meta_value LIKE %s OR p.post_content LIKE '%%/static/img/%%' OR m.meta_value LIKE '%%/static/img/%%' )", $like, $like ) );
 	}
 
 	/** Background: keep going every minute (WP-Cron) until nothing is left. */
@@ -108,14 +119,14 @@ final class ATC_Media_Import {
 					break;
 				}
 				if ( isset( $pre[ $u ] ) ) {
-					$file = array( 'name' => wp_basename( (string) wp_parse_url( $u, PHP_URL_PATH ) ), 'tmp_name' => $pre[ $u ] );
+					$file = array( 'name' => wp_basename( (string) wp_parse_url( self::src( $u ), PHP_URL_PATH ) ), 'tmp_name' => $pre[ $u ] );
 					$att  = media_handle_sideload( $file, $id );
 					unset( $pre[ $u ] );
 					if ( ! is_wp_error( $att ) ) {
 						update_post_meta( $att, '_source_url', $u );
 					}
 				} else {
-					$att = media_sideload_image( $u, $id, null, 'id' );
+					$att = self::sideload( $u, $id );
 				}
 				if ( is_wp_error( $att ) ) {
 					$map[ $u ] = false;
@@ -160,10 +171,13 @@ final class ATC_Media_Import {
 				}
 			}
 			clean_post_cache( $id );
-			if ( strpos( strtr( $post->post_content . wp_json_encode( $meta ), $swap ), self::HOST ) !== false ) {
+			if ( self::has_old( strtr( $post->post_content . ' ' . wp_json_encode( $meta, JSON_UNESCAPED_SLASHES ), $swap ) ) ) {
 				$skip[] = $id; // Some images failed: leave their old links, move on.
 			}
 			++$done;
+		}
+		if ( microtime( true ) < $until ) {
+			$copied += self::options( $map );
 		}
 		update_option( 'atc_cdn_skip', array_values( array_unique( $skip ) ), false );
 		foreach ( $pre as $tmp ) {
@@ -207,7 +221,7 @@ final class ATC_Media_Import {
 			$reqs = array();
 			foreach ( $chunk as $u ) {
 				$tmp        = wp_tempnam( $u );
-				$reqs[ $u ] = array( 'url' => $u, 'options' => array( 'filename' => $tmp, 'timeout' => 30 ) );
+				$reqs[ $u ] = array( 'url' => self::src( $u ), 'options' => array( 'filename' => $tmp, 'timeout' => 30 ) );
 				$out[ $u ]  = $tmp;
 			}
 			$res = \WpOrg\Requests\Requests::request_multiple( $reqs, array( 'timeout' => 30, 'connect_timeout' => 10 ) );
@@ -219,5 +233,47 @@ final class ATC_Media_Import {
 			}
 		}
 		return $out;
+	}
+
+	/** media_sideload_image() wants a URL ending in an image extension: strip ?v=… and resolve old-site paths. */
+	private static function sideload( string $u, int $parent ) {
+		$url = self::src( $u );
+		$tmp = download_url( $url, 30 );
+		if ( is_wp_error( $tmp ) ) {
+			return $tmp;
+		}
+		$att = media_handle_sideload( array( 'name' => wp_basename( (string) wp_parse_url( $url, PHP_URL_PATH ) ), 'tmp_name' => $tmp ), $parent );
+		if ( is_wp_error( $att ) ) {
+			wp_delete_file( $tmp );
+			return $att;
+		}
+		update_post_meta( $att, '_source_url', $url );
+		return $att;
+	}
+
+	/** The site-wide default images (settings) and the homepage's Featured Image. @return int images copied */
+	private static function options( array &$map ): int {
+		$n = 0;
+		foreach ( array( 'atc_img_default', 'atc_img_airports', 'atc_img_airlines' ) as $opt ) {
+			$v = (string) get_option( $opt, '' );
+			if ( '' === $v || ! self::has_old( $v ) ) {
+				continue;
+			}
+			if ( ! isset( $map[ $v ] ) ) {
+				$att       = self::sideload( $v, 0 );
+				$map[ $v ] = is_wp_error( $att ) ? false : array( 'id' => (int) $att, 'url' => (string) wp_get_attachment_url( $att ) );
+				$n        += is_wp_error( $att ) ? 0 : 1;
+				update_option( self::MAP, $map, false );
+			}
+			if ( ! empty( $map[ $v ]['url'] ) ) {
+				update_option( $opt, $map[ $v ]['url'] );
+			}
+		}
+		$home = (int) get_option( 'page_on_front' );
+		$pick = self::OLD . '/static/img/slide/airport-transportation-pickup.webp';
+		if ( $home && ! has_post_thumbnail( $home ) && ! empty( $map[ $pick ]['id'] ) ) {
+			set_post_thumbnail( $home, $map[ $pick ]['id'] );
+		}
+		return $n;
 	}
 }
