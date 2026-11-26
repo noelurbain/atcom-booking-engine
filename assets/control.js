@@ -70,6 +70,30 @@
   }
   function go(p) { history.pushState({}, '', C.base + p + (p ? '/' : '')); route(); }
   window.addEventListener('popstate', route);
+
+  // World clocks under the header: the places our travelers and providers are, updated every 15 seconds.
+  (function clocks() {
+    var box = document.getElementById('atc-clocks');
+    if (!box || !window.Intl) return;
+    var cities = [['Los Angeles', 'America/Los_Angeles'], ['Cancún', 'America/Cancun'], ['New York', 'America/New_York'], ['Punta Cana', 'America/Santo_Domingo'], ['London', 'Europe/London'], ['Paris', 'Europe/Paris']];
+    var mine = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    var cells = cities.map(function (c) {
+      var t = h('strong', { class: 'ck-t' }), d = h('span', { class: 'ck-d' });
+      add(box, h('div', { class: 'ck' + (c[1] === mine ? ' me' : '') }, h('span', { class: 'ck-c', text: c[0] }), t, d));
+      return { tz: c[1], t: t, d: d };
+    });
+    function tick() {
+      var now = new Date();
+      var here = now.toLocaleDateString('en-CA', { timeZone: mine });
+      cells.forEach(function (c) {
+        c.t.textContent = now.toLocaleTimeString('en-GB', { timeZone: c.tz, hour: '2-digit', minute: '2-digit' });
+        var day = now.toLocaleDateString('en-CA', { timeZone: c.tz });
+        c.d.textContent = now.toLocaleDateString('en-GB', { timeZone: c.tz, weekday: 'short' }) + (day < here ? ' · yesterday' : day > here ? ' · tomorrow' : '');
+      });
+    }
+    tick();
+    setInterval(tick, 15000);
+  })();
   var topSearch = document.querySelector('.atc-search');
   if (topSearch) topSearch.addEventListener('submit', function (e) {
     e.preventDefault();

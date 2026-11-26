@@ -112,6 +112,7 @@ final class ATC_Control {
 		<span class="atc-user"><span class="atc-avatar"><?php echo esc_html( $initials ?: '•' ); ?></span><?php echo esc_html( $user->display_name . ( current_user_can( 'manage_options' ) ? ' · Super admin' : '' ) ); ?></span>
 	</div>
 </header>
+<div class="atc-wrap"><div id="atc-clocks" class="atc-clocks" aria-label="Local times"></div></div>
 <div class="atc-wrap atc-shell">
 	<nav class="atc-sidenav" aria-label="Control menu">
 		<a class="atc-site" href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank" rel="noopener">View the site ↗</a>

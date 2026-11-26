@@ -261,3 +261,12 @@ table.report{min-width:1150px}
 .pv-steps{margin-top:4px}
 .pv-top{position:fixed;right:24px;bottom:24px;z-index:30;padding:10px 16px;border-radius:999px;border:0;background:var(--ink);color:#fff;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.18);opacity:0;pointer-events:none;transform:translateY(10px);transition:.2s}
 .pv-top.show{opacity:1;pointer-events:auto;transform:none}
+
+/* World clocks */
+.atc-clocks{display:flex;gap:8px;overflow-x:auto;padding:14px 0 0;scrollbar-width:none}
+.atc-clocks::-webkit-scrollbar{display:none}
+.ck{flex:1 0 128px;display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:0 8px;padding:8px 14px;background:#fff;border:1px solid var(--line);border-radius:12px}
+.ck-c{font-size:12px;font-weight:800;color:var(--muted)}
+.ck-t{grid-row:span 2;font-size:22px;font-weight:800;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.ck-d{font-size:11px;color:#8C8E93}
+.ck.me{border-color:var(--orange);background:#FFF8EE}
