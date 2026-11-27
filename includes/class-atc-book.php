@@ -892,6 +892,7 @@ final class ATC_Book {
 		<section class="ab-wrap ab-main ab-confirm">
 			<div class="ab-col">
 				<?php echo self::done_notice(); // phpcs:ignore -- escaped inside. ?>
+				<?php echo self::public_review_card( $b ); // phpcs:ignore -- escaped inside. ?>
 				<?php echo self::charges_notice( $b, $key ); // phpcs:ignore -- escaped inside. ?>
 				<?php if ( $cancelled ) : ?>
 					<div class="ab-band is-off">
@@ -1063,6 +1064,18 @@ final class ATC_Book {
 			$out .= '<div class="ab-alert is-warn ab-due" role="status"><div><strong>Amount to pay: ' . esc_html( self::money( (int) $c['amount'] ) ) . '</strong><br>' . esc_html( $c['reason'] ) . '</div><a class="ab-btn is-accent" href="' . esc_url( $url ) . '">Pay ' . esc_html( self::money( (int) $c['amount'] ) ) . '</a></div>';
 		}
 		return $out;
+	}
+
+	/** Right after a good rating: invite the traveler to review Airport Transportation on Google or Tripadvisor. */
+	private static function public_review_card( array $b ): string {
+		if ( 'rated' !== ( isset( $_GET['done'] ) ? sanitize_key( wp_unslash( $_GET['done'] ) ) : '' ) ) { // phpcs:ignore
+			return '';
+		}
+		$inv = ATC_Manage::public_review( $b, ATC_Manage::rating_of( (int) $b['id'] ) );
+		if ( ! $inv ) {
+			return '';
+		}
+		return '<section class="ab-card ab-pad ab-ratecard" aria-label="Review us"><h2>One more favour?</h2><p>Airport Transportation is a small team. A few words about booking with us on ' . esc_html( $inv['site'] ) . ' help other travelers find us.</p><div class="ab-actions"><a class="ab-btn is-accent" href="' . esc_url( $inv['url'] ) . '" target="_blank" rel="noopener">Review us on ' . esc_html( $inv['site'] ) . '</a></div></section>';
 	}
 
 	/** Notices after a change, a cancellation or a rating (?done=...). */

@@ -32,6 +32,9 @@ final class ATC_Settings {
 			// While this is set, provider invitations go to this address instead of the providers (test site).
 			'invite_test_to'         => 'hello@airporttransportation.com',
 			'provider_reminders'     => 0,        // document, expiry and "please confirm" reminders to providers
+			'review_google_url'      => 'https://g.page/r/CS1aQcr-cgiiEBM/review',
+			'review_tripadvisor_url' => 'https://www.tripadvisor.com/UserReviewEdit-g34438-d32908924',
+			'review_invite_min'      => 4,  // invite to Google/TripAdvisor after a provider rating of at least this (1 = everyone)
 			'ops_whatsapp'           => '+1 786 943 8732', // providers: WhatsApp messages, when they can't find an answer in the portal
 			// Analytics (all public ids, not secrets).
 			'posthog_key'            => '',
@@ -105,6 +108,11 @@ final class ATC_Settings {
 		$test                  = isset( $in['invite_test_to'] ) ? sanitize_email( $in['invite_test_to'] ) : '';
 		$out['invite_test_to'] = is_email( $test ) ? $test : '';
 		$out['provider_reminders'] = empty( $in['provider_reminders'] ) ? 0 : 1;
+		foreach ( array( 'review_google_url', 'review_tripadvisor_url' ) as $k ) {
+			$u         = isset( $in[ $k ] ) ? esc_url_raw( trim( (string) $in[ $k ] ), array( 'https' ) ) : '';
+			$out[ $k ] = '' !== $u ? $u : $d[ $k ];
+		}
+		$out['review_invite_min'] = isset( $in['review_invite_min'] ) ? max( 1, min( 5, (int) $in['review_invite_min'] ) ) : $d['review_invite_min'];
 		$wa                  = isset( $in['ops_whatsapp'] ) ? trim( preg_replace( '/[^0-9+ ]/', '', (string) $in['ops_whatsapp'] ) ) : '';
 		$out['ops_whatsapp'] = strlen( preg_replace( '/\D/', '', $wa ) ) >= 8 ? $wa : $d['ops_whatsapp'];
 

@@ -287,6 +287,31 @@ final class ATC_Manage {
 		if ( $rating <= 2 ) {
 			ATC_Tickets::low_rating( $b, $rating, $comment );
 		}
+		$invite = self::public_review( $b, $rating );
+		if ( $invite ) {
+			ATC_Mail::public_review_invite( $b, $invite );
+		}
 		return array( 'ok' => true );
+	}
+
+	/**
+	 * After a provider rating: where we invite the traveler to review Airport Transportation in public
+	 * (Google or TripAdvisor, alternating by booking), or null when the rating is under the setting.
+	 * @return array{site:string,url:string}|null
+	 */
+	public static function public_review( array $b, int $rating ): ?array {
+		if ( $rating < (int) ATC_Settings::get( 'review_invite_min' ) ) {
+			return null;
+		}
+		$g     = (string) ATC_Settings::get( 'review_google_url' );
+		$t     = (string) ATC_Settings::get( 'review_tripadvisor_url' );
+		$sites = array_values( array_filter( array( $g ? array( 'site' => 'Google', 'url' => $g ) : null, $t ? array( 'site' => 'Tripadvisor', 'url' => $t ) : null ) ) );
+		return $sites ? $sites[ (int) $b['id'] % count( $sites ) ] : null;
+	}
+
+	/** The traveler's rating for this booking, or 0. */
+	public static function rating_of( int $booking_id ): int {
+		global $wpdb;
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT rating FROM ' . self::t( 'reviews' ) . ' WHERE booking_id = %d', $booking_id ) );
 	}
 }

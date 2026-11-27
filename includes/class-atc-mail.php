@@ -548,6 +548,12 @@ final class ATC_Mail {
 		self::team( 'Not confirmed yet: ' . $b['number'] . ' · ' . ( $p['name'] ?? '' ), self::wrap( 'Not confirmed yet: ' . $b['number'], self::p( self::e( $p['name'] ?? '' ) . ' has not confirmed this booking within its confirmation time.' . ( ATC_Settings::get( 'provider_reminders' ) ? ' We reminded them.' : ' (Provider reminders are paused, so they were not reminded.)' ) . ' Call them, or give the booking to another provider in Control.' ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
+	/** After a good provider rating: one email inviting a public review of Airport Transportation. */
+	public static function public_review_invite( array $b, array $inv ): void {
+		$body = self::p( 'Hi ' . self::e( $b['first_name'] ) . ', thank you for rating your ride. Airport Transportation is a small team, and a few words about booking with us on ' . self::e( $inv['site'] ) . ' help other travelers find us. It takes a minute.' );
+		self::send( $b['email'], 'One more favour? Review Airport Transportation on ' . $inv['site'], self::wrap( 'Thanks for your rating', $body, 'Review us on ' . $inv['site'], $inv['url'] ), array( 'booking_id' => (int) $b['id'], 'kind' => 'public_review' ) );
+	}
+
 	/** Manage booking: the link to a booking, sent to the email on it. */
 	public static function manage_link( array $b ): void {
 		$key = ATC_Checkout::key_of( $b );
