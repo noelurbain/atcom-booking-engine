@@ -272,3 +272,15 @@ table.report{min-width:1150px}
 .ck.me{border-color:var(--orange);background:#FFF8EE}
 tr.click{cursor:pointer}
 tr.click:hover td{background:#FBFAF7}
+/* Language picker */
+.lp{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;border-radius:10px;border:1px solid var(--line2);background:#fff;cursor:text;font-weight:500}
+.lp:focus-within{border-color:var(--ink)}
+.lp-chips{display:contents}
+.lp-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 6px 4px 10px;border-radius:999px;background:#F0EEEA;font-size:13px;font-weight:700}
+.lp-chip button{border:0;background:none;cursor:pointer;font-size:15px;line-height:1;padding:0 4px;color:var(--muted)}
+.lp-chip button:hover{color:var(--red)}
+.lp input.lp-in{flex:1;min-width:130px;width:auto;border:0;padding:4px;outline:none;box-shadow:none;background:transparent}
+.lp-list{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:4px;max-height:260px;overflow:auto}
+.lp-list[hidden]{display:none}
+.lp-opt{border:0;background:none;text-align:left;padding:8px 10px;border-radius:8px;font:inherit;font-weight:600;cursor:pointer}
+.lp-opt:hover,.lp-opt:first-child{background:#F7F5F1}

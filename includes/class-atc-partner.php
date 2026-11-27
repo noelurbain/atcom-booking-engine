@@ -576,7 +576,7 @@ final class ATC_Partner {
 		$st = static fn( bool $done, string $label_done, bool $waiting = false, string $label_wait = 'In review' ) => array( 'state' => $done ? 'done' : ( $waiting ? 'waiting' : 'todo' ), 'label' => $done ? $label_done : ( $waiting ? $label_wait : 'To do' ) );
 
 		return array(
-			'company'   => array( 'name' => 'Company details' ) + $st( $p['name'] && $p['phone'] && $p['email'] && $p['languages'], 'Done' ),
+			'company'   => array( 'name' => 'Company details' ) + $st( $p['name'] && $p['phone'] && $p['email'], 'Done' ),
 			'vehicles'  => array( 'name' => 'Vehicles' ) + $st( (bool) $offered, 'Done' ),
 			'coverage'  => array( 'name' => 'Zones you serve' ) + $st( (bool) $zones, 'Done' ),
 			'prices'    => array( 'name' => 'Prices' ) + ( function () use ( $party_id, $st ) {

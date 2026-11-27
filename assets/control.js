@@ -2156,8 +2156,64 @@
   }
 
   function field(label, input, help) {
-    return h('label', { class: 'field' }, h('span', { text: label }), input, help ? h('small', { text: help }) : null);
+    // The language picker holds buttons: a <label> around it would "click" the first chip's remove button.
+    var tag = input && input.classList && input.classList.contains('lp') ? 'div' : 'label';
+    return h(tag, { class: 'field' }, h('span', { text: label }), input, help ? h('small', { text: help }) : null);
   }
+  /* Languages: a searchable pick list with removable chips. The element's .value is "English, Spanish". */
+  var LANGS = ['English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Dutch', 'Russian', 'Ukrainian', 'Polish', 'Czech', 'Slovak',
+    'Hungarian', 'Romanian', 'Bulgarian', 'Serbian', 'Croatian', 'Slovenian', 'Albanian', 'Greek', 'Turkish', 'Arabic', 'Hebrew', 'Persian',
+    'Urdu', 'Hindi', 'Bengali', 'Punjabi', 'Gujarati', 'Tamil', 'Telugu', 'Malayalam', 'Nepali', 'Sinhala', 'Swahili', 'Amharic', 'Somali',
+    'Yoruba', 'Hausa', 'Zulu', 'Afrikaans', 'Chinese (Mandarin)', 'Cantonese', 'Japanese', 'Korean', 'Thai', 'Vietnamese', 'Khmer', 'Lao',
+    'Burmese', 'Indonesian', 'Malay', 'Tagalog', 'Swedish', 'Norwegian', 'Danish', 'Finnish', 'Icelandic', 'Estonian', 'Latvian',
+    'Lithuanian', 'Georgian', 'Armenian', 'Azerbaijani', 'Kazakh', 'Uzbek', 'Mongolian', 'Catalan', 'Basque', 'Galician', 'Maltese',
+    'Irish', 'Welsh', 'Haitian Creole', 'Papiamento', 'Quechua', 'Maya', 'Sign language'];
+  function langPicker(value) {
+    var picked = String(value || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var lc = function (s) { return s.toLowerCase(); };
+    var chips = h('span', { class: 'lp-chips' });
+    var input = h('input', { type: 'text', class: 'lp-in', placeholder: 'Search a language…', autocomplete: 'off', 'aria-label': 'Add a language' });
+    var list = h('div', { class: 'lp-list', role: 'listbox' });
+    var wrap = h('div', { class: 'lp' }, chips, input, list);
+    list.hidden = true;
+    function draw() {
+      clear(chips);
+      picked.forEach(function (l, i) {
+        add(chips, h('span', { class: 'lp-chip' }, l, h('button', { type: 'button', 'aria-label': 'Remove ' + l, text: '×', onclick: function () { picked.splice(i, 1); draw(); } })));
+      });
+      input.placeholder = picked.length ? 'Add another…' : 'Search a language…';
+    }
+    function pick(l) {
+      l = String(l).trim().replace(/,/g, '');
+      if (l && picked.map(lc).indexOf(lc(l)) < 0 && picked.concat(l).join(', ').length <= 100) picked.push(l);
+      input.value = ''; list.hidden = true; draw(); input.focus();
+    }
+    function show() {
+      var q = lc(input.value.trim());
+      var m = LANGS.filter(function (l) { return picked.map(lc).indexOf(lc(l)) < 0 && (!q || lc(l).indexOf(q) === 0 || lc(l).indexOf(' ' + q) > 0 || (q.length > 2 && lc(l).indexOf(q) >= 0)); }).slice(0, 8);
+      clear(list);
+      m.forEach(function (l) { add(list, h('button', { type: 'button', class: 'lp-opt', role: 'option', text: l, onmousedown: function (e) { e.preventDefault(); pick(l); } })); });
+      if (!m.length && q) add(list, h('button', { type: 'button', class: 'lp-opt', text: 'Add “' + input.value.trim() + '”', onmousedown: function (e) { e.preventDefault(); pick(input.value); } }));
+      list.hidden = !list.firstChild;
+    }
+    input.addEventListener('input', show);
+    input.addEventListener('focus', show);
+    input.addEventListener('blur', function () { list.hidden = true; });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        var first = list.querySelector('.lp-opt');
+        if (!list.hidden && first && input.value.trim()) first.dispatchEvent(new MouseEvent('mousedown'));
+        else if (input.value.trim()) pick(input.value);
+      } else if (e.key === 'Backspace' && !input.value && picked.length) { picked.pop(); draw(); }
+      else if (e.key === 'Escape') list.hidden = true;
+    });
+    wrap.addEventListener('mousedown', function (e) { if (e.target === wrap || e.target === chips) { e.preventDefault(); input.focus(); } });
+    Object.defineProperty(wrap, 'value', { get: function () { return picked.join(', '); } });
+    draw();
+    return wrap;
+  }
+
 
   /* ---------- Directory profile ---------- */
 
@@ -2335,7 +2391,7 @@
         email: h('input', { type: 'email', value: p.email || '' }),
         phone: h('input', { type: 'tel', value: p.phone || '' }),
         country: h('input', { type: 'text', value: p.country || '', maxlength: 2 }),
-        languages: h('input', { type: 'text', value: p.languages || '', placeholder: 'Spanish, English' }),
+        languages: langPicker(p.languages),
         commission: h('input', { type: 'number', min: 0, max: 90, step: '0.5', value: p.commission_bp === null ? '' : p.commission_bp / 100, placeholder: String(state.boot.commission_bp / 100) }),
         min_notice: h('input', { type: 'number', min: 0, step: 1, value: p.min_notice_minutes === null ? '' : p.min_notice_minutes / 60, placeholder: '24' }),
         payout_method: h('select', null, ['manual', 'wise', 'bank', 'stripe'].map(function (m) { return h('option', { value: m, selected: p.payout_method === m, text: { manual: 'Manual', wise: 'Wise', bank: 'Bank transfer', stripe: 'Stripe Connect' }[m] }); })),
