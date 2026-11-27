@@ -382,7 +382,7 @@ final class ATC_Trips {
 		}
 		$left = strtotime( $l['pickup_at'] . ' UTC' ) - time();
 		if ( 'new' !== $l['status'] ) {
-			return new WP_Error( 'atc_confirmed', 'You already confirmed this ride. Message us on WhatsApp right away so we can find another driver.', array( 'status' => 409 ) );
+			return new WP_Error( 'atc_confirmed', 'You already confirmed this ride. Send us a WhatsApp message right away so we can find another driver.', array( 'status' => 409 ) );
 		}
 		if ( $left > 2 * HOUR_IN_SECONDS ) {
 			return new WP_Error( 'atc_early', 'Pickup is more than 2 hours away: use Hand back instead.', array( 'status' => 409 ) );

@@ -32,7 +32,7 @@ final class ATC_Settings {
 			// While this is set, provider invitations go to this address instead of the providers (test site).
 			'invite_test_to'         => 'hello@airporttransportation.com',
 			'provider_reminders'     => 0,        // document, expiry and "please confirm" reminders to providers
-			'ops_whatsapp'           => '+1 786 943 8732', // providers: WhatsApp messages only, for urgent issues under 2 hours before pickup
+			'ops_whatsapp'           => '+1 786 943 8732', // providers: WhatsApp messages, when they can't find an answer in the portal
 			// Analytics (all public ids, not secrets).
 			'posthog_key'            => '',
 			'posthog_region'         => 'us',     // us | eu

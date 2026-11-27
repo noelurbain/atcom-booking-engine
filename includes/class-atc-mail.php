@@ -218,11 +218,11 @@ final class ATC_Mail {
 		return 'PICKUP IN ' . ( $m >= 60 ? intdiv( $m, 60 ) . 'H ' : '' ) . ( $m % 60 ) . 'M';
 	}
 
-	/** How providers reach us: digital first, WhatsApp messages only for the last two hours before a pickup. */
+	/** How providers reach us: digital first; WhatsApp messages only when they can't find the answer. */
 	public static function provider_help_html(): string {
 		$wa     = (string) ATC_Settings::get( 'ops_whatsapp' );
 		$digits = preg_replace( '/\D/', '', $wa );
-		return self::p( '<span style="color:#6D6D71;font-size:13px">Airport Transportation is a largely automated platform: bookings, changes and questions go through the portal, its tickets and email, and our team answers there. Only for an urgent problem less than 2 hours before a pickup, send a WhatsApp <strong>message</strong> (no calls) to <a href="https://wa.me/' . esc_attr( $digits ) . '" style="color:#9A5605">' . self::e( $wa ) . '</a> with the booking number.</span>' );
+		return self::p( '<span style="color:#6D6D71;font-size:13px">Airport Transportation is a largely automated platform: bookings, changes and questions go through the portal, its tickets and email, and our team answers there. If you really can’t find the answer you are looking for, you can send a WhatsApp message to <a href="https://wa.me/' . esc_attr( $digits ) . '" style="color:#9A5605">' . self::e( $wa ) . '</a>.</span>' );
 	}
 
 	/** First pickup in local time, for subject lines: "Sat 28 Nov 12:40". */
