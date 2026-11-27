@@ -32,6 +32,7 @@ final class ATC_Settings {
 			// While this is set, provider invitations go to this address instead of the providers (test site).
 			'invite_test_to'         => 'hello@airporttransportation.com',
 			'provider_reminders'     => 0,        // document, expiry and "please confirm" reminders to providers
+			'ops_whatsapp'           => '+1 786 943 8732', // providers: WhatsApp messages only, for urgent issues under 2 hours before pickup
 			// Analytics (all public ids, not secrets).
 			'posthog_key'            => '',
 			'posthog_region'         => 'us',     // us | eu
@@ -104,6 +105,8 @@ final class ATC_Settings {
 		$test                  = isset( $in['invite_test_to'] ) ? sanitize_email( $in['invite_test_to'] ) : '';
 		$out['invite_test_to'] = is_email( $test ) ? $test : '';
 		$out['provider_reminders'] = empty( $in['provider_reminders'] ) ? 0 : 1;
+		$wa                  = isset( $in['ops_whatsapp'] ) ? trim( preg_replace( '/[^0-9+ ]/', '', (string) $in['ops_whatsapp'] ) ) : '';
+		$out['ops_whatsapp'] = strlen( preg_replace( '/\D/', '', $wa ) ) >= 8 ? $wa : $d['ops_whatsapp'];
 
 		$out['posthog_key']    = isset( $in['posthog_key'] ) && preg_match( '/^phc_[A-Za-z0-9]{20,}$/', trim( (string) $in['posthog_key'] ) ) ? trim( (string) $in['posthog_key'] ) : '';
 		$out['posthog_region'] = isset( $in['posthog_region'] ) && 'eu' === $in['posthog_region'] ? 'eu' : 'us';

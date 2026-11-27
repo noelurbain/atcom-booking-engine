@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches', 'extra_types',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches', 'extra_types', 'blocks',
 		);
 	}
 
@@ -505,6 +505,19 @@ final class ATC_Schema {
   PRIMARY KEY  (id),
   KEY object (object_type,object_id),
   KEY created_at (created_at)
+) $c;";
+
+		// A provider's unavailable periods: no new bookings with pickup inside them. vehicle_type_id NULL = every category.
+		$sql[] = "CREATE TABLE {$p}blocks (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  party_id bigint(20) unsigned NOT NULL,
+  vehicle_type_id bigint(20) unsigned NULL,
+  starts_at datetime NOT NULL,
+  ends_at datetime NOT NULL,
+  note varchar(190) NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY party_time (party_id,ends_at)
 ) $c;";
 
 		return $sql;

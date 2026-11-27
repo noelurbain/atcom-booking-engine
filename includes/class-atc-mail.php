@@ -195,6 +195,36 @@ final class ATC_Mail {
 		return $arrival ? $iata . ' → ' . $place : $place . ' → ' . $iata;
 	}
 
+	/** Minutes from now to the earliest pickup still on, or null. */
+	public static function minutes_to_pickup( array $b ): ?int {
+		$min = null;
+		foreach ( (array) $b['legs'] as $l ) {
+			if ( 'cancelled' === ( $l['status'] ?? '' ) || empty( $l['pickup_at'] ) ) {
+				continue;
+			}
+			$m   = (int) floor( ( strtotime( $l['pickup_at'] . ' UTC' ) - time() ) / 60 );
+			$min = null === $min ? $m : min( $min, $m );
+		}
+		return $min;
+	}
+
+	/** "PICKUP IN 1H 25M" when the pickup is under 2 hours away (a last-minute booking), else ''. */
+	public static function urgent_label( array $b ): string {
+		$m = self::minutes_to_pickup( $b );
+		if ( null === $m || $m >= 120 ) {
+			return '';
+		}
+		$m = max( 0, $m );
+		return 'PICKUP IN ' . ( $m >= 60 ? intdiv( $m, 60 ) . 'H ' : '' ) . ( $m % 60 ) . 'M';
+	}
+
+	/** How providers reach us: digital first, WhatsApp messages only for the last two hours before a pickup. */
+	public static function provider_help_html(): string {
+		$wa     = (string) ATC_Settings::get( 'ops_whatsapp' );
+		$digits = preg_replace( '/\D/', '', $wa );
+		return self::p( '<span style="color:#6D6D71;font-size:13px">Airport Transportation is a largely automated platform: bookings, changes and questions go through the portal, its tickets and email, and our team answers there. Only for an urgent problem less than 2 hours before a pickup, send a WhatsApp <strong>message</strong> (no calls) to <a href="https://wa.me/' . esc_attr( $digits ) . '" style="color:#9A5605">' . self::e( $wa ) . '</a> with the booking number.</span>' );
+	}
+
 	/** First pickup in local time, for subject lines: "Sat 28 Nov 12:40". */
 	private static function subject_when( array $b ): string {
 		return self::local( $b['legs'][0]['pickup_at'] ?? null, (string) ( $b['snap']['timezone'] ?? 'UTC' ), 'D j M H:i' );
@@ -340,7 +370,8 @@ final class ATC_Mail {
 			return;
 		}
 		self::provider_new( $b );
-		self::team( '🚗 NEW BOOKING · ' . ATC_Book::money( (int) $b['total_cents'] ) . ' · ' . self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · ' . ( ATC_Checkout::provider_name( $b ) ?: 'NO PROVIDER' ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], self::p( '<strong>' . self::e( ATC_Checkout::provider_name( $b ) ?: 'No provider yet' ) . '</strong> · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		$urgent = self::urgent_label( $b );
+		self::team( ( $urgent ? '⚡ LAST-MINUTE · ' . $urgent . ' · ' : '' ) . '🚗 NEW BOOKING · ' . ATC_Book::money( (int) $b['total_cents'] ) . ' · ' . self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · ' . ( ATC_Checkout::provider_name( $b ) ?: 'NO PROVIDER' ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], ( $urgent ? self::box( '<strong>Last-minute booking: ' . self::e( strtolower( $urgent ) ) . '.</strong> Make sure the provider has seen it.', '#FDECEA', '#F3C2BC' ) : '' ) . self::p( '<strong>' . self::e( ATC_Checkout::provider_name( $b ) ?: 'No provider yet' ) . '</strong> · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	private static function provider_amount( array $b ): int {
@@ -356,12 +387,14 @@ final class ATC_Mail {
 		if ( ! $p ) {
 			return;
 		}
-		$s    = $b['snap'];
-		$body = self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', you have a new booking.' )
+		$urgent = self::urgent_label( $b );
+		$body   = ( $urgent ? self::box( '<strong>Last-minute booking: ' . self::e( strtolower( $urgent ) ) . '.</strong> Please confirm it in the portal now. If you can’t do it, press <strong>Can’t do it</strong> on the booking in the portal right away: there is no penalty for a last-minute booking you haven’t confirmed.', '#FDECEA', '#F3C2BC' ) : '' )
+			. self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', you have a new booking.' )
 			. self::table( array_merge( self::trip_rows( $b, true ), array( array( 'You get paid', ATC_Book::money( self::provider_amount( $b ) ) ) ) ) )
 			. self::box( 'Please <strong>confirm</strong> you got this booking in the portal. At pickup, your driver asks the traveler for the <strong>service code</strong> on their voucher and types it in the portal: that completes the trip.' )
-			. self::p( '<span style="color:#6D6D71">If anything here can’t work for you, hand the ride back in the portal or reply to this email right away.</span>' );
-		self::send( self::provider_to( $p ), '🚗 NEW BOOKING · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · you get ' . ATC_Book::money( self::provider_amount( $b ) ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], $body, 'Confirm in the portal', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_new', 'reply_to' => ATC_Settings::get( 'from_email' ) ) );
+			. self::p( '<span style="color:#6D6D71">If anything here can’t work for you, hand the ride back in the portal or reply to this email right away.</span>' )
+			. self::provider_help_html();
+		self::send( self::provider_to( $p ), ( $urgent ? '⚡ LAST-MINUTE · ' . $urgent . ' · ' : '' ) . '🚗 NEW BOOKING · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · you get ' . ATC_Book::money( self::provider_amount( $b ) ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], $body, 'Confirm in the portal', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_new', 'reply_to' => ATC_Settings::get( 'from_email' ) ) );
 	}
 
 	/** The traveler changed something: both sides get the new details. */
@@ -497,7 +530,7 @@ final class ATC_Mail {
 			return;
 		}
 		$url  = home_url( '/portal/bookings/' . $b['number'] . '/' );
-		$body = self::p( 'Please confirm you got booking <strong>' . self::e( $b['number'] ) . '</strong>. The traveler is counting on it.' ) . self::table( self::trip_rows( $b, true ) );
+		$body = self::p( 'Please confirm you got booking <strong>' . self::e( $b['number'] ) . '</strong>. The traveler is counting on it.' ) . self::table( self::trip_rows( $b, true ) ) . self::provider_help_html();
 		if ( ATC_Settings::get( 'provider_reminders' ) ) {
 			self::send( self::provider_to( $p ), 'Please confirm booking ' . $b['number'], self::wrap( 'Please confirm booking ' . $b['number'], $body, 'Confirm in the portal', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_nudge' ) );
 		}

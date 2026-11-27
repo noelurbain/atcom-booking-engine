@@ -155,6 +155,8 @@ final class ATC_Trips {
 				'can_code'      => in_array( $l['status'], array( 'new', 'accepted' ), true ) && 'confirmed' === $b['status'] && $pickup - time() < 12 * HOUR_IN_SECONDS,
 				'can_noshow'    => in_array( $l['status'], array( 'new', 'accepted' ), true ) && 'confirmed' === $b['status'] && time() > $pickup,
 				'can_release'   => in_array( $l['status'], array( 'new', 'accepted' ), true ) && 'confirmed' === $b['status'] && $pickup - time() > 2 * HOUR_IN_SECONDS,
+				// Last-minute only: not confirmed yet and too close for "Hand back". No penalty (Noel, 2026-11-27).
+				'can_decline'   => 'new' === $l['status'] && 'confirmed' === $b['status'] && $pickup - time() <= 2 * HOUR_IN_SECONDS && $pickup > time(),
 			);
 			$rides[] = $row;
 		}
@@ -353,7 +355,7 @@ final class ATC_Trips {
 			return $ok;
 		}
 		if ( strtotime( $l['pickup_at'] . ' UTC' ) - time() < 2 * HOUR_IN_SECONDS ) {
-			return new WP_Error( 'atc_late', 'It’s less than 2 hours to pickup: call us instead.', array( 'status' => 409 ) );
+			return new WP_Error( 'atc_late', 'It’s less than 2 hours to pickup: if you haven’t confirmed the ride, use Can’t do it; otherwise send us a WhatsApp message right away.', array( 'status' => 409 ) );
 		}
 		$reason = mb_substr( trim( sanitize_textarea_field( $reason ) ), 0, 1000 );
 		$wpdb->update( self::t( 'booking_legs' ), array( 'status' => 'released', 'party_id' => 0 ), array( 'id' => $leg_id ) );
@@ -362,6 +364,41 @@ final class ATC_Trips {
 		$b = ATC_Checkout::find( '', (int) $l['booking_id'] );
 		ATC_Mail::team_note( 'Ride handed back: ' . $b['number'] . ' · find another provider', 'A provider handed this ride back. Assign another provider.', $b, $reason ?: '(no reason given)' );
 		return array( 'released' => true );
+	}
+
+	/**
+	 * "Can't do it": a last-minute ride (under 2 hours to pickup) that the provider has not confirmed yet goes
+	 * straight back to our team, with no penalty. Once confirmed, the provider has to message us instead.
+	 */
+	public static function decline( int $pid, int $leg_id, string $reason ) {
+		global $wpdb;
+		$l = self::mine( $pid, $leg_id );
+		if ( is_wp_error( $l ) ) {
+			return $l;
+		}
+		$ok = self::open( $l );
+		if ( is_wp_error( $ok ) ) {
+			return $ok;
+		}
+		$left = strtotime( $l['pickup_at'] . ' UTC' ) - time();
+		if ( 'new' !== $l['status'] ) {
+			return new WP_Error( 'atc_confirmed', 'You already confirmed this ride. Message us on WhatsApp right away so we can find another driver.', array( 'status' => 409 ) );
+		}
+		if ( $left > 2 * HOUR_IN_SECONDS ) {
+			return new WP_Error( 'atc_early', 'Pickup is more than 2 hours away: use Hand back instead.', array( 'status' => 409 ) );
+		}
+		if ( $left <= 0 ) {
+			return new WP_Error( 'atc_past', 'The pickup time has passed. Message us on WhatsApp right away.', array( 'status' => 409 ) );
+		}
+		$reason = mb_substr( trim( sanitize_textarea_field( $reason ) ), 0, 1000 );
+		$wpdb->update( self::t( 'booking_legs' ), array( 'status' => 'released', 'party_id' => 0 ), array( 'id' => $leg_id ) );
+		$wpdb->update( self::t( 'ledger' ), array( 'status' => 'cancelled', 'note' => 'Last-minute ride declined by the provider (no penalty)', 'updated_at' => self::now() ), array( 'leg_id' => $leg_id, 'role' => 'provider', 'status' => 'pending' ) );
+		ATC_Install::log( 'leg', $leg_id, 'declined_last_minute', array( 'party' => $pid, 'reason' => $reason ) );
+		$b   = ATC_Checkout::find( '', (int) $l['booking_id'] );
+		$m   = (int) floor( $left / 60 );
+		$due = ( $m >= 60 ? intdiv( $m, 60 ) . 'H ' : '' ) . ( $m % 60 ) . 'M';
+		ATC_Mail::team_note( '⚡ CAN’T DO IT · PICKUP IN ' . $due . ' · reassign now · ' . $b['number'], 'The provider can’t do this last-minute ride (not confirmed, pickup in under 2 hours). Give it to another provider now, or contact the traveler.', $b, $reason ?: '(no reason given)' );
+		return array( 'declined' => true );
 	}
 
 	/** Close a ride, move its money, and close the booking when all its rides are done. */

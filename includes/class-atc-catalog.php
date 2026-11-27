@@ -783,6 +783,10 @@ final class ATC_Catalog {
 			$before = self::party( $id );
 			$wpdb->update( self::t( 'parties' ), $data, array( 'id' => $id ) );
 			ATC_Install::log( 'party', $id, 'updated', array_diff_key( $data, array( 'updated_at' => 1 ) ) );
+			// The company's minimum notice applies to every vehicle category: search reads it from the category.
+			if ( isset( $data['min_notice_minutes'] ) && (string) $data['min_notice_minutes'] !== (string) $before['min_notice_minutes'] ) {
+				$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'services' ) . ' SET min_notice_minutes = %d WHERE party_id = %d', (int) $data['min_notice_minutes'], $id ) );
+			}
 			// Going live switches on the vehicle categories the provider offered.
 			if ( isset( $data['status'] ) && 'live' === $data['status'] && 'live' !== $before['status'] ) {
 				$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::t( 'services' ) . " SET status = 'live' WHERE party_id = %d AND status = 'draft'", $id ) );

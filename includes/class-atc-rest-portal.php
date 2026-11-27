@@ -417,6 +417,26 @@ final class ATC_REST_Portal {
 		$leg( 'complete', static fn( $id, $b ) => ATC_Trips::complete_without_code( self::pid(), $id ) );
 		$leg( 'noshow', static fn( $id, $b ) => ATC_Trips::no_show( self::pid(), $id, (string) ( $b['note'] ?? '' ) ) );
 		$leg( 'release', static fn( $id, $b ) => ATC_Trips::release( self::pid(), $id, (string) ( $b['reason'] ?? '' ) ) );
+		$leg( 'decline', static fn( $id, $b ) => ATC_Trips::decline( self::pid(), $id, (string) ( $b['reason'] ?? '' ) ) );
+		self::route(
+			'/blocks',
+			array(
+				'GET'  => static fn() => rest_ensure_response( array( 'blocks' => ATC_Blocks::list( self::pid() ), 'timezone' => ATC_Blocks::tz( self::pid() ) ) ),
+				'POST' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Blocks::add( self::pid(), self::body( $r ) );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( array( 'blocks' => $res, 'timezone' => ATC_Blocks::tz( self::pid() ) ) );
+				},
+			)
+		);
+		self::route(
+			'/blocks/(?P<id>\\d+)',
+			array(
+				'DELETE' => static function ( WP_REST_Request $r ) {
+					$res = ATC_Blocks::delete( self::pid(), (int) $r['id'] );
+					return is_wp_error( $res ) ? $res : rest_ensure_response( array( 'blocks' => $res, 'timezone' => ATC_Blocks::tz( self::pid() ) ) );
+				},
+			)
+		);
 		self::route( '/drivers', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Trips::add_driver( self::pid(), self::body( $r ) ) ) ) );
 
 		self::route(

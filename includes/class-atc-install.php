@@ -60,6 +60,11 @@ final class ATC_Install {
 			if ( version_compare( $from, '25', '<' ) ) {
 				ATC_Partner::fleet_from_about();
 			}
+			if ( version_compare( $from, '26', '<' ) ) {
+				// Categories kept the notice they were saved with; the company's notice now drives them all.
+				global $wpdb;
+				$wpdb->query( 'UPDATE ' . ATC_Schema::table( 'services' ) . ' s JOIN ' . ATC_Schema::table( 'parties' ) . ' p ON p.id = s.party_id SET s.min_notice_minutes = p.min_notice_minutes WHERE p.min_notice_minutes IS NOT NULL' ); // phpcs:ignore
+			}
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
 		}

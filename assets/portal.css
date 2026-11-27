@@ -194,3 +194,5 @@ h2.section{margin:8px 0 0;font-size:18px}
 .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}
 .fleet-grid{margin-bottom:12px}
 @media (max-width:900px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cap-warn{margin:8px 0 0;padding:10px 12px;border-radius:10px;background:#FFF4E5;border:1px solid #FAD7A8;font-size:13px;font-weight:600;color:#5A3303}
+.cap-warn[hidden]{display:none}

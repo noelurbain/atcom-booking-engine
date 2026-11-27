@@ -134,6 +134,7 @@
   ];
   var MORE = [
     ['airports', 'Your airports'],
+    ['availability', 'Days off & blocked times'],
     ['pricelist', 'Upload price list'],
     ['extras', 'Extras'],
     ['meeting', 'Meeting travelers'],
@@ -207,7 +208,7 @@
     if (p.indexOf('bookings/') === 0) return viewTrip(p.split('/')[1]);
     if (p.indexOf('tickets/') === 0) return viewTicket(parseInt(p.split('/')[1], 10));
     var views = { '': viewSetup, company: viewCompany, vehicles: viewVehicles, coverage: viewCoverage, prices: viewPrices, meeting: viewMeeting, bookings: viewTrips,
-       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras, directory: viewDirectory, pricelist: viewPriceList, airports: viewAirports };
+       documents: viewDocuments, payout: viewPayout, agreement: viewAgreement, account: viewAccount, tickets: viewTickets, extras: viewExtras, directory: viewDirectory, pricelist: viewPriceList, airports: viewAirports, availability: viewAvailability };
     var key = views[p] ? p : '';
     views[key]();
     if (stepIndex(key) >= 0) {
@@ -591,6 +592,13 @@
             h('div', null, h('button', { type: 'button', class: 'btn danger', text: 'Hand back', onclick: function (e) { e.target.disabled = true; api('POST', '/legs/' + leg + '/release', { reason: why.value }).then(function () { toast('Handed back. Our team will reassign it.'); refreshMe(); go('bookings'); }).catch(function (x) { e.target.disabled = false; fail(x); }); } })));
           add(card, [h('div', null, h('button', { type: 'button', class: 'link', text: 'Hand back this ride', onclick: function () { relBox.hidden = !relBox.hidden; } })), relBox]);
         }
+        if (r.can_decline) {
+          var whyD = h('textarea', { rows: 2, placeholder: 'Why (optional): no driver free, too short notice…' });
+          var decBox = h('div', { class: 'card pad', hidden: true, style: 'gap:8px' }, h('strong', { text: 'Can’t do this last-minute ride?' }),
+            h('span', { class: 'small atc-muted', text: 'You haven’t confirmed it and pickup is less than 2 hours away, so there is no penalty. Our team is alerted at once and gives it to another provider. You won’t be paid for it.' }), whyD,
+            h('div', null, h('button', { type: 'button', class: 'btn danger', text: 'Can’t do it', onclick: function (e) { e.target.disabled = true; api('POST', '/legs/' + leg + '/decline', { reason: whyD.value }).then(function () { toast('Done. Our team is reassigning it now.'); refreshMe(); go('bookings'); }).catch(function (x) { e.target.disabled = false; fail(x); }); } })));
+          add(card, [h('div', null, h('button', { type: 'button', class: 'btn danger', text: 'Can’t do it', onclick: function () { decBox.hidden = !decBox.hidden; } })), decBox]);
+        }
         // Trip facts.
         add(card, h('div', { class: 'kv' },
           kv('Flight', [r.flight, r.flight_time ? (r.direction === 'Arrival' ? 'lands ' : 'departs ') + r.flight_time : null].filter(Boolean).join(' · ')),
@@ -752,6 +760,55 @@
     }));
   }
 
+  /* ---------- Days off & blocked times: no new bookings with pickup inside these periods ---------- */
+
+  function viewAvailability() {
+    var box = h('div', { class: 'list' }, h('p', { class: 'atc-muted', text: 'Loading…' }));
+    var tzNote = h('small', { class: 'atc-muted' });
+    var cats = [];
+    me.services.forEach(function (sv) {
+      if (sv.status !== 'paused' && !cats.some(function (c) { return c[0] === +sv.vehicle_type_id; })) cats.push([+sv.vehicle_type_id, sv.vehicle_type]);
+    });
+    var today = new Date().toISOString().slice(0, 10);
+    var f = {
+      sd: h('input', { type: 'date', min: today, value: today }), st: h('input', { type: 'time', value: '00:00' }),
+      ed: h('input', { type: 'date', min: today, value: today }), et: h('input', { type: 'time', value: '23:59' }),
+      cat: h('select', null, h('option', { value: 0, text: 'All my vehicle categories' }), cats.map(function (c) { return h('option', { value: c[0], text: c[1] + ' only' }); })),
+      note: h('input', { type: 'text', maxlength: 190, placeholder: 'Optional, only you see it: wedding, cars booked elsewhere…' })
+    };
+    f.sd.addEventListener('change', function () { if (f.ed.value < f.sd.value) f.ed.value = f.sd.value; f.ed.min = f.sd.value; });
+    function draw(d) {
+      tzNote.textContent = 'Times are in your main airport’s time (' + d.timezone.replace(/_/g, ' ') + ').';
+      clear(box);
+      if (!d.blocks.length) { add(box, h('p', { class: 'atc-muted', text: 'Nothing blocked. Travelers can book you at any time that meets your minimum notice.' })); return; }
+      d.blocks.forEach(function (b) {
+        add(box, h('div', { class: 'row' },
+          h('div', null, h('strong', { text: b.from + ' → ' + b.to }), ' ', b.now ? h('span', { class: 'chip orange', text: 'Blocked now' }) : null,
+            h('div', { class: 'small atc-muted', text: b.category + (b.note ? ' · ' + b.note : '') })),
+          h('button', { type: 'button', class: 'link danger', text: 'Remove', onclick: function (e) { e.target.disabled = true; api('DELETE', '/blocks/' + b.id).then(function (r) { draw(r); toast('Removed. You can be booked again for that time.'); }).catch(function (x) { e.target.disabled = false; fail(x); }); } })));
+      });
+    }
+    var btn = h('button', { class: 'btn dark', type: 'submit', text: 'Block this time' });
+    add(app, [
+      head('Days off & blocked times', 'Block the dates and hours when you can’t take new rides: days off, or cars already committed elsewhere.'),
+      h('form', { class: 'card pad', onsubmit: function (e) {
+        e.preventDefault(); btn.disabled = true;
+        api('POST', '/blocks', { start_date: f.sd.value, start_time: f.st.value, end_date: f.ed.value, end_time: f.et.value, vehicle_type_id: f.cat.value, note: f.note.value })
+          .then(function (r) { draw(r); toast('Blocked. Travelers can’t book you for pickups in that time.'); f.note.value = ''; }).catch(fail).then(function () { btn.disabled = false; });
+      } },
+        h('h2', { text: 'Block a period' }),
+        h('div', { class: 'grid2' },
+          field('From (date)', f.sd), field('From (time)', f.st),
+          field('To (date)', f.ed), field('To (time)', f.et),
+          field('Which vehicles', f.cat), field('Note', f.note)),
+        tzNote,
+        h('p', { class: 'small atc-muted', text: 'Bookings you already have are not affected. To stop selling a category for a long time, untick it in Vehicles instead.' }),
+        h('div', { class: 'atc-actions' }, btn)),
+      h('section', { class: 'card pad' }, h('h2', { text: 'Coming up' }), box)
+    ]);
+    api('GET', '/blocks').then(draw).catch(fail);
+  }
+
   function viewAirports() {
     add(app, head('Your airports', 'Every airport you pick travelers up from. Each one has its own vehicles, zones and prices.'));
     add(app, h('section', { class: 'card pad', 'data-tour': 'aplist' }, airportTable(false)));
@@ -800,7 +857,7 @@
       languages: langPicker(p.languages),
       website: h('input', { type: 'url', value: p.website || '', placeholder: 'https://' }),
       about: h('textarea', { rows: 4, maxlength: 2000, value: p.about || '' }),
-      notice: h('select', null, [[0, 'No minimum'], [180, '3 hours'], [360, '6 hours'], [720, '12 hours'], [1440, '24 hours'], [2880, '48 hours']].map(function (o) {
+      notice: h('select', null, [[0, 'No minimum'], [60, '1 hour'], [120, '2 hours'], [180, '3 hours'], [360, '6 hours'], [720, '12 hours'], [1440, '24 hours'], [2880, '48 hours']].map(function (o) {
         return h('option', { value: o[0], selected: String(p.min_notice_minutes === null ? 1440 : p.min_notice_minutes) === String(o[0]), text: o[1] });
       }))
     };
@@ -953,8 +1010,23 @@
       var bags = h('input', { type: 'number', min: 0, max: 60, value: s ? s.max_bags : t.max_bags });
       var wait = h('input', { type: 'number', min: 0, max: 240, value: s ? s.free_wait_minutes : 60 });
       var box = h('input', { type: 'checkbox', checked: on });
+      // Warn when a registered car of this category seats fewer passengers than the category sells.
+      var capWarn = h('p', { class: 'cap-warn', hidden: true });
+      function checkCap() {
+        var max = parseInt(pax.value, 10) || 0;
+        var small = (me.vehicles || []).filter(function (v) { return v.vehicle_type_id == t.id && v.status !== 'archived' && +v.seats > 0 && +v.seats < max; });
+        capWarn.hidden = !small.length;
+        if (small.length) {
+          capWarn.textContent = '⚠ ' + small.map(function (v) { return v.make_model + (v.plate ? ' (' + v.plate + ')' : '') + ' seats ' + v.seats; }).join(', ') +
+            ', but this category takes groups of up to ' + max + '. A group that size would not fit in that car: lower Max passengers to ' +
+            Math.min.apply(null, small.map(function (v) { return +v.seats; })) + ', or never send that car for larger groups.';
+        }
+      }
+      pax.addEventListener('input', checkCap);
+      checkCap();
       var body = h('div', { class: 'svc-body' + (on ? '' : ' hidden') },
         h('div', { class: 'grid3' }, field('Max passengers', pax), field('Max bags', bags), field('Free waiting at the airport (min)', wait)),
+        capWarn,
         h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'button', onclick: function () { save(true); }, text: 'Save ' + t.name })));
       function save(offered) {
         api('POST', '/services', { airport_id: airport.id, vehicle_type_id: t.id, offered: offered, max_passengers: pax.value, max_bags: bags.value,

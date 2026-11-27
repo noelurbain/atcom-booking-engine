@@ -298,6 +298,7 @@ final class ATC_Search {
 		$lead      = null === $utc ? null : ( strtotime( $utc . ' UTC' ) - $now ) / 60;
 		$raw       = self::offers_at( (int) $airport['id'], $at['zone_id'] ? (int) $at['zone_id'] : null, $own, $direction );
 		$offers    = array();
+		$blocked   = null === $utc ? array() : ATC_Blocks::covering( array_column( $raw, 'party_id' ), (string) $utc );
 		$too_small = 0;
 		$too_soon  = array();
 		$largest   = 0;
@@ -305,6 +306,10 @@ final class ATC_Search {
 			$largest = max( $largest, (int) $o['max_passengers'] );
 			if ( (int) $o['max_passengers'] < $pax ) {
 				++$too_small;
+				continue;
+			}
+			// The provider blocked this time (days off, cars committed elsewhere).
+			if ( $blocked && ATC_Blocks::is_blocked( $blocked, (int) $o['party_id'], (int) $o['vehicle_type_id'] ) ) {
 				continue;
 			}
 			if ( null !== $lead && $lead < (int) $o['min_notice'] ) {

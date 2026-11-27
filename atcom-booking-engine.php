@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.32.2
+ * Version:           0.33.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.32.2' );
-define( 'ATC_DB_VERSION', '25' );
+define( 'ATC_VERSION', '0.33.0' );
+define( 'ATC_DB_VERSION', '26' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ATC_URL', plugin_dir_url( __FILE__ ) );
@@ -40,6 +40,7 @@ require_once ATC_DIR . 'includes/class-atc-checkout.php';
 require_once ATC_DIR . 'includes/class-atc-manage.php';
 require_once ATC_DIR . 'includes/class-atc-mail.php';
 require_once ATC_DIR . 'includes/class-atc-trips.php';
+require_once ATC_DIR . 'includes/class-atc-blocks.php';
 require_once ATC_DIR . 'includes/class-atc-ops.php';
 require_once ATC_DIR . 'includes/class-atc-charges.php';
 require_once ATC_DIR . 'includes/class-atc-affiliates.php';

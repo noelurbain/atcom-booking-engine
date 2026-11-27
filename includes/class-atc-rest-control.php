@@ -347,6 +347,7 @@ final class ATC_REST_Control {
 							'prices'    => ATC_Catalog::price_table( $id ),
 							'place'     => ATC_Directory::list_info()[ $id ] ?? null,
 							'last_seen' => ATC_Partner::last_seen( $id ),
+							'blocks'    => ATC_Blocks::list( $id ),
 						)
 					);
 				},

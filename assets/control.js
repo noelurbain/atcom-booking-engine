@@ -2487,6 +2487,7 @@
     return h('section', { class: 'card pad' },
       h('div', { class: 'row-flat' }, h('h2', { text: 'Summary' }), portalCell({ id: id, name: p.name, email: p.email, portal: d.portal }, function () { viewProvider(id); })),
       todo.length ? h('p', { class: 'pv-todo', text: 'Waiting: ' + todo.join(' · ') }) : null,
+      (d.blocks || []).length ? h('p', { class: 'pv-todo', text: 'Blocked times: ' + d.blocks.map(function (b) { return b.from + ' → ' + b.to + ' (' + b.category + ')'; }).join(' · ') }) : null,
       h('div', { class: 'pv-grid' },
         tile('Contact', p.contact_name || p.email, [p.contact_name ? p.email : '', p.phone].filter(Boolean).join(' · ')),
         tile('Based in', [pl.city, pl.country || p.country].filter(Boolean).join(', '), p.home_airport_id ? 'Main airport ' + ap(p.home_airport_id) : 'No main airport set'),
