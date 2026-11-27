@@ -912,6 +912,14 @@
                   kv('Provider', l.party_id ? h('a', { href: C.base + 'providers/' + l.party_id + '/', 'data-go': 'providers/' + l.party_id, text: l.provider }) : h('span', { class: 'chip red', text: 'Nobody yet' })),
                   kv('Flight', l.flight || null)),
                 l.notes ? h('p', { class: 'note', text: 'Note from the traveler: ' + l.notes }) : null,
+                l.can_ack ? h('div', { class: 'row-flat', style: 'gap:10px;flex-wrap:wrap;align-items:center' },
+                  h('span', { class: 'chip orange', text: 'Not confirmed by the provider' }),
+                  h('button', { class: 'btn', type: 'button', text: 'Mark as confirmed', title: 'The provider confirmed by phone, WhatsApp or email', onclick: function (e) {
+                    var how = window.prompt('How did the provider confirm? (for example WhatsApp)', 'WhatsApp');
+                    if (how === null) return;
+                    e.target.disabled = true;
+                    api('POST', '/bookings/' + number + '/ack', { leg: l.id, how: how }).then(function () { toast('Marked as confirmed.'); viewBooking(number); }).catch(function (x) { e.target.disabled = false; fail(x); });
+                  } })) : (l.acknowledged ? h('p', { class: 'small atc-muted', text: 'Confirmed by the provider ' + l.acknowledged }) : null),
                 l.noshow_open ? noShowBox(l, number, draw) : null,
                 l.can_reassign ? reassignBox(l, number, draw) : null);
             }),

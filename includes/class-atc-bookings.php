@@ -185,6 +185,8 @@ final class ATC_Bookings {
 				'id'            => (int) $l['id'],
 				'completed_how' => (string) $l['completed_how'],
 				'can_reassign'  => $open_ride,
+				'can_ack'       => $open_ride && 'new' === $l['status'] && (int) $l['party_id'] > 0,
+				'acknowledged'  => $l['acknowledged_at'] ? self::local( $l['acknowledged_at'], $tz ) : '',
 				'candidates'    => $open_ride && $full ? ATC_Ops::candidates( $full, $l ) : array(),
 				'noshow_open'   => 'no_show' === $l['status'] && 'no_show' === $l['completed_how'],
 			);

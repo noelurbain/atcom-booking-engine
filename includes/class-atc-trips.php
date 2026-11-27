@@ -242,6 +242,21 @@ final class ATC_Trips {
 		return self::detail( $pid, $l['number'] );
 	}
 
+	/** Our team confirms a ride for the provider (they confirmed by phone or WhatsApp). */
+	public static function acknowledge_for_provider( string $number, int $leg_id, string $how ) {
+		global $wpdb;
+		$l = $wpdb->get_row( $wpdb->prepare( 'SELECT l.* FROM ' . self::t( 'booking_legs' ) . ' l JOIN ' . self::t( 'bookings' ) . ' b ON b.id = l.booking_id WHERE l.id = %d AND b.number = %s', $leg_id, $number ), ARRAY_A );
+		if ( ! $l ) {
+			return new WP_Error( 'atc_not_found', 'Ride not found.', array( 'status' => 404 ) );
+		}
+		if ( 'new' !== $l['status'] ) {
+			return new WP_Error( 'atc_leg', 'This ride is not waiting for confirmation.', array( 'status' => 409 ) );
+		}
+		$wpdb->update( self::t( 'booking_legs' ), array( 'status' => 'accepted', 'acknowledged_at' => self::now() ), array( 'id' => $leg_id ) );
+		ATC_Install::log( 'leg', $leg_id, 'acknowledged', array( 'by' => get_current_user_id(), 'for_provider' => (int) $l['party_id'], 'how' => mb_substr( sanitize_text_field( $how ), 0, 60 ) ) );
+		return array( 'ok' => true );
+	}
+
 	/** Confirm every ride of a booking at once (the list's button). */
 	public static function acknowledge_booking( int $pid, string $number ) {
 		$b = ATC_Checkout::find( $number );

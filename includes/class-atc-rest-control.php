@@ -77,6 +77,7 @@ final class ATC_REST_Control {
 				return $out;
 			}
 		);
+		$bk( 'ack', static fn( $n, $b ) => ATC_Trips::acknowledge_for_provider( $n, (int) ( $b['leg'] ?? 0 ), (string) ( $b['how'] ?? '' ) ) );
 		$bk( 'charge', static fn( $n, $b ) => ATC_Charges::request( $n, (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), (string) ( $b['reason'] ?? '' ), (int) ( $b['leg'] ?? 0 ) ) );
 		$bk( 'charge-cancel', static fn( $n, $b ) => ATC_Charges::cancel( $n, sanitize_key( (string) ( $b['id'] ?? '' ) ) ) );
 		$bk( 'noshow', static fn( $n, $b ) => ATC_Ops::no_show_decision( $n, (int) ( $b['leg'] ?? 0 ), ! empty( $b['pay'] ), (string) ( $b['note'] ?? '' ) ) );
