@@ -2595,7 +2595,11 @@
             h('button', { class: 'btn dark', type: 'button', onclick: function () { review('approved'); }, text: 'Approve' }),
             note,
             h('button', { class: 'btn danger', type: 'button', onclick: function () { review('rejected'); }, text: 'Ask for a new one' })
-          ] : null)));
+          ] : null,
+          h('button', { class: 'link danger', type: 'button', text: 'Delete', title: 'Delete the file for good (no email to the provider)', onclick: function () {
+            if (!window.confirm('Delete ' + doc.original_name + ' for good? The file is removed from the server and the provider is not told.')) return;
+            api('DELETE', '/documents/' + doc.id).then(function () { toast('Deleted.'); viewProvider(partyId); }).catch(fail);
+          } }))));
     });
     return card;
   }

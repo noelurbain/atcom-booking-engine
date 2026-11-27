@@ -702,6 +702,22 @@ final class ATC_Partner {
 		exit;
 	}
 
+	/** Removes a document and its file for good (for example personal papers the provider sent by mistake). */
+	public static function delete_document( int $id ) {
+		global $wpdb;
+		$doc = self::document( $id );
+		if ( ! $doc ) {
+			return new WP_Error( 'atc_not_found', 'Document not found.', array( 'status' => 404 ) );
+		}
+		$path = self::private_dir() . '/' . basename( (string) $doc['file'] );
+		if ( is_file( $path ) ) {
+			wp_delete_file( $path );
+		}
+		$wpdb->delete( self::t( 'documents' ), array( 'id' => $id ) );
+		ATC_Install::log( 'document', $id, 'deleted', array( 'party_id' => (int) $doc['party_id'], 'type' => $doc['type'] ) );
+		return array( 'deleted' => $id );
+	}
+
 	public static function review_document( int $id, string $status, string $note = '' ) {
 		global $wpdb;
 		$doc = self::document( $id );

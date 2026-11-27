@@ -492,6 +492,24 @@ final class ATC_REST_Control {
 			)
 		);
 		self::route(
+			'/documents/(?P<id>\d+)',
+			array(
+				'DELETE' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::delete_document( (int) $r['id'] ) ),
+			)
+		);
+		self::route(
+			'/providers/(?P<id>\d+)/zones',
+			array(
+				'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::save_own_zone( (int) $r['id'], self::body( $r ) ) ),
+			)
+		);
+		self::route(
+			'/providers/(?P<id>\d+)/zones/(?P<zid>\d+)',
+			array(
+				'PUT' => static fn( WP_REST_Request $r ) => self::out( ATC_Partner::save_own_zone( (int) $r['id'], self::body( $r ), (int) $r['zid'] ) ),
+			)
+		);
+		self::route(
 			'/documents/(?P<id>\d+)/review',
 			array(
 				'POST' => static function ( WP_REST_Request $r ) {
