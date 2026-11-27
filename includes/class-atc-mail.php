@@ -180,6 +180,26 @@ final class ATC_Mail {
 		return $a . ( 1 === $a ? ' adult' : ' adults' ) . ( $c ? ', ' . $c . ( 1 === $c ? ' child' : ' children' ) : '' );
 	}
 
+	/** Short route for a subject line: "ARN → Sheraton Stockholm Hotel" (or the other way for a departure). */
+	public static function subject_route( array $b ): string {
+		$s     = $b['snap'];
+		$iata  = (string) ( $s['iata'] ?? '' );
+		$place = trim( explode( ',', (string) ( $s['to'] ?? '' ) )[0] );
+		if ( mb_strlen( $place ) > 34 ) {
+			$place = rtrim( mb_substr( $place, 0, 32 ) ) . '…';
+		}
+		if ( '' === $place ) {
+			return $iata;
+		}
+		$arrival = ! ATC_Checkout::leg( $b, 'departure' ) || ATC_Checkout::leg( $b, 'arrival' );
+		return $arrival ? $iata . ' → ' . $place : $place . ' → ' . $iata;
+	}
+
+	/** First pickup in local time, for subject lines: "Sat 28 Nov 12:40". */
+	private static function subject_when( array $b ): string {
+		return self::local( $b['legs'][0]['pickup_at'] ?? null, (string) ( $b['snap']['timezone'] ?? 'UTC' ), 'D j M H:i' );
+	}
+
 	/** The rows every booking email shares. $for_provider adds what the driver needs. */
 	/** Our team's view of a booking: who drives it and the money, then the trip as the provider sees it. */
 	public static function team_rows( array $b ): array {
@@ -320,7 +340,7 @@ final class ATC_Mail {
 			return;
 		}
 		self::provider_new( $b );
-		self::team( 'New booking ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' · ' . ATC_Book::money( (int) $b['total_cents'] ), self::wrap( 'New booking ' . $b['number'], self::p( '<strong>' . self::e( ATC_Checkout::provider_name( $b ) ?: 'No provider yet' ) . '</strong> · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		self::team( '🚗 NEW BOOKING · ' . ATC_Book::money( (int) $b['total_cents'] ) . ' · ' . self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · ' . ( ATC_Checkout::provider_name( $b ) ?: 'NO PROVIDER' ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], self::p( '<strong>' . self::e( ATC_Checkout::provider_name( $b ) ?: 'No provider yet' ) . '</strong> · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
 	private static function provider_amount( array $b ): int {
@@ -341,7 +361,7 @@ final class ATC_Mail {
 			. self::table( array_merge( self::trip_rows( $b, true ), array( array( 'You get paid', ATC_Book::money( self::provider_amount( $b ) ) ) ) ) )
 			. self::box( 'Please <strong>confirm</strong> you got this booking in the portal. At pickup, your driver asks the traveler for the <strong>service code</strong> on their voucher and types it in the portal: that completes the trip.' )
 			. self::p( '<span style="color:#6D6D71">If anything here can’t work for you, hand the ride back in the portal or reply to this email right away.</span>' );
-		self::send( self::provider_to( $p ), 'New booking ' . $b['number'] . ' · ' . ( $s['iata'] ?? '' ) . ' · ' . self::local( $b['legs'][0]['pickup_at'] ?? null, (string) ( $s['timezone'] ?? 'UTC' ), 'D j M, H:i' ), self::wrap( 'New booking ' . $b['number'], $body, 'Confirm in the portal', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_new', 'reply_to' => ATC_Settings::get( 'from_email' ) ) );
+		self::send( self::provider_to( $p ), '🚗 NEW BOOKING · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · you get ' . ATC_Book::money( self::provider_amount( $b ) ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], $body, 'Confirm in the portal', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_new', 'reply_to' => ATC_Settings::get( 'from_email' ) ) );
 	}
 
 	/** The traveler changed something: both sides get the new details. */
@@ -355,7 +375,7 @@ final class ATC_Mail {
 		self::send( $b['email'], 'Booking updated: ' . $b['number'], self::wrap( 'Your booking is updated', self::p( 'We saved your changes and told your provider:' ) . $list . self::table( self::trip_rows( $b ) ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'changed' ) );
 		$p = self::provider_party( $b );
 		if ( $p ) {
-			self::send( self::provider_to( $p ), 'Booking changed: ' . $b['number'], self::wrap( 'Booking ' . $b['number'] . ' changed', self::p( 'The traveler changed:' ) . $list . self::table( self::trip_rows( $b, true ) ), 'Open the booking', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
+			self::send( self::provider_to( $p ), '✏️ BOOKING CHANGED · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · ' . $b['number'],self::wrap( 'Booking ' . $b['number'] . ' changed', self::p( 'The traveler changed:' ) . $list . self::table( self::trip_rows( $b, true ) ), 'Open the booking', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
 		}
 	}
 
@@ -366,9 +386,9 @@ final class ATC_Mail {
 		self::send( $b['email'], 'Booking cancelled: ' . $b['number'], self::wrap( 'Your booking is cancelled', $body, 'Book again', home_url( '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'cancelled' ) );
 		$p = self::provider_party( $b );
 		if ( $p ) {
-			self::send( self::provider_to( $p ), 'Booking cancelled: ' . $b['number'], self::wrap( 'Booking ' . $b['number'] . ' is cancelled', self::p( 'The traveler cancelled. Please don’t send a driver.' ) . self::table( self::trip_rows( $b, true ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_cancelled' ) );
+			self::send( self::provider_to( $p ), '❌ CANCELLED, DON’T SEND A DRIVER · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · ' . $b['number'],self::wrap( 'Booking ' . $b['number'] . ' is cancelled', self::p( 'The traveler cancelled. Please don’t send a driver.' ) . self::table( self::trip_rows( $b, true ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_cancelled' ) );
 		}
-		self::team( 'Cancelled ' . $b['number'], self::wrap( 'Cancelled ' . $b['number'], self::p( 'Refund ' . self::e( ATC_Book::money( $refund_cents ) ) ) . self::table( self::team_rows( $b ) ) ) );
+		self::team( '❌ CANCELLED · ' . self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · refund ' . ATC_Book::money( $refund_cents ) . ' · ' . $b['number'],self::wrap( 'Cancelled ' . $b['number'], self::p( 'Refund ' . self::e( ATC_Book::money( $refund_cents ) ) ) . self::table( self::team_rows( $b ) ) ) );
 	}
 
 	/** A provider no longer does a ride (our team gave it to someone else). */
@@ -377,7 +397,7 @@ final class ATC_Mail {
 		if ( ! $p ) {
 			return;
 		}
-		self::send( self::provider_to( $p ), 'Booking ' . $b['number'] . ' is no longer yours', self::wrap( 'Booking ' . $b['number'] . ' moved', self::p( 'Our team gave this ride to another provider. Please don’t send a driver. Nothing to do on your side.' ) . self::table( self::trip_rows( $b ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_removed' ) );
+		self::send( self::provider_to( $p ), '↩️ RIDE MOVED, DON’T SEND A DRIVER · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · ' . $b['number'],self::wrap( 'Booking ' . $b['number'] . ' moved', self::p( 'Our team gave this ride to another provider. Please don’t send a driver. Nothing to do on your side.' ) . self::table( self::trip_rows( $b ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_removed' ) );
 	}
 
 	/** The traveler's ride is now run by another provider. */
