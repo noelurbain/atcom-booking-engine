@@ -190,6 +190,18 @@ final class ATC_REST_Control {
 		);
 
 		// Airports.
+		self::route( '/push', array( 'GET' => static fn() => rest_ensure_response( array( 'key' => ATC_Push::public_key(), 'devices' => ATC_Push::count_for( null, get_current_user_id() ) ) ) ) );
+		self::route( '/push/subscribe', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Push::subscribe( get_current_user_id(), null, 'team', self::body( $r ) ) ) ) );
+		self::route(
+			'/push/unsubscribe',
+			array(
+				'POST' => static function ( WP_REST_Request $r ) {
+					ATC_Push::unsubscribe( get_current_user_id(), (string) ( self::body( $r )['endpoint'] ?? '' ) );
+					return rest_ensure_response( array( 'ok' => true ) );
+				},
+			)
+		);
+		self::route( '/push/test', array( 'POST' => static fn() => rest_ensure_response( array( 'sent' => ATC_Push::to_user( get_current_user_id(), array( 'title' => '✅ Booking alerts are on', 'body' => 'New bookings, last-minute bookings and provider problems will reach you here.', 'url' => '/control/bookings/', 'tag' => 'atc-test' ) ) ) ) ) );
 		self::route( '/airports', array( 'GET' => static fn( WP_REST_Request $r ) => rest_ensure_response( ATC_Airports::list( (string) $r['q'] ) ) ) );
 		self::route( '/airports/(?P<id>\\d+)', array( 'POST' => static fn( WP_REST_Request $r ) => self::out( ATC_Airports::save( (int) $r['id'], self::body( $r ) ) ) ) );
 

@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches', 'extra_types', 'blocks',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches', 'extra_types', 'blocks', 'push_subs',
 		);
 	}
 
@@ -518,6 +518,27 @@ final class ATC_Schema {
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
   KEY party_time (party_id,ends_at)
+) $c;";
+
+		// Browser push subscriptions: one row per device that turned booking alerts on.
+		$sql[] = "CREATE TABLE {$p}push_subs (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  user_id bigint(20) unsigned NOT NULL,
+  party_id bigint(20) unsigned NULL,
+  role varchar(20) NOT NULL DEFAULT 'provider',
+  endpoint text NOT NULL,
+  endpoint_hash char(32) NOT NULL,
+  p256dh varchar(120) NOT NULL,
+  auth varchar(40) NOT NULL,
+  device varchar(120) NULL,
+  fails int(11) NOT NULL DEFAULT 0,
+  last_ok_at datetime NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY endpoint_hash (endpoint_hash),
+  KEY party_role (party_id,role),
+  KEY user_id (user_id)
 ) $c;";
 
 		return $sql;

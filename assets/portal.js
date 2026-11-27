@@ -669,6 +669,74 @@
 
   /* ---------- Setup (home) ---------- */
 
+
+  /* ---------- Booking alerts: browser push on this device ---------- */
+
+  function alertsCard(who) {
+    var card = h('section', { class: 'card pad alerts-card' });
+    var ua = navigator.userAgent || '';
+    var ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    var supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    function b64(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); var r = atob(s + '==='.slice((s.length + 3) % 4)); var o = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) o[i] = r.charCodeAt(i); return o; }
+    function device() { return (ios ? 'iPhone/iPad' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'Browser') + (standalone ? ' app' : ''); }
+    function reg() { return navigator.serviceWorker.register('/atc-sw.js', { scope: '/' }); }
+    var intro = who === 'team'
+      ? 'Get new bookings, last-minute bookings and provider problems on this phone or computer, instantly.'
+      : 'Get every new booking, reminder and change on this phone or computer, instantly, even when the portal is closed.';
+    function draw(state) {
+      clear(card);
+      add(card, h('div', { class: 'row-flat' }, h('h2', { text: '🔔 Booking alerts on this device' }),
+        state === 'on' ? h('span', { class: 'chip green', text: 'On' }) : state === 'blocked' ? h('span', { class: 'chip red', text: 'Blocked' }) : h('span', { class: 'chip grey', text: 'Off' })));
+      add(card, h('p', { class: 'small atc-muted', text: intro + ' Email keeps coming too.' }));
+      if (state === 'ios-install') {
+        add(card, h('ol', { class: 'small' },
+          h('li', null, 'In Safari, tap the Share button (the square with an arrow).'),
+          h('li', null, 'Tap “Add to Home Screen”, then “Add”.'),
+          h('li', null, 'Open Airport Transportation from the new icon on your home screen and come back here to turn alerts on.')));
+        return;
+      }
+      if (state === 'unsupported') { add(card, h('p', { class: 'small', text: 'This browser can’t show alerts. Use Chrome, Edge, Firefox or Safari, or the home-screen app on iPhone.' })); return; }
+      if (state === 'blocked') { add(card, h('p', { class: 'small', text: 'Notifications are blocked for this site. Allow them in your browser’s site settings (the lock or tune icon next to the address), then reload this page.' })); return; }
+      if (state === 'on') {
+        add(card, h('div', { class: 'atc-actions' },
+          h('button', { type: 'button', class: 'btn', text: 'Send a test alert', onclick: function (e) { e.target.disabled = true; api('POST', '/push/test').then(function (r) { toast(r.sent ? 'Sent. It should appear in a few seconds.' : 'No device found. Turn alerts off and on again.', !r.sent); }).catch(fail).then(function () { e.target.disabled = false; }); } }),
+          h('button', { type: 'button', class: 'link', text: 'Turn off on this device', onclick: function () {
+            reg().then(function (r) { return r.pushManager.getSubscription(); }).then(function (s) {
+              if (!s) return; var ep = s.endpoint; return s.unsubscribe().then(function () { return api('POST', '/push/unsubscribe', { endpoint: ep }); });
+            }).then(function () { toast('Alerts are off on this device.'); draw('off'); }).catch(fail);
+          } })));
+        return;
+      }
+      add(card, h('div', { class: 'atc-actions' }, h('button', { type: 'button', class: 'btn dark', text: 'Turn on booking alerts', onclick: function (e) {
+        var btn = e.target; btn.disabled = true;
+        Notification.requestPermission().then(function (perm) {
+          if (perm !== 'granted') { draw(perm === 'denied' ? 'blocked' : 'off'); throw null; }
+          return Promise.all([reg(), api('GET', '/push')]);
+        }).then(function (x) {
+          var r = x[0], key = x[1].key;
+          return navigator.serviceWorker.ready.then(function () { return r.pushManager.getSubscription(); }).then(function (s) {
+            return s || r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
+          });
+        }).then(function (s) {
+          var j = s.toJSON();
+          return api('POST', '/push/subscribe', { endpoint: j.endpoint, keys: j.keys, device: device() });
+        }).then(function () { return api('POST', '/push/test'); }).then(function () {
+          toast('Alerts are on. We sent you a test.'); draw('on');
+        }).catch(function (x) { btn.disabled = false; if (x) fail(x); });
+      } })));
+    }
+    if (ios && !standalone) draw('ios-install');
+    else if (!supported) draw('unsupported');
+    else if (Notification.permission === 'denied') draw('blocked');
+    else {
+      draw('off');
+      navigator.serviceWorker.getRegistration('/').then(function (r) { return r && r.pushManager.getSubscription(); })
+        .then(function (s) { if (s && Notification.permission === 'granted') draw('on'); }).catch(function () {});
+    }
+    return card;
+  }
+
   function viewSetup() {
     var p = me.provider, s = me.steps;
     var keys = SETUP.map(function (x) { return x[0]; }).concat(['approval']);
@@ -676,6 +744,7 @@
     var first = nextTodo();
     var live = p.status === 'live';
     add(app, head(first && !done ? 'Welcome, ' + p.name : p.name, live ? 'You are live: travelers can book you.' : 'You go live as soon as steps 1 to 4 are green. ' + done + ' of ' + keys.length + ' done.'));
+    if (live) add(app, alertsCard('provider'));
     if (first) {
       var i = stepIndex(first);
       add(app, h('section', { class: 'card pad nextcard', 'data-tour': 'nextcard' },
@@ -1734,6 +1803,7 @@
     var pBtn = h('button', { class: 'btn dark', type: 'submit', text: 'Change password' });
     add(app, [
       head('Account', 'How you sign in to the portal.'),
+      alertsCard('provider'),
       h('form', { class: 'card pad', onsubmit: function (e) {
         e.preventDefault(); eBtn.disabled = true;
         api('POST', '/account/email', { email: newEmail.value, current: pwE.value })

@@ -372,6 +372,7 @@ final class ATC_Mail {
 		self::provider_new( $b );
 		$urgent = self::urgent_label( $b );
 		self::team( ( $urgent ? '⚡ LAST-MINUTE · ' . $urgent . ' · ' : '' ) . '🚗 NEW BOOKING · ' . ATC_Book::money( (int) $b['total_cents'] ) . ' · ' . self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · ' . ( ATC_Checkout::provider_name( $b ) ?: 'NO PROVIDER' ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], ( $urgent ? self::box( '<strong>Last-minute booking: ' . self::e( strtolower( $urgent ) ) . '.</strong> Make sure the provider has seen it.', '#FDECEA', '#F3C2BC' ) : '' ) . self::p( '<strong>' . self::e( ATC_Checkout::provider_name( $b ) ?: 'No provider yet' ) . '</strong> · ' . self::e( ATC_Book::money( (int) $b['total_cents'] ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
+		ATC_Push::to_team( array( 'title' => ( $urgent ? '⚡ Last-minute · ' . strtolower( $urgent ) : '🚗 New booking' ) . ' · ' . ATC_Book::money( (int) $b['total_cents'] ), 'body' => self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · ' . ( ATC_Checkout::provider_name( $b ) ?: 'no provider yet' ) . ' · ' . $b['number'], 'url' => '/control/bookings/' . $b['number'] . '/', 'tag' => 'team-' . $b['number'], 'urgent' => (bool) $urgent ) );
 	}
 
 	private static function provider_amount( array $b ): int {
@@ -395,6 +396,7 @@ final class ATC_Mail {
 			. self::p( '<span style="color:#6D6D71">If anything here can’t work for you, hand the ride back in the portal or reply to this email right away.</span>' )
 			. self::provider_help_html();
 		self::send( self::provider_to( $p ), ( $urgent ? '⚡ LAST-MINUTE · ' . $urgent . ' · ' : '' ) . '🚗 NEW BOOKING · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · you get ' . ATC_Book::money( self::provider_amount( $b ) ) . ' · ' . $b['number'],self::wrap( 'New booking ' . $b['number'], $body, 'Confirm in the portal', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_new', 'reply_to' => ATC_Settings::get( 'from_email' ) ) );
+		ATC_Push::to_party( (int) $p['id'], array( 'title' => $urgent ? '⚡ Last-minute booking · ' . strtolower( $urgent ) : '🚗 New booking · ' . $b['number'], 'body' => self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · you get ' . ATC_Book::money( self::provider_amount( $b ) ) . '. Tap to confirm.', 'url' => '/portal/bookings/' . $b['number'] . '/', 'tag' => 'bk-' . $b['number'], 'urgent' => (bool) $urgent ) );
 	}
 
 	/** The traveler changed something: both sides get the new details. */
@@ -409,6 +411,7 @@ final class ATC_Mail {
 		$p = self::provider_party( $b );
 		if ( $p ) {
 			self::send( self::provider_to( $p ), '✏️ BOOKING CHANGED · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · ' . $b['number'],self::wrap( 'Booking ' . $b['number'] . ' changed', self::p( 'The traveler changed:' ) . $list . self::table( self::trip_rows( $b, true ) ), 'Open the booking', home_url( '/portal/bookings/' . $b['number'] . '/' ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
+			ATC_Push::to_party( (int) $p['id'], array( 'title' => '✏️ Booking changed · ' . $b['number'], 'body' => implode( ' · ', array_slice( $changes, 0, 3 ) ) . ' · ' . self::subject_when( $b ), 'url' => '/portal/bookings/' . $b['number'] . '/', 'tag' => 'bk-' . $b['number'] ) );
 		}
 	}
 
@@ -420,8 +423,10 @@ final class ATC_Mail {
 		$p = self::provider_party( $b );
 		if ( $p ) {
 			self::send( self::provider_to( $p ), '❌ CANCELLED, DON’T SEND A DRIVER · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · ' . $b['number'],self::wrap( 'Booking ' . $b['number'] . ' is cancelled', self::p( 'The traveler cancelled. Please don’t send a driver.' ) . self::table( self::trip_rows( $b, true ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_cancelled' ) );
+			ATC_Push::to_party( (int) $p['id'], array( 'title' => '❌ Cancelled · don’t send a driver', 'body' => $b['number'] . ' · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ), 'url' => '/portal/bookings/' . $b['number'] . '/', 'tag' => 'bk-' . $b['number'], 'urgent' => true ) );
 		}
 		self::team( '❌ CANCELLED · ' . self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · refund ' . ATC_Book::money( $refund_cents ) . ' · ' . $b['number'],self::wrap( 'Cancelled ' . $b['number'], self::p( 'Refund ' . self::e( ATC_Book::money( $refund_cents ) ) ) . self::table( self::team_rows( $b ) ) ) );
+		ATC_Push::to_team( array( 'title' => '❌ Cancelled · ' . $b['number'], 'body' => self::subject_route( $b ) . ' · ' . self::subject_when( $b ) . ' · refund ' . ATC_Book::money( $refund_cents ), 'url' => '/control/bookings/' . $b['number'] . '/', 'tag' => 'team-' . $b['number'] ) );
 	}
 
 	/** A provider no longer does a ride (our team gave it to someone else). */
@@ -431,6 +436,7 @@ final class ATC_Mail {
 			return;
 		}
 		self::send( self::provider_to( $p ), '↩️ RIDE MOVED, DON’T SEND A DRIVER · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . ' · ' . $b['number'],self::wrap( 'Booking ' . $b['number'] . ' moved', self::p( 'Our team gave this ride to another provider. Please don’t send a driver. Nothing to do on your side.' ) . self::table( self::trip_rows( $b ) ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_removed' ) );
+		ATC_Push::to_party( (int) $p['id'], array( 'title' => '↩️ Ride moved · don’t send a driver', 'body' => $b['number'] . ' · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ), 'url' => '/portal/bookings/', 'tag' => 'bk-' . $b['number'], 'urgent' => true ) );
 	}
 
 	/** The traveler's ride is now run by another provider. */
@@ -458,6 +464,7 @@ final class ATC_Mail {
 		$body = self::p( self::e( $what . ' on ' . $t['ref'] . ( $t['booking'] ? ', booking ' . $t['booking'] : '' ) . ' (' . $t['type_name'] . ').' ) )
 			. ( $last ? self::box( '<strong>' . self::e( $last['name'] ) . '</strong><br>' . nl2br( self::e( $last['body'] ) ) ) : '' )
 			. ( $t['urgent'] ? self::p( '<strong>Urgent:</strong> answer today.' ) : self::p( 'First reply due within 48 hours.' ) );
+		ATC_Push::to_team( array( 'title' => ( $t['urgent'] ? '⚡ ' : '💬 ' ) . $what . ' · ' . $t['ref'], 'body' => $t['subject'] . ( $last ? ': ' . mb_substr( (string) $last['body'], 0, 140 ) : '' ), 'url' => '/control/tickets/' . $id . '/', 'tag' => 'ticket-' . $id, 'urgent' => (bool) $t['urgent'] ) );
 		self::team( ( $t['urgent'] ? '[Urgent] ' : '' ) . $what . ': ' . $t['subject'] . ' (' . $t['ref'] . ')', self::wrap( $t['subject'], $body, 'Open the ticket', home_url( '/control/tickets/' . $id . '/' ) ) );
 	}
 
@@ -478,6 +485,7 @@ final class ATC_Mail {
 				return;
 			}
 			$body = self::p( 'Hi ' . self::e( $p['contact_name'] ?: $p['name'] ) . ', a message from our team' . ( $t['booking'] ? ' about booking <strong>' . self::e( $t['booking'] ) . '</strong>' : '' ) . ':' ) . self::box( nl2br( self::e( $text ) ) ) . self::p( 'Answer in the portal, under Tickets.' );
+			ATC_Push::to_party( (int) $p['id'], array( 'title' => '💬 Message from Airport Transportation', 'body' => $t['subject'] . ': ' . mb_substr( $text, 0, 140 ), 'url' => '/portal/tickets/' . $id . '/', 'tag' => 'ticket-' . $id ) );
 			self::send( self::provider_to( $p ), 'Airport Transportation: ' . $t['subject'] . ' (' . $t['ref'] . ')', self::wrap( $t['subject'], $body, 'Open in the portal', home_url( '/portal/tickets/' . $id . '/' ) ), array( 'kind' => 'ticket' ) );
 		}
 	}
@@ -520,6 +528,7 @@ final class ATC_Mail {
 
 	/** For our team: something on a booking needs a look. */
 	public static function team_note( string $subject, string $intro, array $b, string $note ): void {
+		ATC_Push::to_team( array( 'title' => $subject, 'body' => $intro, 'url' => '/control/bookings/' . $b['number'] . '/', 'tag' => 'team-' . $b['number'], 'urgent' => false !== strpos( $subject, '⚡' ) ) );
 		self::team( $subject, self::wrap( $subject, self::p( self::e( $intro ) ) . self::box( nl2br( self::e( $note ) ) ) . self::table( self::team_rows( $b ) ), 'Open in Control', home_url( '/control/bookings/' . $b['number'] . '/' ) ) );
 	}
 
@@ -531,6 +540,8 @@ final class ATC_Mail {
 		}
 		$url  = home_url( '/portal/bookings/' . $b['number'] . '/' );
 		$body = self::p( 'Please confirm you got booking <strong>' . self::e( $b['number'] ) . '</strong>. The traveler is counting on it.' ) . self::table( self::trip_rows( $b, true ) ) . self::provider_help_html();
+		ATC_Push::to_party( (int) $p['id'], array( 'title' => '⏰ Please confirm booking ' . $b['number'], 'body' => self::subject_when( $b ) . ' · ' . self::subject_route( $b ) . '. The traveler is counting on it.', 'url' => '/portal/bookings/' . $b['number'] . '/', 'tag' => 'bk-' . $b['number'], 'urgent' => true ) );
+		ATC_Push::to_team( array( 'title' => 'Not confirmed yet · ' . $b['number'], 'body' => ( $p['name'] ?? '' ) . ' · ' . self::subject_when( $b ) . ' · ' . self::subject_route( $b ), 'url' => '/control/bookings/' . $b['number'] . '/', 'tag' => 'team-' . $b['number'] ) );
 		if ( ATC_Settings::get( 'provider_reminders' ) ) {
 			self::send( self::provider_to( $p ), 'Please confirm booking ' . $b['number'], self::wrap( 'Please confirm booking ' . $b['number'], $body, 'Confirm in the portal', $url ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_nudge' ) );
 		}

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.33.1
+ * Version:           0.34.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.33.1' );
-define( 'ATC_DB_VERSION', '26' );
+define( 'ATC_VERSION', '0.34.0' );
+define( 'ATC_DB_VERSION', '27' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ATC_URL', plugin_dir_url( __FILE__ ) );
@@ -41,6 +41,7 @@ require_once ATC_DIR . 'includes/class-atc-manage.php';
 require_once ATC_DIR . 'includes/class-atc-mail.php';
 require_once ATC_DIR . 'includes/class-atc-trips.php';
 require_once ATC_DIR . 'includes/class-atc-blocks.php';
+require_once ATC_DIR . 'includes/class-atc-push.php';
 require_once ATC_DIR . 'includes/class-atc-ops.php';
 require_once ATC_DIR . 'includes/class-atc-charges.php';
 require_once ATC_DIR . 'includes/class-atc-affiliates.php';
@@ -97,6 +98,7 @@ ATC_Chat::init();
 ATC_Crisp::init();
 ATC_Crisp_Widget::init();
 ATC_Media_Import::init();
+ATC_Push::init();
 // Invitation and password links work for 7 days (people open invitations days later).
 add_filter( 'password_reset_expiration', static fn() => 7 * DAY_IN_SECONDS );
 // "Password changed for user: …" goes to the site admin email each time a provider, affiliate or traveler

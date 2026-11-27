@@ -178,6 +178,7 @@ final class ATC_Portal {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="<?php echo esc_url( $css ); ?>">
 <link rel="stylesheet" href="<?php echo esc_url( $css2 ); ?>">
+<?php echo ATC_Push::head_tags( 'portal' ); // phpcs:ignore -- escaped inside. ?>
 </head>
 <body>
 <header class="atc-top">

@@ -69,8 +69,56 @@ final class ATC_Control {
 			wp_die( esc_html__( 'The control panel is for our team only.', 'atcom-booking-engine' ), 403 );
 		}
 		header( 'X-Robots-Tag: noindex, nofollow', true );
+		if ( preg_match( '#^document/(\d+)$#', (string) $view, $m ) ) {
+			self::document_preview( (int) $m[1] );
+			exit;
+		}
 		self::render();
 		exit;
+	}
+
+	/** A provider document shown in the page (PDFs drawn page by page), with its details, for review. */
+	private static function document_preview( int $id ): void {
+		$doc = ATC_Partner::document( $id );
+		if ( ! $doc ) {
+			status_header( 404 );
+			wp_die( 'Document not found.', 404 );
+		}
+		$p     = ATC_Catalog::party( (int) $doc['party_id'] );
+		$types = ATC_Partner::doc_types();
+		$url   = ATC_Partner::file_url( $id );
+		$pdf   = 'application/pdf' === $doc['mime'];
+		$lib   = ATC_URL . 'assets/vendor/pdfjs/';
+		?>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+<title>Document <?php echo (int) $id; ?> · <?php echo esc_html( $p['name'] ?? '' ); ?></title>
+<style>body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#E9E6E0;color:#1B1B1F}.bar{position:sticky;top:0;background:#fff;padding:10px 16px;border-bottom:1px solid #ddd;z-index:2}.bar b{font-size:15px}.pages{display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px}.pages canvas,.pages img{max-width:min(1100px,96vw);height:auto;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.15)}.muted{color:#6D6D71}</style>
+</head><body>
+<div class="bar"><b><?php echo esc_html( ( $p['name'] ?? '' ) . ( ! empty( $p['legal_name'] ) && $p['legal_name'] !== $p['name'] ? ' (' . $p['legal_name'] . ')' : '' ) ); ?></b> · <?php echo esc_html( $p['country'] ?? '' ); ?> · <?php echo esc_html( $types[ $doc['type'] ][0] ?? $doc['type'] ); ?>
+ · expires <?php echo esc_html( $doc['expires_on'] ?: 'not given' ); ?> · <span class="muted"><?php echo esc_html( $doc['original_name'] ); ?> · <?php echo esc_html( $doc['status'] ); ?></span> <span id="np" class="muted"></span></div>
+<div class="pages" id="pages"><?php if ( ! $pdf ) : ?><img src="<?php echo esc_url( $url ); ?>" alt=""><?php endif; ?></div>
+		<?php if ( $pdf ) : ?>
+<script type="module">
+import * as lib from '<?php echo esc_url( $lib . 'pdf.min.js' ); ?>';
+lib.GlobalWorkerOptions.workerSrc = '<?php echo esc_url( $lib . 'pdf.worker.min.js' ); ?>';
+const box = document.getElementById('pages');
+try {
+  const pdf = await lib.getDocument('<?php echo esc_url_raw( $url ); ?>').promise;
+  const n = Math.min(pdf.numPages, 8);
+  document.getElementById('np').textContent = '· ' + pdf.numPages + ' page' + (pdf.numPages > 1 ? 's' : '') + (pdf.numPages > n ? ' (first ' + n + ' shown)' : '');
+  for (let i = 1; i <= n; i++) {
+    const page = await pdf.getPage(i);
+    const vp = page.getViewport({ scale: 1.6 });
+    const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; box.appendChild(c);
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+  }
+  document.body.dataset.ready = '1';
+} catch (e) { box.textContent = 'Could not draw this PDF: ' + e.message; document.body.dataset.ready = '1'; }
+</script>
+		<?php endif; ?>
+</body></html>
+		<?php
 	}
 
 	private static function render(): void {
@@ -97,6 +145,7 @@ final class ATC_Control {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="<?php echo esc_url( $css ); ?>">
+<?php echo ATC_Push::head_tags( 'control' ); // phpcs:ignore -- escaped inside. ?>
 </head>
 <body>
 <header class="atc-top">

@@ -284,3 +284,6 @@ tr.click:hover td{background:#FBFAF7}
 .lp-list[hidden]{display:none}
 .lp-opt{border:0;background:none;text-align:left;padding:8px 10px;border-radius:8px;font:inherit;font-weight:600;cursor:pointer}
 .lp-opt:hover,.lp-opt:first-child{background:#F7F5F1}
+.alerts-card ol{margin:6px 0 0;padding-left:20px}
+.alerts-card .row-flat{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.alerts-card h2{margin:0}
