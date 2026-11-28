@@ -185,6 +185,7 @@ try {
 		<a href="<?php echo esc_url( home_url( '/control/tickets/' ) ); ?>" data-view="tickets">Tickets<?php echo $waiting ? ' <i class="count">' . (int) $waiting . '</i>' : ''; ?></a>
 		<?php $quotes = ATC_Quotes::count_open(); ?>
 		<a href="<?php echo esc_url( home_url( '/control/quotes/' ) ); ?>" data-view="quotes">Quote requests<?php echo $quotes ? ' <i class="count">' . (int) $quotes . '</i>' : ''; ?></a>
+		<a href="<?php echo esc_url( home_url( '/control/images/' ) ); ?>" data-view="images">Page images</a>
 		<a href="https://app.crisp.chat/" target="_blank" rel="noopener">Crisp inbox ↗</a>
 		<?php if ( current_user_can( 'atc_settings' ) ) : ?>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=atc-settings' ) ); ?>">Settings</a>

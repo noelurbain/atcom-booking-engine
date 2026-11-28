@@ -132,6 +132,7 @@
     if (parts[0] === 'tickets' && parts[1]) return viewTicket(parseInt(parts[1], 10));
     if (parts[0] === 'tickets') return viewTickets();
     if (parts[0] === 'quotes') return viewQuotes();
+    if (parts[0] === 'images') return viewImages();
     if (parts[0] === 'affiliates' && parts[1]) return viewAffiliate(parseInt(parts[1], 10));
     if (parts[0] === 'affiliates') return viewAffiliates();
     if (parts[0] === 'airports') return viewAirports();
@@ -448,6 +449,94 @@
   }
 
   // Quote requests: travelers asking for a price where nothing can be booked online.
+  /* ---------- Page images ---------- */
+
+  function viewImages() {
+    clear(app);
+    var show = 'missing', airport = '', busy = false, stop = false;
+    var info = h('div', { class: 'small atc-muted' });
+    var pills = h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Show' });
+    var sel = h('select', { 'aria-label': 'Airport', onchange: function () { airport = sel.value; load(); } });
+    var batchN = h('select', { 'aria-label': 'How many' }, [1, 3, 5, 10, 25].map(function (n) { return h('option', { value: n, text: n + (n === 1 ? ' page' : ' pages') }); }));
+    var batchBtn = h('button', { type: 'button', class: 'btn dark', text: 'Make the next images' });
+    var stopBtn = h('button', { type: 'button', class: 'link', text: 'Stop after this one', style: 'display:none', onclick: function () { stop = true; stopBtn.textContent = 'Stopping…'; } });
+    var list = h('div', { style: 'display:grid;gap:10px' });
+    var rows = [];
+    function drawPills() {
+      clear(pills);
+      [['missing', 'Still on a placeholder'], ['done', 'Have their own photo'], ['all', 'All']].forEach(function (o) {
+        add(pills, h('button', { type: 'button', class: 'pe-pill' + (show === o[0] ? ' on' : ''), 'aria-pressed': show === o[0] ? 'true' : 'false', text: o[1], onclick: function () { show = o[0]; load(); } }));
+      });
+    }
+    function make(p, row, prompt) {
+      var btn = row.querySelector('button.mk'), img = row.querySelector('img'), st = row.querySelector('.st');
+      btn.disabled = true; st.textContent = 'Making the image (about a minute)…'; st.className = 'st small';
+      return api('POST', '/images/' + p.id, prompt ? { prompt: prompt } : {}).then(function (r) {
+        img.src = r.url; img.style.display = '';
+        p.own = true; st.textContent = 'Done: ' + r.file + ' is now the page photo.'; st.className = 'st small green';
+        btn.disabled = false; btn.textContent = 'Make another';
+      }).catch(function (e) { btn.disabled = false; st.textContent = e.message; st.className = 'st small red'; throw e; });
+    }
+    function card(p) {
+      var prompt = h('textarea', { rows: 4, style: 'width:100%;display:none', 'aria-label': 'Prompt' });
+      var row = h('div', { class: 'card pad', style: 'display:grid;grid-template-columns:160px 1fr;gap:14px;align-items:start' },
+        h('img', { src: p.thumb || '', alt: '', style: 'width:160px;aspect-ratio:3/2;object-fit:cover;border-radius:8px;background:#eee' + (p.thumb ? '' : ';display:none') }),
+        h('div', { style: 'display:grid;gap:6px' },
+          h('div', null, h('a', { href: p.link, target: '_blank', rel: 'noopener', class: 'strong', text: p.title }), p.status === 'draft' ? h('span', { class: 'chip grey', style: 'margin-left:8px', text: 'Draft' }) : null,
+            h('span', { class: 'chip ' + (p.own ? 'green' : 'orange'), style: 'margin-left:8px', text: p.own ? 'Own photo' : 'Placeholder' })),
+          h('div', { class: 'small atc-muted', text: p.slug + '.webp' + (p.made ? ' · made ' + p.made + ' UTC' : '') }),
+          h('div', { class: 'st small' }),
+          prompt,
+          h('div', { class: 'atc-actions' },
+            h('button', { type: 'button', class: 'btn mk', text: p.own ? 'Make another' : 'Make image', onclick: function () { make(p, row, prompt.style.display === 'none' ? '' : prompt.value).catch(function () {}); } }),
+            h('button', { type: 'button', class: 'link', text: 'See or change the prompt', onclick: function () {
+              if (prompt.style.display !== 'none') { prompt.style.display = 'none'; return; }
+              api('GET', '/images/' + p.id + '/prompt').then(function (r) { if (!prompt.value) prompt.value = r.prompt; prompt.style.display = ''; }).catch(fail);
+            } }))));
+      rows.push({ p: p, row: row });
+      return row;
+    }
+    batchBtn.onclick = function () {
+      if (busy) return;
+      var todo = rows.filter(function (x) { return !x.p.own; }).slice(0, parseInt(batchN.value, 10));
+      if (!todo.length) { toast('Nothing left on a placeholder here.'); return; }
+      busy = true; stop = false; batchBtn.disabled = true; stopBtn.style.display = ''; stopBtn.textContent = 'Stop after this one';
+      var i = 0, ok = 0;
+      (function next() {
+        if (stop || i >= todo.length) {
+          busy = false; batchBtn.disabled = false; stopBtn.style.display = 'none';
+          toast(ok + ' image' + (ok === 1 ? '' : 's') + ' made.');
+          return;
+        }
+        var x = todo[i++];
+        x.row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        make(x.p, x.row).then(function () { ok++; setTimeout(next, 3000); }).catch(function () { setTimeout(next, 3000); });
+      })();
+    };
+    function load() {
+      drawPills();
+      api('GET', '/images?show=' + show + (airport ? '&airport=' + encodeURIComponent(airport) : '')).then(function (r) {
+        clear(list); rows = [];
+        if (sel.options.length <= 1) {
+          clear(sel);
+          add(sel, h('option', { value: '', text: 'All airports' }));
+          r.airports.forEach(function (a) { add(sel, h('option', { value: a, text: a, selected: a === airport })); });
+        }
+        clear(info);
+        add(info, r.key_set ? r.missing + ' of ' + r.total + ' destination pages are still on a placeholder photo.' : h('span', { class: 'red', text: 'The OpenAI key is not set yet. Add this line to wp-config.php: define( \'ATC_OPENAI_KEY\', \'sk-…\' );' }));
+        batchBtn.disabled = !r.key_set;
+        if (!r.pages.length) add(list, h('p', { class: 'atc-muted', text: 'No pages here.' }));
+        r.pages.forEach(function (p) { add(list, card(p)); });
+      }).catch(fail);
+    }
+    add(app, [
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Page images' }), h('p', { class: 'atc-muted', text: 'Make the main photo of each destination page with OpenAI. The image is saved as the page’s name (for example managua-airport-to-granada.webp), gets the destination as its alt text and becomes the page photo straight away. Each image takes about a minute and costs a few cents on your OpenAI account.' }))),
+      info,
+      h('div', { class: 'atc-actions', style: 'margin:10px 0' }, sel, batchN, batchBtn, stopBtn),
+      pills, list]);
+    load();
+  }
+
   function viewQuotes() {
     clear(app);
     var st = 'open';
