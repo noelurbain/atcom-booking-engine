@@ -471,9 +471,9 @@ final class ATC_Trips {
 
 		self::ack_check();
 
-		// No code and no no-show: the ride completes on its own after the set hours.
+		// No code and no no-show: the ride completes on its own after the set hours (old-site rides too, once given to a provider here).
 		$hours = max( 1, (int) ATC_Settings::get( 'autocomplete_hours' ) );
-		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT l.*, b.status AS bstatus FROM {$l} l JOIN {$b} b ON b.id = l.booking_id WHERE l.status IN ('new','accepted') AND b.status = 'confirmed' AND b.snapshot NOT LIKE '%%\"legacy\":true%%' AND l.party_id > 0 AND l.pickup_at < %s LIMIT 200", gmdate( 'Y-m-d H:i:s', $now - $hours * HOUR_IN_SECONDS ) ), ARRAY_A ); // phpcs:ignore
+		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT l.*, b.status AS bstatus FROM {$l} l JOIN {$b} b ON b.id = l.booking_id WHERE l.status IN ('new','accepted') AND b.status = 'confirmed' AND ( b.snapshot NOT LIKE '%%\"legacy\":true%%' OR EXISTS ( SELECT 1 FROM " . self::t( 'ledger' ) . " x WHERE x.leg_id = l.id AND x.role = 'provider' AND x.status = 'pending' ) ) AND l.party_id > 0 AND l.pickup_at < %s LIMIT 200", gmdate( 'Y-m-d H:i:s', $now - $hours * HOUR_IN_SECONDS ) ), ARRAY_A ); // phpcs:ignore
 		foreach ( $rows as $r ) {
 			self::close( $r, 'completed', 'auto' );
 		}

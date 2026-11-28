@@ -441,8 +441,14 @@ final class ATC_Mail {
 
 	/** The traveler's ride is now run by another provider. */
 	public static function traveler_provider_changed( array $b ): void {
-		$key = ATC_Checkout::key_of( $b );
-		self::send( $b['email'], 'Your transfer ' . $b['number'] . ': new provider', self::wrap( 'You have a new provider', self::p( 'Hi ' . self::e( $b['first_name'] ) . ', another local provider now runs your transfer. Everything else stays the same, including your price and service code.' ) . self::provider_html( $b ) . self::table( self::trip_rows( $b ) ), 'View your booking', ATC_Checkout::reservation_url( $b['number'], $key ) ), array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
+		if ( ! is_email( (string) $b['email'] ) ) {
+			return; // some old-site bookings came over without the traveler's email
+		}
+		$legacy = ! empty( $b['snap']['legacy'] );
+		$key    = $legacy ? '' : ATC_Checkout::key_of( $b );
+		$same   = $legacy ? 'Everything else stays the same, including your price: there is nothing to pay.' : 'Everything else stays the same, including your price and service code.';
+		$html   = self::wrap( 'You have a new provider', self::p( 'Hi ' . self::e( $b['first_name'] ) . ', another local provider now runs your transfer. ' . $same ) . self::provider_html( $b ) . self::table( self::trip_rows( $b ) ), $legacy ? '' : 'View your booking', $legacy ? '' : ATC_Checkout::reservation_url( $b['number'], $key ) );
+		self::send( $b['email'], 'Your transfer ' . $b['number'] . ': new provider', $html, array( 'booking_id' => (int) $b['id'], 'kind' => 'provider_changed' ) );
 	}
 
 	/** Part of the payment refunded, booking still on. */

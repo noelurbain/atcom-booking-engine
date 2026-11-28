@@ -84,6 +84,17 @@ final class ATC_Ops {
 		return $out;
 	}
 
+	/** An old-site ride given to a provider here: it has a provider line in our ledger, so we pay it. */
+	public static function paid_here( int $leg_id ): bool {
+		global $wpdb;
+		return (bool) $wpdb->get_var( $wpdb->prepare( 'SELECT 1 FROM ' . self::t( 'ledger' ) . " WHERE leg_id = %d AND role = 'provider' AND status <> 'cancelled' LIMIT 1", $leg_id ) ); // phpcs:ignore
+	}
+
+	public static function paid_here_booking( int $booking_id ): bool {
+		global $wpdb;
+		return (bool) $wpdb->get_var( $wpdb->prepare( 'SELECT 1 FROM ' . self::t( 'ledger' ) . " WHERE booking_id = %d AND role = 'provider' AND status <> 'cancelled' LIMIT 1", $booking_id ) ); // phpcs:ignore
+	}
+
 	public static function reassign( string $number, int $leg_id, int $service_id, int $amount_cents, bool $tell ) {
 		global $wpdb;
 		$b = self::booking( $number );
@@ -96,6 +107,9 @@ final class ATC_Ops {
 		}
 		if ( 'confirmed' !== $b['status'] || ! in_array( $leg['status'], array( 'new', 'accepted', 'released' ), true ) ) {
 			return new WP_Error( 'atc_closed', 'Only open rides of a paid booking can change provider.', array( 'status' => 409 ) );
+		}
+		if ( ! empty( $b['snap']['legacy'] ) && ( ! $leg['pickup_at'] || strtotime( $leg['pickup_at'] . ' UTC' ) <= time() ) ) {
+			return new WP_Error( 'atc_closed', 'This old-site ride is already past.', array( 'status' => 409 ) );
 		}
 		$svc = $wpdb->get_row( $wpdb->prepare( 'SELECT id, party_id FROM ' . self::t( 'services' ) . ' WHERE id = %d', $service_id ), ARRAY_A );
 		if ( ! $svc ) {

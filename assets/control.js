@@ -788,7 +788,8 @@
     function picked() { var o = sel.options[sel.selectedIndex]; return o && o.getAttribute('data-i') !== null ? l.candidates[+o.getAttribute('data-i')] : null; }
     function update() {
       var c = picked();
-      var diff = c && c.retail !== null ? c.retail - l.retail : 0;
+      // Old-site bookings can't take a card payment here, so any difference is ours.
+      var diff = c && c.retail !== null && !l.legacy ? c.retail - l.retail : 0;
       diffBox.hidden = !(diff > 0);
       if (diff > 0) {
         clear(diffBox);
@@ -898,7 +899,7 @@
           h('div', null,
             h('div', { class: 'atc-actions' }, h('h1', { text: b.number }), h('span', { class: 'chip ' + b.tone, text: b.status }), b.legacy ? h('span', { class: 'chip grey', text: 'From the old site' }) : null),
             h('p', { class: 'atc-muted', text: [b.traveler.name || null, 'booked ' + b.booked, b.source.site || null, (b.lang || '').toUpperCase()].filter(Boolean).join(' · ') })),
-          b.legacy ? h('p', { class: 'small atc-muted', text: 'This trip is run from the old site: change the provider, the trip or refunds there.' }) : bookingActions(b, number, draw)),
+          b.legacy ? h('p', { class: 'small atc-muted', text: 'Booked and paid on the old site: refunds and trip changes are done there. You can still give a ride that is ahead to another provider (below); we then pay that provider here.' }) : bookingActions(b, number, draw)),
         h('div', { class: 'pe-split' },
           h('div', { class: 'pe-left' },
             b.legs.map(function (l, i) {

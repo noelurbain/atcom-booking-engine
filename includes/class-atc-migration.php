@@ -493,7 +493,7 @@ final class ATC_Migration {
 		$bt  = self::t( 'bookings' );
 		$lt  = self::t( 'booking_legs' );
 		$now = self::now();
-		$ids = $wpdb->get_col( $wpdb->prepare( "SELECT b.id FROM {$bt} b WHERE b.status = 'confirmed' AND b.snapshot LIKE %s AND NOT EXISTS (SELECT 1 FROM {$lt} l WHERE l.booking_id = b.id AND l.status NOT IN ('cancelled','released','completed','no_show') AND (l.pickup_at IS NULL OR l.pickup_at >= %s))", '%"legacy":true%', $now ) );
+		$ids = $wpdb->get_col( $wpdb->prepare( "SELECT b.id FROM {$bt} b WHERE b.status = 'confirmed' AND b.snapshot LIKE %s AND NOT EXISTS (SELECT 1 FROM {$lt} l WHERE l.booking_id = b.id AND l.status NOT IN ('cancelled','released','completed','no_show') AND (l.pickup_at IS NULL OR l.pickup_at >= %s)) AND NOT EXISTS (SELECT 1 FROM " . self::t( 'ledger' ) . " x WHERE x.booking_id = b.id AND x.role = 'provider' AND x.status = 'pending')", '%"legacy":true%', $now ) ); // A ride given to a provider here completes like a new-site ride, so it gets paid.
 		foreach ( $ids as $id ) {
 			$wpdb->query( $wpdb->prepare( "UPDATE {$lt} SET status = 'completed', completed_how = 'legacy', completed_at = COALESCE(pickup_at, %s) WHERE booking_id = %d AND status NOT IN ('cancelled','released','completed','no_show')", $now, (int) $id ) );
 			$wpdb->update( $bt, array( 'status' => 'completed', 'updated_at' => $now ), array( 'id' => (int) $id ) );

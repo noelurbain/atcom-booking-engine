@@ -162,7 +162,8 @@ final class ATC_Bookings {
 		$prov    = 0;
 		$full    = ATC_Checkout::find( '', (int) $b['id'] );
 		foreach ( $legs as $l ) {
-			$open_ride = empty( $snap['legacy'] ) && 'confirmed' === $b['status'] && in_array( $l['status'], array( 'new', 'accepted', 'released' ), true );
+			// Old-site rides can change provider too, while they are still ahead (the new provider is then paid here).
+			$open_ride = 'confirmed' === $b['status'] && in_array( $l['status'], array( 'new', 'accepted', 'released' ), true ) && ( empty( $snap['legacy'] ) || ( $l['pickup_at'] && strtotime( $l['pickup_at'] . ' UTC' ) > time() ) );
 			$tz        = $tz ?: ( (string) $l['timezone'] ?: (string) ( $snap['timezone'] ?? 'UTC' ) );
 			$prov     += (int) $l['provider_cents'];
 			$out_leg[] = array(
@@ -185,6 +186,8 @@ final class ATC_Bookings {
 				'id'            => (int) $l['id'],
 				'completed_how' => (string) $l['completed_how'],
 				'can_reassign'  => $open_ride,
+				'legacy'        => ! empty( $snap['legacy'] ),
+				'moved'         => ! empty( $snap['legacy'] ) && ATC_Ops::paid_here( (int) $l['id'] ),
 				'can_ack'       => $open_ride && 'new' === $l['status'] && (int) $l['party_id'] > 0,
 				'acknowledged'  => $l['acknowledged_at'] ? self::local( $l['acknowledged_at'], $tz ) : '',
 				'candidates'    => $open_ride && $full ? ATC_Ops::candidates( $full, $l ) : array(),
@@ -201,14 +204,15 @@ final class ATC_Bookings {
 			$money[] = array( 'Discount code ' . $b['coupon_code'], 'affiliate' === ( $snap['coupon']['owner'] ?? '' ) ? 'from the affiliate’s commission · price was ' . ATC_Book::money( (int) $b['retail_cents'] ) : 'from our share · price was ' . ATC_Book::money( (int) $b['retail_cents'] ), -(int) $b['discount_cents'] );
 		}
 		if ( $paid ) {
-			$money[] = array( 'Provider (Amount you will get paid)', $legacy ? 'old site, ' . ( $total ? round( 100 * $prov / $total ) : 0 ) . '% · settled there' : 'pending until completed', $prov );
+			$moved   = $legacy && ATC_Ops::paid_here_booking( (int) $b['id'] );
+			$money[] = array( 'Provider (Amount you will get paid)', $moved ? 'given to a new provider, paid by us once completed' : ( $legacy ? 'old site, ' . ( $total ? round( 100 * $prov / $total ) : 0 ) . '% · settled there' : 'pending until completed' ), $prov );
 			$aff_lines = $legacy ? array() : $wpdb->get_results( $wpdb->prepare( 'SELECT x.role, x.amount_cents, x.status, p.name FROM ' . self::t( 'ledger' ) . ' x LEFT JOIN ' . self::t( 'parties' ) . " p ON p.id = x.party_id WHERE x.booking_id = %d AND x.role IN ('affiliate','referrer') AND x.status <> 'cancelled'", (int) $b['id'] ), ARRAY_A );
 			$aff_sum   = 0;
 			foreach ( $aff_lines as $x ) {
 				$money[]  = array( ( 'affiliate' === $x['role'] ? 'Affiliate · ' : 'Referring affiliate · ' ) . $x['name'], $x['status'], (int) $x['amount_cents'] );
 				$aff_sum += (int) $x['amount_cents'];
 			}
-			$money[] = array( 'Airport Transportation keeps', $legacy ? 'old site, 30% commission' : 'before Stripe fees', $total - $prov - $aff_sum );
+			$money[] = array( 'Airport Transportation keeps', $moved ? 'paid on the old site' : ( $legacy ? 'old site, 30% commission' : 'before Stripe fees' ), $total - $prov - $aff_sum );
 		}
 		if ( ! empty( $snap['refunded'] ) ) {
 			$money[] = array( 'Refunded to the traveler', '', -(int) $snap['refunded'] );
