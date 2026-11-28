@@ -455,6 +455,11 @@ final class ATC_Partner {
 		$to    = $email;
 		$test  = (string) ATC_Settings::get( 'invite_test_to' );
 		$subj  = $m['subject'];
+		if ( 'invited' === self::portal_state( $party_id )['state'] ) {
+			// A second invitation is a reminder: say so, so it does not read like a duplicate.
+			$subj      = 'Reminder: ' . $subj;
+			$m['body'] = '<p style="margin:0 0 14px"><strong>A friendly reminder:</strong> we sent you this invitation a few days ago and your account is still waiting for you. The button below is a new link (the old one may have expired).</p>' . $m['body'];
+		}
 		if ( '' !== $test ) {
 			$to   = $test;
 			$subj = '[TEST, would go to ' . $email . '] ' . $subj;
