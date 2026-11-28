@@ -140,12 +140,12 @@ final class ATC_Mail {
 			. '</table></td></tr></table></body></html>';
 	}
 
-	private static function p( string $html ): string {
+	public static function p( string $html ): string {
 		return '<p style="margin:0 0 12px;font-size:15px;line-height:1.55">' . $html . '</p>';
 	}
 
 	/** Two-column details table. Values are escaped here unless marked raw. */
-	private static function table( array $rows ): string {
+	public static function table( array $rows ): string {
 		$out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0;border-top:1px solid #ECE8E1">';
 		foreach ( $rows as $r ) {
 			if ( null === $r || '' === (string) $r[1] ) {

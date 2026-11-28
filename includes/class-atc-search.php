@@ -26,8 +26,8 @@ final class ATC_Search {
 	public static function find_airport( $value ): ?array {
 		global $wpdb;
 		$value = trim( (string) $value );
-		if ( '' === $value ) {
-			return null;
+		if ( '' === $value || 0 === strpos( $value, 'g:' ) ) {
+			return null; // g:… is a Google airport we don't have yet (quote request)
 		}
 		if ( ctype_digit( $value ) ) {
 			return ATC_Catalog::airport( (int) $value );

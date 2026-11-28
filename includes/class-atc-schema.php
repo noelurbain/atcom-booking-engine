@@ -14,7 +14,7 @@ final class ATC_Schema {
 		return array(
 			'sites', 'parties', 'party_users', 'airports', 'zones', 'places', 'vehicle_types',
 			'vehicles', 'drivers', 'services', 'service_zones', 'prices', 'extras', 'bookings',
-			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches', 'extra_types', 'blocks', 'push_subs',
+			'booking_legs', 'booking_extras', 'ledger', 'payouts', 'coupons', 'tickets', 'events', 'documents', 'aliases', 'legacy', 'reviews', 'demand', 'meeting', 'clicks', 'ticket_messages', 'searches', 'extra_types', 'quotes', 'blocks', 'push_subs',
 		);
 	}
 
@@ -539,6 +539,38 @@ final class ATC_Schema {
   UNIQUE KEY endpoint_hash (endpoint_hash),
   KEY party_role (party_id,role),
   KEY user_id (user_id)
+) $c;";
+
+		// Quote requests: a traveler asks for a price where nothing can be booked online yet.
+		$sql[] = "CREATE TABLE {$p}quotes (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  number varchar(20) NOT NULL,
+  status varchar(20) NOT NULL DEFAULT 'new',
+  airport_id bigint(20) unsigned NULL,
+  airport_label varchar(190) NOT NULL DEFAULT '',
+  reason varchar(30) NOT NULL DEFAULT '',
+  dir varchar(20) NOT NULL DEFAULT 'from_airport',
+  place varchar(255) NOT NULL DEFAULT '',
+  lat decimal(10,7) NULL,
+  lng decimal(10,7) NULL,
+  pickup_date date NULL,
+  pickup_time varchar(5) NOT NULL DEFAULT '',
+  return_date date NULL,
+  adults int(11) NOT NULL DEFAULT 1,
+  children int(11) NOT NULL DEFAULT 0,
+  bags int(11) NOT NULL DEFAULT 0,
+  flight varchar(60) NOT NULL DEFAULT '',
+  name varchar(120) NOT NULL DEFAULT '',
+  email varchar(190) NOT NULL DEFAULT '',
+  phone varchar(40) NOT NULL DEFAULT '',
+  notes text NULL,
+  snapshot longtext NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY number (number),
+  KEY status (status),
+  KEY airport_id (airport_id)
 ) $c;";
 
 		return $sql;

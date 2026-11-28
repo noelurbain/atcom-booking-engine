@@ -9,6 +9,9 @@ defined( 'ABSPATH' ) || exit;
 
 final class ATC_Ops {
 
+	/** Old providers of rides moved in one go, so each gets one email. */
+	private static array $moved_from = array();
+
 	private static function t( string $n ): string {
 		return ATC_Schema::table( $n );
 	}
@@ -95,7 +98,26 @@ final class ATC_Ops {
 		return (bool) $wpdb->get_var( $wpdb->prepare( 'SELECT 1 FROM ' . self::t( 'ledger' ) . " WHERE booking_id = %d AND role = 'provider' AND status <> 'cancelled' LIMIT 1", $booking_id ) ); // phpcs:ignore
 	}
 
-	public static function reassign( string $number, int $leg_id, int $service_id, int $amount_cents, bool $tell ) {
+	/**
+	 * Give several rides of one booking (e.g. both ways of a round trip) to the same provider in one go,
+	 * so each provider gets one email with the right total instead of one per ride.
+	 */
+	public static function reassign_many( string $number, array $leg_ids, int $service_id, int $amount_cents, bool $tell ) {
+		$leg_ids = array_values( array_unique( array_filter( array_map( 'intval', $leg_ids ) ) ) );
+		if ( count( $leg_ids ) < 2 ) {
+			return self::reassign( $number, (int) ( $leg_ids[0] ?? 0 ), $service_id, $amount_cents, $tell );
+		}
+		$out = null;
+		foreach ( $leg_ids as $i => $leg ) {
+			$out = self::reassign( $number, $leg, $service_id, $amount_cents, $tell, count( $leg_ids ) - 1 === $i );
+			if ( is_wp_error( $out ) ) {
+				return $out;
+			}
+		}
+		return $out;
+	}
+
+	public static function reassign( string $number, int $leg_id, int $service_id, int $amount_cents, bool $tell, bool $mail = true ) {
 		global $wpdb;
 		$b = self::booking( $number );
 		if ( is_wp_error( $b ) ) {
@@ -131,9 +153,20 @@ final class ATC_Ops {
 		$wpdb->insert( self::t( 'ledger' ), array( 'booking_id' => (int) $b['id'], 'leg_id' => $leg_id, 'party_id' => $new, 'role' => 'provider', 'amount_cents' => $amount_cents, 'currency' => 'USD', 'status' => 'pending', 'service_month' => $month, 'created_at' => self::now(), 'updated_at' => self::now() ) );
 		self::rebalance_platform( (int) $b['id'] );
 		ATC_Install::log( 'booking', (int) $b['id'], 'provider_changed', array( 'leg' => $leg_id, 'from' => $old, 'to' => $new, 'amount' => $amount_cents ) );
-		$b = ATC_Checkout::find( '', (int) $b['id'] );
-		if ( $old && $old !== $new && 'released' !== $leg['status'] ) {
-			ATC_Mail::provider_removed( $b, $old );
+		if ( ! $mail ) {
+			// Several rides move together: the emails go once, after the last one (old providers kept for that).
+			self::$moved_from[] = array( $old, $leg['status'] );
+			return ATC_Bookings::get( $number );
+		}
+		$b    = ATC_Checkout::find( '', (int) $b['id'] );
+		$from = array_merge( self::$moved_from, array( array( $old, $leg['status'] ) ) );
+		self::$moved_from = array();
+		$told = array();
+		foreach ( $from as [ $was, $status ] ) {
+			if ( $was && $was !== $new && 'released' !== $status && ! isset( $told[ $was ] ) ) {
+				ATC_Mail::provider_removed( $b, $was );
+				$told[ $was ] = true;
+			}
 		}
 		ATC_Mail::provider_new( $b );
 		if ( $tell ) {

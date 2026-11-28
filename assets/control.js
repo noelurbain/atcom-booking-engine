@@ -131,6 +131,7 @@
     if (parts[0] === 'report') return viewReport();
     if (parts[0] === 'tickets' && parts[1]) return viewTicket(parseInt(parts[1], 10));
     if (parts[0] === 'tickets') return viewTickets();
+    if (parts[0] === 'quotes') return viewQuotes();
     if (parts[0] === 'affiliates' && parts[1]) return viewAffiliate(parseInt(parts[1], 10));
     if (parts[0] === 'affiliates') return viewAffiliates();
     if (parts[0] === 'airports') return viewAirports();
@@ -444,6 +445,59 @@
         return h('a', { class: 'row', href: C.base + 'tickets/' + t.id + '/', 'data-go': 'tickets/' + t.id }, h('span', null, h('strong', { text: t.ref + ' · ' }), t.subject), h('span', { class: 'atc-actions' }, tkChips(t)));
       })) : h('p', { class: 'atc-muted small', text: 'No tickets on this booking.' }),
       form);
+  }
+
+  // Quote requests: travelers asking for a price where nothing can be booked online.
+  function viewQuotes() {
+    clear(app);
+    var st = 'open';
+    var list = h('div', { style: 'display:grid;gap:14px' });
+    var pills = h('div', { class: 'pe-pills', role: 'group', 'aria-label': 'Show' });
+    var label = { 'new': ['New, nobody asked', 'red'], asked: ['Asked providers', 'orange'], priced: ['Price in: send it', 'red'], quoted: ['Price sent', 'green'], won: ['Booked', 'green'], closed: ['Closed', 'grey'] };
+    function drawPills() {
+      clear(pills);
+      [['open', 'Open'], ['won', 'Booked'], ['closed', 'Closed'], ['all', 'All']].forEach(function (o) {
+        add(pills, h('button', { type: 'button', class: 'pe-pill' + (st === o[0] ? ' on' : ''), 'aria-pressed': st === o[0] ? 'true' : 'false', text: o[1], onclick: function () { st = o[0]; load(); } }));
+      });
+    }
+    function card(q) {
+      var offers = h('div', { style: 'display:grid;gap:8px' });
+      if (!q.offers.length) add(offers, h('p', { class: 'small atc-muted', text: q.asked.length ? 'No price yet.' : 'Nobody to ask at this airport: find companies and email them, or add them to the directory.' }));
+      q.offers.forEach(function (o) {
+        var price = h('input', { type: 'number', min: 1, step: '0.01', value: o.retail, style: 'max-width:120px', 'aria-label': 'Price for the traveler' });
+        var sent = q.sent && q.sent.email === o.email;
+        add(offers, h('div', { class: 'card pad', style: 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between' },
+          h('div', null, h('div', { class: 'strong', text: (o.company || o.email) + ' · ' + o.vehicle }), h('div', { class: 'small atc-muted', text: 'They get USD ' + Number(o.amount).toFixed(2) + ' · ' + o.email + (o.notes ? ' · ' + o.notes : '') })),
+          h('div', { class: 'atc-actions' }, h('span', { class: 'small', text: 'Traveler pays USD' }), price,
+            h('button', { type: 'button', class: sent ? 'btn' : 'btn dark', text: sent ? 'Sent ✓ (send again)' : 'Send to traveler', onclick: function (e) {
+              e.target.disabled = true;
+              api('POST', '/quotes/' + q.id + '/send', { email: o.email, price: price.value }).then(function () { toast('Price sent to the traveler.'); load(); }).catch(function (x) { e.target.disabled = false; fail(x); });
+            } }))));
+      });
+      function setStatus(s) { api('POST', '/quotes/' + q.id + '/status', { status: s }).then(function () { load(); }).catch(fail); }
+      return h('div', { class: 'card pad', style: 'gap:10px' },
+        h('div', { class: 'atc-actions', style: 'justify-content:space-between' },
+          h('div', null, h('strong', { text: q.number + ' · ' + q.airport }), q.new_airport ? h('span', { class: 'chip orange', style: 'margin-left:8px', text: 'New airport' }) : null, h('div', { class: 'small atc-muted', text: q.created + ' · ' + q.traveler })),
+          h('span', { class: 'chip ' + (label[q.status] || ['', 'grey'])[1], text: (label[q.status] || [q.status])[0] })),
+        h('div', { class: 'small', text: q.trip.slice(1).join(' · ') }),
+        h('div', { class: 'small atc-muted', text: q.asked.length ? 'Asked: ' + q.asked.join(', ') : 'Nobody was asked automatically.' }),
+        offers,
+        h('div', { class: 'atc-actions' },
+          q.status !== 'won' ? h('button', { type: 'button', class: 'btn', text: 'Mark as booked', onclick: function () { setStatus('won'); } }) : null,
+          q.status !== 'closed' ? h('button', { type: 'button', class: 'link', text: 'Close', onclick: function () { setStatus('closed'); } }) : null));
+    }
+    function load() {
+      drawPills();
+      api('GET', '/quotes?status=' + st).then(function (r) {
+        clear(list);
+        if (!r.quotes.length) add(list, h('p', { class: 'atc-muted', text: 'No quote requests here.' }));
+        r.quotes.forEach(function (q) { add(list, card(q)); });
+      }).catch(fail);
+    }
+    add(app, [
+      h('div', { class: 'atc-head' }, h('div', null, h('h1', { text: 'Quote requests' }), h('p', { class: 'atc-muted', text: 'Travelers who asked for a price where nothing could be booked online: an airport we don’t have yet, an address no provider covers, or a group too big for one vehicle. Providers at that airport and directory companies in that city get the trip by email and send their price here. The traveler’s price adds our 25%, rounded up.' }))),
+      pills, list]);
+    load();
   }
 
   function viewTickets() {
@@ -770,8 +824,10 @@
     return box;
   }
 
-  function reassignBox(l, number, draw) {
+  function reassignBox(l, number, draw, bk) {
     var wrap = h('div');
+    var others = ((bk && bk.legs) || []).filter(function (x) { return x.id !== l.id && x.can_reassign; });
+    var both = h('input', { type: 'checkbox', checked: true });
     var open = h('button', { type: 'button', class: l.status === 'released' ? 'btn dark' : 'link', text: l.status === 'released' ? 'Give this ride to another provider' : 'Change provider', onclick: function () { form.hidden = !form.hidden; } });
     var sel = h('select', null, h('option', { value: '', text: l.candidates.length ? 'Choose a provider' : 'No provider covers this zone' }), l.candidates.map(function (c, i) {
       return h('option', { value: c.service_id, 'data-i': i, text: c.label + (c.suggested === null ? ' · no price for this zone' : ' · gets ' + cash(c.suggested)) + (c.retail !== null && c.retail > l.retail ? ' · sells ' + cash(c.retail) : '') + (c.current ? ' (now)' : '') });
@@ -816,6 +872,7 @@
     var save = h('button', { type: 'button', class: 'btn dark', text: 'Give the ride', onclick: function () {
       if (!sel.value) { toast('Choose a provider first.', true); return; }
       var body = { leg: l.id, service_id: sel.value, amount: amt.value, tell: tell.checked ? 1 : 0 };
+      if (others.length && both.checked) body.legs = [l.id].concat(others.map(function (x) { return x.id; }));
       if (!diffBox.hidden && askPay.checked) { body.charge = chargeAmt.value; body.charge_reason = chargeWhy.value; }
       save.disabled = true;
       api('POST', '/bookings/' + number + '/reassign', body).then(function (nb) {
@@ -828,6 +885,7 @@
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', { text: 'Provider and vehicle' }), sel), h('label', { class: 'field' }, h('span', { text: 'They get (USD)' }), amt)),
       diffBox,
       share,
+      others.length ? h('label', { class: 'atc-inline' }, both, ' Also give the other ride' + (others.length > 1 ? 's' : '') + ' of this booking (same provider and amount per ride, one email each)') : null,
       h('label', { class: 'atc-inline' }, tell, ' Tell the traveler (email with the new provider)'),
       h('span', { class: 'small atc-muted', text: 'The current provider is told the ride is no longer theirs.' }),
       h('div', null, save));
@@ -922,7 +980,7 @@
                     api('POST', '/bookings/' + number + '/ack', { leg: l.id, how: how }).then(function () { toast('Marked as confirmed.'); viewBooking(number); }).catch(function (x) { e.target.disabled = false; fail(x); });
                   } })) : (l.acknowledged ? h('p', { class: 'small atc-muted', text: 'Confirmed by the provider ' + l.acknowledged }) : null),
                 l.noshow_open ? noShowBox(l, number, draw) : null,
-                l.can_reassign ? reassignBox(l, number, draw) : null);
+                l.can_reassign ? reassignBox(l, number, draw, b) : null);
             }),
             b.extras && b.extras.length ? h('section', { class: 'card pad' }, h('h2', { text: 'Extras' }), h('table', { class: 'bare' }, h('tbody', null, b.extras.map(function (x) { return h('tr', null, h('th', { scope: 'row' }, h('div', { text: x.label }), h('div', { class: 'small atc-muted', text: 'provider gets ' + cash(x.provider) })), h('td', { text: cash(x.retail) })); })))) : null,
             ticketsCard(b, number),

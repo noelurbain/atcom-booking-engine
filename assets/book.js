@@ -109,10 +109,11 @@
     var RADIUS_KM = 600; // How far from the airport hotels and addresses are suggested.
     suggest(from, from.parentNode.querySelector('.ab-list'), function (v) {
       return fetch(C.airports + (C.airports.indexOf('?') > -1 ? '&' : '?') + 'local=1&q=' + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (d) {
-        return { rows: (d.results || []).map(function (a) { return { label: a.label, sub: a.sub, id: a.id, iata: a.iata, lat: a.lat, lng: a.lng, cc: a.cc }; }), note: (d.results || []).length ? '' : 'We don’t serve that airport yet.' };
+        // Airports we don't have yet come from Google: the traveler can still ask for a price.
+        return { rows: (d.results || []).map(function (a) { return { label: a.label, sub: a.new ? (a.sub ? a.sub + ' · ' : '') + 'New airport: we’ll find you a driver' : a.sub, id: a.id, iata: a.iata, lat: a.lat, lng: a.lng, cc: a.cc, place: a.new ? a.place_id : '' }; }), note: (d.results || []).length ? '' : 'Type the airport name or city.' };
       });
     }, function (a) {
-      from.value = a.label; fromCode.value = a.iata || a.id; from.setCustomValidity('');
+      from.value = a.label; fromCode.value = a.place ? 'g:' + a.place + '~' + a.label : (a.iata || a.id); from.setCustomValidity('');
       // Hotels and addresses are then looked up around this airport only.
       center = a.lat !== null && a.lat !== undefined ? [a.lat, a.lng] : [];
       to.value = ''; lat.value = ''; lng.value = ''; pid.value = '';

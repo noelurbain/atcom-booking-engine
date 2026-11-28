@@ -148,8 +148,9 @@ final class ATC_REST {
 			$local( $a );
 		}
 		// Google only when we have nothing, or the visitor asks for more. Limited per visitor: each search costs money.
-		// Travelers (local=1) only ever pick airports we serve.
-		if ( empty( $r['local'] ) && ( ! $out || ! empty( $r['more'] ) ) ) {
+		// Travelers (local=1) see our airports first; an airport we don't have comes from Google (they can ask for a price).
+		$traveler = ! empty( $r['local'] );
+		if ( ( ! $out && mb_strlen( $q ) >= 3 ) || ( ! $traveler && ! empty( $r['more'] ) ) ) {
 			$resp['google'] = 'failed';
 			if ( ATC_Partner::rate_ok( 'airports', 40 ) ) {
 				[ $list, $err ] = ATC_Geo::search_airports( $q );
@@ -166,6 +167,8 @@ final class ATC_REST {
 							'label'    => $g['name'],
 							'sub'      => trim( $g['city'] . ', ' . ( $g['country_name'] ?: $g['country'] ), ', ' ),
 							'new'      => true,
+							'lat'      => (float) $g['lat'],
+							'lng'      => (float) $g['lng'],
 						);
 					}
 				}

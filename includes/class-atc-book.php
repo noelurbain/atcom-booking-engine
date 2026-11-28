@@ -54,6 +54,10 @@ final class ATC_Book {
 		$airport  = $q['airport'] ? ATC_Search::find_airport( $q['airport'] ) : null;
 		$alabel   = $airport ? ATC_Catalog::airport_label( $airport ) : '';
 		$acode    = $airport ? ( $airport['iata'] ?: $airport['id'] ) : '';
+		if ( ! $airport && 0 === strpos( (string) $q['airport'], 'g:' ) ) { // a Google airport we don't have yet
+			$acode  = (string) $q['airport'];
+			$alabel = (string) substr( (string) strstr( $acode, '~' ), 1 );
+		}
 		$rev      = 'to_airport' === $q['dir'];
 		$round    = ! $rev && 'round_trip' === $q['trip'];
 		$pax      = (int) $q['adults'] + (int) $q['children'];
@@ -161,7 +165,7 @@ final class ATC_Book {
 			ATC_Insights::log( $res );
 			$reason = $res['reason'] ?? '';
 			if ( 'no_airport' === $reason && '' !== $q['airport'] ) {
-				ATC_Search::log_miss( 'airport', $q['airport'] );
+				ATC_Search::log_miss( 'airport', 0 === strpos( (string) $q['airport'], 'g:' ) ? (string) substr( (string) strstr( $q['airport'], '~' ), 1 ) : $q['airport'] );
 			} elseif ( 'coverage' === $reason ) {
 				ATC_Search::log_miss( 'address', (string) $res['destination']['label'], (int) $res['airport']['id'], (float) $res['destination']['lat'], (float) $res['destination']['lng'] );
 			} elseif ( 'none' === $reason ) {
@@ -409,7 +413,7 @@ final class ATC_Book {
 	private static function nothing( array $res ): string {
 		$q   = $res['query'];
 		$msg = array(
-			'no_airport'     => array( 'Pick your arrival airport', 'We could not find that airport. Choose it from the list in the search box.' ),
+			'no_airport'     => 0 === strpos( (string) $q['airport'], 'g:' ) ? array( 'We don’t have drivers listed at this airport yet', 'Ask us for a price below: we’ll check with the local transport companies and email you within 24 hours.' ) : array( 'Pick your arrival airport', 'We could not find that airport. Choose it from the list in the search box, or ask us for a price below.' ),
 			'no_destination' => array( 'Where are you going?', 'Type your hotel or address and pick it from the list, so we know where to take you.' ),
 			'coverage'       => array( 'We don’t serve that address yet', 'No provider covers ' . ( $res['destination']['label'] ?? 'that address' ) . ' from ' . ( $res['airport']['label'] ?? 'this airport' ) . ' yet. The nearest places we do serve are below, or try another address.' ),
 			'none'           => array( 'No vehicles for this trip yet', 'Providers at ' . ( $res['airport']['label'] ?? 'this airport' ) . ' have not priced ' . ( $res['destination']['zone'] ?? 'this area' ) . ( 'round_trip' === $q['trip'] ? ' as a round trip' : '' ) . ' yet.' . ( 'round_trip' === $q['trip'] ? ' Try one way.' : '' ) ),
@@ -423,6 +427,13 @@ final class ATC_Book {
 			<p><?php echo esc_html( $msg[1] ); ?></p>
 			<div class="ab-actions"><button type="button" class="ab-btn is-accent" data-ab-edit>Change search</button><a class="ab-btn is-line" href="<?php echo esc_url( home_url( '/destinations/' ) ); ?>">See where we go</a></div>
 		</div>
+		<?php
+		// Nothing to book online: let the traveler ask for a price (not for a missing destination or a pickup too soon).
+		$ask = in_array( $res['reason'] ?? '', array( 'coverage', 'none', 'party' ), true ) || ( 'no_airport' === ( $res['reason'] ?? '' ) && '' !== (string) $q['airport'] );
+		if ( $ask ) {
+			echo ATC_Quotes::form( $res ); // phpcs:ignore -- escaped inside.
+		}
+		?>
 		<?php if ( ! empty( $res['nearest'] ) ) : ?>
 			<h2 class="ab-h3">Nearest places we serve</h2>
 			<?php foreach ( $res['nearest'] as $n ) : ?>

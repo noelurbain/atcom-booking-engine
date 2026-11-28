@@ -68,7 +68,8 @@ final class ATC_REST_Control {
 			'reassign',
 			static function ( $n, $b ) {
 				$charge = (int) round( 100 * (float) ( $b['charge'] ?? 0 ) );
-				$out    = ATC_Ops::reassign( $n, (int) ( $b['leg'] ?? 0 ), (int) ( $b['service_id'] ?? 0 ), (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['tell'] ) );
+				$legs   = ! empty( $b['legs'] ) && is_array( $b['legs'] ) ? $b['legs'] : array( (int) ( $b['leg'] ?? 0 ) );
+				$out    = ATC_Ops::reassign_many( $n, $legs, (int) ( $b['service_id'] ?? 0 ), (int) round( 100 * (float) ( $b['amount'] ?? 0 ) ), ! empty( $b['tell'] ) );
 				if ( ! is_wp_error( $out ) && $charge > 0 ) {
 					$asked = ATC_Charges::request( $n, $charge, (string) ( $b['charge_reason'] ?? '' ), (int) ( $b['leg'] ?? 0 ) );
 					// The ride is already given; a failed request is reported but does not undo it.

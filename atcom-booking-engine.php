@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ATCOM Booking Engine
  * Description:       Booking engine for AirportTransportation.com: providers, prices, bookings, payments and payouts.
- * Version:           0.34.4
+ * Version:           0.35.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            AirportTransportation.com
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ATC_VERSION', '0.34.4' );
-define( 'ATC_DB_VERSION', '27' );
+define( 'ATC_VERSION', '0.35.0' );
+define( 'ATC_DB_VERSION', '28' );
 define( 'ATC_FILE', __FILE__ );
 define( 'ATC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ATC_URL', plugin_dir_url( __FILE__ ) );
@@ -65,6 +65,7 @@ require_once ATC_DIR . 'includes/class-atc-analytics.php';
 require_once ATC_DIR . 'includes/class-atc-payouts.php';
 require_once ATC_DIR . 'includes/class-atc-airports.php';
 require_once ATC_DIR . 'includes/class-atc-book.php';
+require_once ATC_DIR . 'includes/class-atc-quotes.php';
 require_once ATC_DIR . 'includes/class-atc-rest-portal.php';
 require_once ATC_DIR . 'includes/class-atc-rest-affiliate.php';
 require_once ATC_DIR . 'includes/class-atc-portal.php';
@@ -85,6 +86,7 @@ ATC_Control::init();
 ATC_Portal::init();
 ATC_Brand::init();
 ATC_Book::init();
+ATC_Quotes::init();
 ATC_Mail::init();
 ATC_Trips::init();
 ATC_Affiliates::init();
