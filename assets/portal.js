@@ -1070,7 +1070,10 @@
     var otherCount = 0, otherOn = false;
     var otherBtn = h('button', { class: 'btn', type: 'button' });
     var cats = h('section', { class: 'card pad' }, h('h2', { text: 'Categories you sell' }),
-      h('p', { class: 'small atc-muted', text: 'Tick each category you sell. The passengers and bags start at our usual numbers: change them to fit your vehicles.' }),
+      h('p', { class: 'small atc-muted', text: 'Tick each category you sell.' }),
+      h('div', { class: 'card warn pad', style: 'margin:8px 0 14px;border:1px solid #FAD7A8;background:#FFF8EE;border-radius:12px' },
+        h('strong', { text: 'You set how many passengers and bags each category carries.' }),
+        h('p', { class: 'small', style: 'margin:4px 0 0', text: 'The numbers shown are only our usual starting point. Tick a category, then change Max passengers and Max bags to fit your own vehicles. Example: a Toyota Hiace with 11 seats goes in Minivan with Max passengers 11. Travelers only see your vehicle for groups that fit.' })),
       grid, otherBtn, other);
     me.vehicle_types.forEach(function (t) {
       var s = me.services.find(function (x) { return x.vehicle_type_id == t.id && x.airport_id == airport.id; });
@@ -1094,7 +1097,7 @@
       pax.addEventListener('input', checkCap);
       checkCap();
       var body = h('div', { class: 'svc-body' + (on ? '' : ' hidden') },
-        h('div', { class: 'grid3' }, field('Max passengers', pax), field('Max bags', bags), field('Free waiting at the airport (min)', wait)),
+        h('div', { class: 'grid3' }, field('Max passengers (your vehicles)', pax), field('Max bags (your vehicles)', bags), field('Free waiting at the airport (min)', wait)),
         capWarn,
         h('div', { class: 'atc-actions' }, h('button', { class: 'btn dark', type: 'button', onclick: function () { save(true); }, text: 'Save ' + t.name })));
       function save(offered) {
@@ -1112,7 +1115,7 @@
       if (limo) { otherCount++; if (on) otherOn = true; }
       add(limo ? other : grid, h('div', { class: 'svc vt' + (on ? ' on' : '') },
         t.image ? h('img', { class: 'vt-img', src: t.image, alt: '', width: 320, height: 200, loading: 'lazy' }) : h('div', { class: 'vt-img vt-noimg', text: 'Photo coming soon' }),
-        h('label', { class: 'svc-head' }, box, h('strong', { text: t.name }), h('span', { class: 'atc-muted small', text: 'usually up to ' + t.max_passengers + ' passengers · ' + t.max_bags + ' bags' }),
+        h('label', { class: 'svc-head' }, box, h('strong', { text: t.name }), h('span', { class: 'atc-muted small', text: s ? 'Yours: up to ' + s.max_passengers + ' passengers · ' + s.max_bags + ' bags (change below)' : 'Usually up to ' + t.max_passengers + ' passengers · ' + t.max_bags + ' bags: you can change it' }),
           t.examples ? h('span', { class: 'small vt-ex', text: 'e.g. ' + t.examples }) : null,
           s && !on ? h('span', { class: 'chip orange', text: 'Not selling · your prices are kept' }) : null),
         body));

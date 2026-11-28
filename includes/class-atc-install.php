@@ -65,6 +65,12 @@ final class ATC_Install {
 				global $wpdb;
 				$wpdb->query( 'UPDATE ' . ATC_Schema::table( 'services' ) . ' s JOIN ' . ATC_Schema::table( 'parties' ) . ' p ON p.id = s.party_id SET s.min_notice_minutes = p.min_notice_minutes WHERE p.min_notice_minutes IS NOT NULL' ); // phpcs:ignore
 			}
+			if ( version_compare( $from, '29', '<' ) ) {
+				// Minivan category: usual capacity 8 passengers and 8 bags (was 6). Only the category's starting
+				// numbers change; each provider's own setting stays as it is.
+				global $wpdb;
+				$wpdb->query( 'UPDATE ' . ATC_Schema::table( 'vehicle_types' ) . " SET max_passengers = 8, max_bags = 8 WHERE slug = 'minivan' AND max_passengers = 6" ); // phpcs:ignore
+			}
 			update_option( 'atc_db_version', ATC_DB_VERSION, false );
 			update_option( 'atc_flush_rewrite', 1, false );
 		}
@@ -87,7 +93,7 @@ final class ATC_Install {
 			// Luxury is the top SUV class (Escalade, Navigator); Premium sits below it (Suburban, Tahoe, Yukon).
 			array( 'premium-suv', 'Premium SUV', 6, 6, 30 ),
 			array( 'luxury-suv', 'Luxury SUV', 6, 5, 40 ),
-			array( 'minivan', 'Minivan', 6, 6, 50 ),
+			array( 'minivan', 'Minivan', 8, 8, 50 ), // VW Transporter, Toyota Hiace, Nissan Urvan: 8 is the usual floor; providers set their own
 			array( 'minibus', 'Minibus', 14, 14, 60 ),
 			array( 'mini-coach', 'Mini Coach', 25, 25, 70 ),
 			array( 'midi-coach', 'Midi Coach', 35, 35, 80 ),
