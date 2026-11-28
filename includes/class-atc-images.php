@@ -30,6 +30,7 @@ class ATC_Images {
 		$team = array( 'ATC_Rest_Control', 'can' );
 		register_rest_route( self::NS, '/control/images', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'rest_list' ), 'permission_callback' => $team ) );
 		register_rest_route( self::NS, '/control/images/(?P<id>\d+)', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_make' ), 'permission_callback' => $team ) );
+		register_rest_route( self::NS, '/control/routes/(?P<id>\d+)/meta', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_route_meta' ), 'permission_callback' => $team ) );
 		register_rest_route( self::NS, '/control/images/(?P<id>\d+)/prompt', array( 'methods' => 'GET', 'callback' => static fn( WP_REST_Request $r ) => rest_ensure_response( array( 'prompt' => self::prompt( (int) $r['id'] ) ) ), 'permission_callback' => $team ) );
 	}
 
@@ -137,6 +138,37 @@ class ATC_Images {
 			'No text, no signs with readable words, no logos, no watermarks, no frames. No close-up faces; people only small in the distance. No airplanes and no cars as the main subject.',
 		);
 		return implode( ' ', $parts );
+	}
+
+	/**
+	 * Set the page fields of a destination (route) page: seo_title, seo_desc, h1, subtitle, intro,
+	 * facts, parent, map, zones... Sent fields replace the saved ones; "replace": true starts from empty.
+	 */
+	public static function rest_route_meta( WP_REST_Request $r ) {
+		$id = (int) $r['id'];
+		if ( 'atc_route' !== get_post_type( $id ) ) {
+			return new WP_Error( 'atc_not_found', 'Page not found.', array( 'status' => 404 ) );
+		}
+		$body = (array) $r->get_json_params();
+		$in   = isset( $body['meta'] ) && is_array( $body['meta'] ) ? $body['meta'] : array();
+		$old  = get_post_meta( $id, '_atc', true );
+		$old  = is_array( $old ) && empty( $body['replace'] ) ? $old : array();
+		$keep = array( 'seo_title', 'seo_desc', 'og_image', 'h1', 'eyebrow', 'subtitle', 'intro', 'facts', 'parent', 'map', 'image', 'zones' );
+		foreach ( $in as $k => $v ) {
+			if ( ! in_array( $k, $keep, true ) ) {
+				continue;
+			}
+			if ( in_array( $k, array( 'facts', 'zones' ), true ) ) {
+				$old[ $k ] = is_array( $v ) ? map_deep( $v, 'sanitize_text_field' ) : array();
+			} elseif ( in_array( $k, array( 'map', 'og_image', 'image' ), true ) ) {
+				$old[ $k ] = esc_url_raw( (string) $v );
+			} else {
+				$old[ $k ] = sanitize_text_field( (string) $v );
+			}
+		}
+		update_post_meta( $id, '_atc', $old );
+		clean_post_cache( $id );
+		return rest_ensure_response( array( 'id' => $id, 'meta' => $old ) );
 	}
 
 	/* ---------- Make and attach ---------- */
